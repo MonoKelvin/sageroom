@@ -1,0 +1,35 @@
+[package]
+name = "sageroom"
+version = "0.1.0"
+description = "本地优先的智能体聊天室"
+authors = ["Sageroom contributors"]
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+default-run = "sageroom"
+
+[lib]
+name = "sageroom_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "=2.7.6", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.7", features = ["tray-icon", "image-png"] }
+tauri-plugin-single-instance = "=2.5.5"
+rusqlite = { version = "=0.43.0", features = ["bundled", "backup", "hooks"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+schemars = "=1.2.3"
+ts-rs = "=12.0.1"
+uuid = { version = "=1.29.3", features = ["v7", "serde"] }
+sha2 = "=0.11.1"
+
+[dev-dependencies]
+tempfile = "=3.27.0"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1

@@ -1,0 +1,354 @@
+import { useCallback, useEffect, useRef, useState } from "react"
+import type { AppSnapshot, Appearance, ChatSendResult, DomainEvent, MessagePage } from "@/contracts/generated"
+import { errorMessage, ipc, IpcError } from "@/app/ipc"
+import { compareSequence, INITIAL_ITEM_INDEX, mergePage, PAGE_SIZE } from "./timeline"
+
+function generationError() {
+  return new IpcError({
+    code: "DATA_GENERATION_CHANGED",
+    message: "聊天数据已变更，请确认当前聊天室后重新发送。",
+    retryability: "after_user_action",
+    field_path: null,
+    trace_id: crypto.randomUUID(),
+    may_have_been_charged: false,
+  })
+}
+
+export function useChatSession() {
+  const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null)
+  const [page, setPage] = useState<MessagePage | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [hasNewMessages, setHasNewMessages] = useState(false)
+  const [atBottom, setAtBottom] = useState(true)
+  const [firstItemIndex, setFirstItemIndex] = useState(INITIAL_ITEM_INDEX)
+  const [windowRevision, setWindowRevision] = useState(0)
+  const [targetMessageId, setTargetMessageId] = useState<string | null>(null)
+  const snapshotRef = useRef<AppSnapshot | null>(null)
+  const pageRef = useRef<MessagePage | null>(null)
+  const renderedAnchor = useRef<{ id: string; seq: string } | null>(null)
+  const firstIndexRef = useRef(INITIAL_ITEM_INDEX)
+  const atBottomRef = useRef(true)
+  const eventCursor = useRef(0n)
+  const lifecycle = useRef(0)
+  const viewEpoch = useRef(0)
+  const paginationBusy = useRef(false)
+  const workQueue = useRef(Promise.resolve())
+  const streamReady = useRef(false)
+  const bufferedEvents = useRef<DomainEvent[]>([])
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const assignSnapshot = useCallback((next: AppSnapshot) => {
+    snapshotRef.current = next
+    setSnapshot(next)
+  }, [])
+
+  const assignPage = useCallback((next: MessagePage, index: number) => {
+    pageRef.current = next
+    firstIndexRef.current = index
+    setPage(next)
+    setFirstItemIndex(index)
+  }, [])
+
+  const report = useCallback((cause: unknown) => {
+    setError(errorMessage(cause))
+  }, [])
+
+  const enqueue = useCallback((operation: () => Promise<void>) => {
+    const next = workQueue.current.then(operation)
+    workQueue.current = next.catch(() => {})
+    return next
+  }, [])
+
+  const replaceWindow = useCallback(async (aroundSeq?: string, targetId?: string) => {
+    const current = snapshotRef.current
+    if (!current) return
+    const token = lifecycle.current
+    const epoch = ++viewEpoch.current
+    renderedAnchor.current = null
+    const next = await ipc.list({
+      data_generation_id: current.data_generation_id,
+      before_seq: null,
+      after_seq: null,
+      around_seq: aroundSeq ?? null,
+      limit: PAGE_SIZE,
+    })
+    if (token !== lifecycle.current || epoch !== viewEpoch.current) return
+    if (next.data_generation_id !== snapshotRef.current?.data_generation_id) return
+    assignPage(next, INITIAL_ITEM_INDEX)
+    setWindowRevision(epoch)
+    setTargetMessageId(targetId ?? null)
+    setHasNewMessages(false)
+    atBottomRef.current = !aroundSeq
+    setAtBottom(!aroundSeq)
+    if (highlightTimer.current) clearTimeout(highlightTimer.current)
+    if (targetId) {
+      highlightTimer.current = setTimeout(() => {
+        if (token === lifecycle.current) setTargetMessageId(null)
+      }, 900)
+    }
+  }, [assignPage])
+
+  const markNewMessages = useCallback(() => {
+    setHasNewMessages(true)
+    const current = pageRef.current
+    if (current && !current.has_more_after) assignPage({ ...current, has_more_after: true }, firstIndexRef.current)
+  }, [assignPage])
+
+  const synchronizeMessages = useCallback(async () => {
+    const currentSnapshot = snapshotRef.current
+    const currentPage = pageRef.current
+    if (!currentSnapshot || !currentPage) return
+    if (!atBottomRef.current || currentPage.has_more_after) {
+      if (compareSequence(currentSnapshot.latest_message_seq, currentPage.last_seq ?? "0") > 0) markNewMessages()
+      return
+    }
+    const token = lifecycle.current
+    const epoch = viewEpoch.current
+    const next = await ipc.list({
+      data_generation_id: currentSnapshot.data_generation_id,
+      before_seq: null,
+      after_seq: currentPage.last_seq ?? "0",
+      around_seq: null,
+      limit: PAGE_SIZE,
+    })
+    if (token !== lifecycle.current || epoch !== viewEpoch.current) return
+    if (next.data_generation_id !== snapshotRef.current?.data_generation_id) return
+    if (!atBottomRef.current) {
+      if (next.items.length) markNewMessages()
+      return
+    }
+    if (next.has_more_after) {
+      await replaceWindow()
+      return
+    }
+    const visible = pageRef.current
+    if (!visible) return
+    const merged = mergePage(visible, next, "after", firstIndexRef.current)
+    assignPage(merged.page, merged.firstItemIndex)
+  }, [assignPage, markNewMessages, replaceWindow])
+
+  const synchronize = useCallback(async (reset = false) => {
+    const token = lifecycle.current
+    const previous = snapshotRef.current
+    const next = await ipc.snapshot(reset || !previous ? { data_generation_id: null, last_event_seq: null } : {
+      data_generation_id: previous.data_generation_id,
+      last_event_seq: eventCursor.current.toString(),
+    })
+    if (token !== lifecycle.current) return
+    assignSnapshot(next)
+    eventCursor.current = BigInt(next.latest_event_seq)
+    const currentPage = pageRef.current
+    if (reset || !previous || previous.data_generation_id !== next.data_generation_id || !currentPage) {
+      pageRef.current = null
+      setPage(null)
+      await replaceWindow()
+    } else if (previous.room.content_epoch !== next.room.content_epoch) {
+      const wasAtLatest = atBottomRef.current && !currentPage.has_more_after
+      const anchor = renderedAnchor.current ?? currentPage.items[0]
+      pageRef.current = null
+      setPage(null)
+      if (wasAtLatest || !anchor) await replaceWindow()
+      else await replaceWindow(anchor.seq, anchor.id)
+    } else {
+      await synchronizeMessages()
+    }
+    if (token === lifecycle.current) setError(null)
+  }, [assignSnapshot, replaceWindow, synchronizeMessages])
+
+  const processEvent = useCallback(async (event: DomainEvent) => {
+    const current = snapshotRef.current
+    if (!current) return
+    if (event.data_generation_id !== current.data_generation_id) {
+      await synchronize()
+      return
+    }
+    const sequence = BigInt(event.event_seq)
+    if (sequence <= eventCursor.current) return
+    if (sequence !== eventCursor.current + 1n) {
+      await synchronize()
+      return
+    }
+    eventCursor.current = sequence
+    const next: AppSnapshot = { ...current, latest_event_seq: event.event_seq }
+    if (event.payload.kind === "appearance_changed") {
+      next.appearance = event.payload.appearance
+      assignSnapshot(next)
+    } else {
+      if (compareSequence(event.payload.message_seq, current.latest_message_seq) > 0) {
+        next.latest_message_seq = event.payload.message_seq
+      }
+      assignSnapshot(next)
+      await synchronizeMessages()
+    }
+  }, [assignSnapshot, synchronize, synchronizeMessages])
+
+  const activateEvents = useCallback((token: number) => {
+    if (token !== lifecycle.current) return
+    streamReady.current = true
+    for (const event of bufferedEvents.current.splice(0)) {
+      void enqueue(async () => {
+        if (token === lifecycle.current) await processEvent(event)
+      }).catch((cause: unknown) => { if (token === lifecycle.current) report(cause) })
+    }
+  }, [enqueue, processEvent, report])
+
+  useEffect(() => {
+    const token = ++lifecycle.current
+    let unsubscribe: (() => void) | undefined
+    streamReady.current = false
+    bufferedEvents.current = []
+    workQueue.current = Promise.resolve()
+    const active = () => lifecycle.current === token
+    async function initialize() {
+      try {
+        unsubscribe = await ipc.subscribe((event) => {
+          if (!active()) return
+          if (!streamReady.current) {
+            bufferedEvents.current.push(event)
+            if (bufferedEvents.current.length > 256) bufferedEvents.current.shift()
+          } else {
+            void enqueue(async () => {
+              if (active()) await processEvent(event)
+            }).catch((cause: unknown) => { if (active()) report(cause) })
+          }
+        }, (cause) => {
+          if (!active()) return
+          report(cause)
+          void enqueue(() => synchronize()).catch((failure: unknown) => { if (active()) report(failure) })
+        })
+        if (!active()) {
+          unsubscribe()
+          return
+        }
+        await synchronize(true)
+        if (!active()) return
+        activateEvents(token)
+      } catch (cause) {
+        if (active()) report(cause)
+      } finally {
+        if (active()) setLoading(false)
+      }
+    }
+    void initialize()
+    const onFocus = () => {
+      if (streamReady.current) void enqueue(() => synchronize()).catch((cause: unknown) => { if (active()) report(cause) })
+    }
+    window.addEventListener("focus", onFocus)
+    return () => {
+      lifecycle.current += 1
+      streamReady.current = false
+      bufferedEvents.current = []
+      unsubscribe?.()
+      window.removeEventListener("focus", onFocus)
+      if (highlightTimer.current) clearTimeout(highlightTimer.current)
+    }
+  }, [activateEvents, enqueue, processEvent, report, synchronize])
+
+  const reload = useCallback(async () => {
+    const token = lifecycle.current
+    setLoading(true)
+    try {
+      await enqueue(async () => { if (token === lifecycle.current) await synchronize() })
+      activateEvents(token)
+    } catch (cause) {
+      if (token === lifecycle.current) report(cause)
+    } finally {
+      if (token === lifecycle.current) setLoading(false)
+    }
+  }, [activateEvents, enqueue, report, synchronize])
+
+  const loadPage = useCallback(async (direction: "before" | "after") => {
+    const current = pageRef.current
+    const currentSnapshot = snapshotRef.current
+    if (!current || !currentSnapshot || paginationBusy.current) return
+    if (direction === "before" ? !current.has_more_before : !current.has_more_after) return
+    paginationBusy.current = true
+    setLoadingMore(true)
+    const token = lifecycle.current
+    const epoch = viewEpoch.current
+    try {
+      const next = await ipc.list({
+        data_generation_id: currentSnapshot.data_generation_id,
+        before_seq: direction === "before" ? current.first_seq : null,
+        after_seq: direction === "after" ? current.last_seq ?? "0" : null,
+        around_seq: null,
+        limit: PAGE_SIZE,
+      })
+      if (token !== lifecycle.current || epoch !== viewEpoch.current || next.data_generation_id !== snapshotRef.current?.data_generation_id) return
+      const visible = pageRef.current
+      if (!visible) return
+      const merged = mergePage(visible, next, direction, firstIndexRef.current)
+      assignPage(merged.page, merged.firstItemIndex)
+      if (!merged.page.has_more_after && atBottomRef.current) setHasNewMessages(false)
+    } catch (cause) {
+      if (token === lifecycle.current) report(cause)
+    } finally {
+      paginationBusy.current = false
+      if (token === lifecycle.current) setLoadingMore(false)
+    }
+  }, [assignPage, report])
+
+  const send = useCallback(async (text: string, requestId: string): Promise<ChatSendResult> => {
+    const current = snapshotRef.current
+    if (!current) throw generationError()
+    const result = await ipc.send({
+      data_generation_id: current.data_generation_id,
+      client_request_id: requestId,
+      parts: [{ kind: "text", text }],
+      quote_message_id: null,
+      mention_ids: [],
+      mention_all: false,
+    })
+    if (result.data_generation_id !== snapshotRef.current?.data_generation_id) throw generationError()
+    const updated = snapshotRef.current
+    if (updated && compareSequence(result.message_seq, updated.latest_message_seq) > 0) {
+      assignSnapshot({ ...updated, latest_message_seq: result.message_seq })
+    }
+    void enqueue(() => synchronizeMessages()).catch(report)
+    return result
+  }, [assignSnapshot, enqueue, report, synchronizeMessages])
+
+  const applyAppearance = useCallback((appearance: Appearance, generation: string) => {
+    const current = snapshotRef.current
+    if (current?.data_generation_id === generation && compareSequence(appearance.revision, current.appearance.revision) >= 0) {
+      assignSnapshot({ ...current, appearance })
+    }
+  }, [assignSnapshot])
+
+  const goToLatest = useCallback(async () => {
+    try {
+      await replaceWindow()
+    } catch (cause) {
+      report(cause)
+    }
+  }, [replaceWindow, report])
+
+  const jumpTo = useCallback(async (seq: string, id: string) => {
+    try {
+      await replaceWindow(seq, id)
+    } catch (cause) {
+      report(cause)
+      throw cause
+    }
+  }, [replaceWindow, report])
+
+  const updateRenderedAnchor = useCallback((anchor: { id: string; seq: string }) => {
+    renderedAnchor.current = anchor
+  }, [])
+
+  const updateAtBottom = useCallback((value: boolean) => {
+    atBottomRef.current = value
+    setAtBottom(value)
+    if (value && !pageRef.current?.has_more_after) setHasNewMessages(false)
+  }, [])
+
+  return {
+    snapshot, page, loading, loadingMore, error, hasNewMessages, atBottom,
+    firstItemIndex, windowRevision, targetMessageId,
+    reload, send, goToLatest, jumpTo, updateAtBottom, updateRenderedAnchor, applyAppearance,
+    loadOlder: () => loadPage("before"),
+    loadNewer: () => loadPage("after"),
+  }
+}

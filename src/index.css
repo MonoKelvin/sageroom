@@ -1,0 +1,150 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  color-scheme: light;
+  --surface-canvas: #eef2f3;
+  --surface-content: #ffffff;
+  --surface-chrome: #f5f8f9;
+  --surface-self: #ddefe8;
+  --text-primary: #203137;
+  --text-secondary: #52656d;
+  --accent-primary: #256b5b;
+  --status-error: #a53737;
+  --background: var(--surface-canvas);
+  --foreground: var(--text-primary);
+  --card: var(--surface-content);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface-content);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--accent-primary);
+  --primary-foreground: #ffffff;
+  --secondary: #e3efeb;
+  --secondary-foreground: var(--text-primary);
+  --muted: #e8edee;
+  --muted-foreground: var(--text-secondary);
+  --accent: #e0eae6;
+  --accent-foreground: var(--text-primary);
+  --destructive: var(--status-error);
+  --destructive-foreground: #ffffff;
+  --border: #d6e0e2;
+  --input: #c5d3d7;
+  --ring: var(--accent-primary);
+  --radius: 0.875rem;
+  --motion-duration: 120ms;
+}
+
+.dark {
+  color-scheme: dark;
+  --surface-canvas: #161c1e;
+  --surface-content: #232d30;
+  --surface-chrome: #1d2629;
+  --surface-self: #263e35;
+  --text-primary: #edf4f5;
+  --text-secondary: #b3c2c8;
+  --accent-primary: #83ccb8;
+  --status-error: #f29b9b;
+  --primary-foreground: #203137;
+  --secondary: #2b3e37;
+  --muted: #283438;
+  --accent: #2d403a;
+  --destructive-foreground: #203137;
+  --border: #3b4a50;
+  --input: #4a5d64;
+}
+
+@theme inline {
+  --font-sans: "Microsoft YaHei UI", "Segoe UI", "Microsoft YaHei", sans-serif;
+  --font-mono: "Cascadia Code", "Consolas", monospace;
+  --color-canvas: var(--surface-canvas);
+  --color-content: var(--surface-content);
+  --color-chrome: var(--surface-chrome);
+  --color-self: var(--surface-self);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: var(--surface-canvas);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.55;
+    letter-spacing: normal;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--accent-primary) 22%, transparent);
+  }
+}
+
+html[data-reduced-motion="true"] {
+  --motion-duration: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0s !important;
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}

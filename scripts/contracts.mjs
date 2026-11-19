@@ -1,0 +1,86 @@
+import { spawnSync } from "node:child_process"
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, copyFileSync, rmSync, existsSync } from "node:fs"
+import { tmpdir } from "node:os"
+import path from "node:path"
+import { createRequire } from "node:module"
+import { fileURLToPath } from "node:url"
+import { build } from "vite"
+import Ajv2020 from "ajv/dist/2020.js"
+import standaloneCode from "ajv/dist/standalone/index.js"
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+const destination = path.join(root, "src/contracts/generated")
+const temporary = mkdtempSync(path.join(tmpdir(), "sageroom-contracts-"))
+const checking = process.argv.includes("--check")
+
+const responseTypes = {
+  AppSnapshot: "AppSnapshot",
+  ChatSend: "ChatSendResult",
+  ChatList: "MessagePage",
+  ChatSearch: "SearchPage",
+  CancelSearch: "CancelSearchResult",
+  AppearanceSave: "Appearance",
+  Exit: "ExitResult",
+}
+
+function files(directory, prefix = "") {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const relative = path.join(prefix, entry.name)
+    return entry.isDirectory() ? files(path.join(directory, entry.name), relative) : [relative]
+  }).sort()
+}
+
+try {
+  const result = spawnSync("cargo", ["run", "--locked", "--quiet", "--manifest-path", path.join(root, "src-tauri/Cargo.toml"), "--bin", "export_contracts", "--", temporary], { cwd: root, stdio: "inherit", shell: false })
+  if (result.status !== 0) throw new Error("Rust 合同导出失败")
+  const schemas = JSON.parse(readFileSync(path.join(temporary, "schemas.json"), "utf8"))
+  const ajv = new Ajv2020({ strict: true, allErrors: false, code: { source: true, esm: true } })
+  for (const format of ["int32", "int64", "uint32", "uint64", "float", "double"]) ajv.addFormat(format, true)
+  const exports = {}
+  for (const [name, schema] of Object.entries(schemas)) {
+    ajv.addSchema(schema, name)
+    exports[`validate${name}`] = name
+  }
+  const standalone = path.join(temporary, "validators.raw.js")
+  writeFileSync(standalone, standaloneCode(ajv, exports))
+  const require = createRequire(import.meta.url)
+  const bundled = await build({
+    configFile: false,
+    root,
+    logLevel: "warn",
+    resolve: { alias: { ajv: path.dirname(require.resolve("ajv/package.json")) } },
+    build: { write: false, minify: false, target: "chrome111", lib: { entry: standalone, formats: ["es"], fileName: "validators" } },
+  })
+  const output = Array.isArray(bundled) ? bundled[0] : bundled
+  const module = output.output.find((entry) => entry.type === "chunk" && entry.isEntry)
+  if (!module) throw new Error("未生成浏览器合同校验器模块")
+  writeFileSync(path.join(temporary, "validators.js"), module.code.replaceAll(temporary.replaceAll("\\", "/"), "generated"))
+  rmSync(standalone)
+  const names = readdirSync(path.join(temporary, "types")).filter((file) => file.endsWith(".ts")).map((file) => file.slice(0, -3)).sort()
+  writeFileSync(path.join(temporary, "index.ts"), names.map((name) => `export type { ${name} } from "./types/${name}"`).join("\n") + "\n")
+  const declarations = [
+    'import type { ValidateFunction } from "ajv"',
+    `import type { ${names.join(", ")} } from "./index"`,
+  ]
+  for (const name of Object.keys(schemas)) {
+    const response = name.endsWith("Response")
+    const type = response ? `ApiResponse<${responseTypes[name.slice(0, -8)]}>` : name
+    declarations.push(`export const validate${name}: ValidateFunction<${type}>`)
+  }
+  writeFileSync(path.join(temporary, "validators.d.ts"), declarations.join("\n") + "\n")
+  const generated = files(temporary)
+  if (checking) {
+    if (!existsSync(destination) || JSON.stringify(files(destination)) !== JSON.stringify(generated)) throw new Error("生成合同的文件清单已漂移，请重新生成")
+    for (const file of generated) {
+      if (!readFileSync(path.join(destination, file)).equals(readFileSync(path.join(temporary, file)))) throw new Error(`生成合同已漂移：${file}`)
+    }
+  } else {
+    for (const file of generated) {
+      const target = path.join(destination, file)
+      mkdirSync(path.dirname(target), { recursive: true })
+      copyFileSync(path.join(temporary, file), target)
+    }
+  }
+} finally {
+  rmSync(temporary, { recursive: true })
+}

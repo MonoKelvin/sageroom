@@ -1,0 +1,34 @@
+[[permission]]
+identifier = "app-snapshot"
+description = "读取本地应用公开快照"
+commands.allow = ["app_get_snapshot"]
+
+[[permission]]
+identifier = "chat-send"
+description = "以本地用户身份提交聊天文本"
+commands.allow = ["chat_send"]
+
+[[permission]]
+identifier = "chat-list"
+description = "分页读取本地聊天"
+commands.allow = ["chat_list"]
+
+[[permission]]
+identifier = "chat-search"
+description = "检索本地聊天文本"
+commands.allow = ["chat_search"]
+
+[[permission]]
+identifier = "search-cancel"
+description = "取消当前窗口的检索"
+commands.allow = ["cancel_search"]
+
+[[permission]]
+identifier = "appearance-save"
+description = "保存本地界面外观"
+commands.allow = ["appearance_save"]
+
+[[permission]]
+identifier = "app-exit"
+description = "明确退出本地应用"
+commands.allow = ["app_request_exit"]

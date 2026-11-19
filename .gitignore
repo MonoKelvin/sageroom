@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.log
+.env
+.env.*
+/src-tauri/target/
+/src-tauri/gen/schemas/
+/test-results/
+/playwright-report/
+/.test-results/
+/.cache/

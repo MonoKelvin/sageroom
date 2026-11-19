@@ -1,0 +1,315 @@
+[
+  {
+    "name": "文本请求与显式 null 引用",
+    "contract": "ChatSendRequest",
+    "valid": true,
+    "payload": {
+      "data_generation_id": "generation-fixture",
+      "client_request_id": "request-text",
+      "parts": [{ "kind": "text", "text": "合同测试文本" }],
+      "quote_message_id": null,
+      "mention_ids": [],
+      "mention_all": false
+    }
+  },
+  {
+    "name": "引用字段可省略",
+    "contract": "ChatSendRequest",
+    "valid": true,
+    "payload": {
+      "data_generation_id": "generation-fixture",
+      "client_request_id": "request-optional-quote",
+      "parts": [{ "kind": "text", "text": "合成文本" }],
+      "mention_ids": [],
+      "mention_all": false
+    }
+  },
+  {
+    "name": "Unicode 与换行保持为文本",
+    "contract": "ChatSendRequest",
+    "valid": true,
+    "payload": {
+      "data_generation_id": "generation-fixture",
+      "client_request_id": "request-unicode",
+      "parts": [{ "kind": "text", "text": "中文\nUnicode café" }],
+      "quote_message_id": null,
+      "mention_ids": [],
+      "mention_all": false
+    }
+  },
+  {
+    "name": "附件结构合法但不代表已启用业务能力",
+    "contract": "ChatSendRequest",
+    "valid": true,
+    "payload": {
+      "data_generation_id": "generation-fixture",
+      "client_request_id": "request-attachment",
+      "parts": [{ "kind": "attachment", "attachment_id": "fixture-object" }],
+      "quote_message_id": null,
+      "mention_ids": [],
+      "mention_all": false
+    }
+  },
+  {
+    "name": "不能透传发送者身份",
+    "contract": "ChatSendRequest",
+    "valid": false,
+    "payload": {
+      "data_generation_id": "generation-fixture",
+      "client_request_id": "request-forged-sender",
+      "parts": [{ "kind": "text", "text": "合成文本" }],
+      "quote_message_id": null,
+      "mention_ids": [],
+      "mention_all": false,
+      "sender_id": "agent-fixture"
+    }
+  },
+  {
+    "name": "文本部分拒绝未知字段",
+    "contract": "ChatSendRequest",
+    "valid": false,
+    "payload": {
+      "data_generation_id": "generation-fixture",
+      "client_request_id": "request-extra-part-field",
+      "parts": [{ "kind": "text", "text": "合成文本", "html": "<b>不可执行</b>" }],
+      "quote_message_id": null,
+      "mention_ids": [],
+      "mention_all": false
+    }
+  },
+  {
+    "name": "拒绝未知内容枚举",
+    "contract": "ChatSendRequest",
+    "valid": false,
+    "payload": {
+      "data_generation_id": "generation-fixture",
+      "client_request_id": "request-invalid-kind",
+      "parts": [{ "kind": "image", "text": "合成文本" }],
+      "quote_message_id": null,
+      "mention_ids": [],
+      "mention_all": false
+    }
+  },
+  {
+    "name": "提及开关不能用字符串冒充布尔值",
+    "contract": "ChatSendRequest",
+    "valid": false,
+    "payload": {
+      "data_generation_id": "generation-fixture",
+      "client_request_id": "request-invalid-bool",
+      "parts": [{ "kind": "text", "text": "合成文本" }],
+      "quote_message_id": null,
+      "mention_ids": [],
+      "mention_all": "false"
+    }
+  },
+  {
+    "name": "最近页面允许 nullable 游标",
+    "contract": "ChatListRequest",
+    "valid": true,
+    "payload": {
+      "data_generation_id": "generation-fixture",
+      "before_seq": null,
+      "after_seq": null,
+      "around_seq": null,
+      "limit": 50
+    }
+  },
+  {
+    "name": "超 JavaScript 安全整数仍传输字符串",
+    "contract": "ChatListRequest",
+    "valid": true,
+    "payload": {
+      "data_generation_id": "generation-fixture",
+      "after_seq": "9007199254740993",
+      "limit": 50
+    }
+  },
+  {
+    "name": "零是合法的 after 起点",
+    "contract": "ChatListRequest",
+    "valid": true,
+    "payload": {
+      "data_generation_id": "generation-fixture",
+      "after_seq": "0",
+      "limit": 1
+    }
+  },
+  {
+    "name": "序号不能作为 JSON 数字",
+    "contract": "ChatListRequest",
+    "valid": false,
+    "payload": {
+      "data_generation_id": "generation-fixture",
+      "after_seq": 9007199254740993,
+      "limit": 50
+    }
+  },
+  {
+    "name": "序号不能带前导零",
+    "contract": "ChatListRequest",
+    "valid": false,
+    "payload": {
+      "data_generation_id": "generation-fixture",
+      "before_seq": "01",
+      "limit": 50
+    }
+  },
+  {
+    "name": "序号不能为负数",
+    "contract": "ChatListRequest",
+    "valid": false,
+    "payload": {
+      "data_generation_id": "generation-fixture",
+      "after_seq": "-1",
+      "limit": 50
+    }
+  },
+  {
+    "name": "分页不接受任意 OFFSET",
+    "contract": "ChatListRequest",
+    "valid": false,
+    "payload": {
+      "data_generation_id": "generation-fixture",
+      "offset": 2000,
+      "limit": 50
+    }
+  },
+  {
+    "name": "单页上限固定为二百",
+    "contract": "ChatListRequest",
+    "valid": false,
+    "payload": {
+      "data_generation_id": "generation-fixture",
+      "limit": 201
+    }
+  },
+  {
+    "name": "分页数量不能为零",
+    "contract": "ChatListRequest",
+    "valid": false,
+    "payload": {
+      "data_generation_id": "generation-fixture",
+      "limit": 0
+    }
+  },
+  {
+    "name": "成功响应大序号保持十进制字符串",
+    "contract": "ChatSendResponse",
+    "valid": true,
+    "payload": {
+      "schema_version": "0.3",
+      "data": {
+        "data_generation_id": "generation-fixture",
+        "message_id": "message-fixture",
+        "message_seq": "9007199254740993",
+        "event_seq": "9007199254740995"
+      }
+    }
+  },
+  {
+    "name": "可行动错误与 null 字段路径",
+    "contract": "ChatSendResponse",
+    "valid": true,
+    "payload": {
+      "schema_version": "0.3",
+      "error": {
+        "code": "DB_BUSY",
+        "message": "合成数据库忙碌错误",
+        "retryability": "retry",
+        "field_path": null,
+        "trace_id": "trace-fixture",
+        "may_have_been_charged": false
+      }
+    }
+  },
+  {
+    "name": "字段错误路径保留为字符串",
+    "contract": "ChatSendResponse",
+    "valid": true,
+    "payload": {
+      "schema_version": "0.3",
+      "error": {
+        "code": "INVALID_INPUT",
+        "message": "合成输入错误",
+        "retryability": "never",
+        "field_path": "parts",
+        "trace_id": "trace-fixture",
+        "may_have_been_charged": false
+      }
+    }
+  },
+  {
+    "name": "不能冒用旧合同版本",
+    "contract": "ChatSendResponse",
+    "valid": false,
+    "payload": {
+      "schema_version": "0.2",
+      "data": {
+        "data_generation_id": "generation-fixture",
+        "message_id": "message-fixture",
+        "message_seq": "1",
+        "event_seq": "1"
+      }
+    }
+  },
+  {
+    "name": "响应序号不能是数值",
+    "contract": "ChatSendResponse",
+    "valid": false,
+    "payload": {
+      "schema_version": "0.3",
+      "data": {
+        "data_generation_id": "generation-fixture",
+        "message_id": "message-fixture",
+        "message_seq": 9007199254740993,
+        "event_seq": "1"
+      }
+    }
+  },
+  {
+    "name": "响应序号不能带前导零",
+    "contract": "ChatSendResponse",
+    "valid": false,
+    "payload": {
+      "schema_version": "0.3",
+      "data": {
+        "data_generation_id": "generation-fixture",
+        "message_id": "message-fixture",
+        "message_seq": "01",
+        "event_seq": "1"
+      }
+    }
+  },
+  {
+    "name": "拒绝未知错误枚举",
+    "contract": "ChatSendResponse",
+    "valid": false,
+    "payload": {
+      "schema_version": "0.3",
+      "error": {
+        "code": "NOT_A_REAL_ERROR",
+        "message": "合成错误",
+        "retryability": "never",
+        "field_path": null,
+        "trace_id": "trace-fixture",
+        "may_have_been_charged": false
+      }
+    }
+  },
+  {
+    "name": "成功响应不能附带自由字段",
+    "contract": "ChatSendResponse",
+    "valid": false,
+    "payload": {
+      "schema_version": "0.3",
+      "data": {
+        "data_generation_id": "generation-fixture",
+        "message_id": "message-fixture",
+        "message_seq": "1",
+        "event_seq": "1"
+      },
+      "unexpected": true
+    }
+  }
+]
