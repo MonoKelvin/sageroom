@@ -8,7 +8,7 @@ export function message(seq: string | number, text = `测试消息 ${seq}`): Cha
     id: `message-${seq}`,
     seq: String(seq),
     sender_id: USER_ID,
-    sender_snapshot: { display_name: "我", kind: "user" },
+    sender_snapshot: { display_name: "我", kind: "user", avatar_id: null },
     created_at: Date.UTC(2026, 10, 19, 10, 30),
     state: "visible",
     parts: [{ kind: "text", text }],
@@ -19,19 +19,21 @@ export function message(seq: string | number, text = `测试消息 ${seq}`): Cha
 }
 
 export function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
-  const user: AppSnapshot["local_user"] = { id: USER_ID, kind: "user", display_name: "我", introduction: "本地用户", status: "present", is_builtin: false }
+  const user: AppSnapshot["local_user"] = { id: USER_ID, kind: "user", display_name: "我", introduction: "本地用户", status: "present", is_builtin: false, avatar_id: null, profile_revision: "1" }
   return {
     data_generation_id: GENERATION,
     room: { id: "room-test", name: "Sageroom", owner_participant_id: USER_ID, version: "1", content_epoch: "0" },
     local_user: user,
-    participants: [user, { id: "sage-test", kind: "agent", display_name: "Sage", introduction: "群聊成员", status: "needs_configuration", is_builtin: true }],
+    participants: [user, { id: "sage-test", kind: "agent", display_name: "Sage", introduction: "群聊成员", status: "needs_configuration", is_builtin: true, avatar_id: null, profile_revision: "1" }],
     appearance: { theme: "system", reduce_motion: false, revision: "1" },
     latest_message_seq: "0",
     latest_event_seq: "0",
     events: [],
     requires_full_reload: true,
     data_directory: "C:/Sageroom-test/data",
+    data_usage: { database_bytes: "262144", avatar_bytes: "0" },
     app_version: "0.1.0",
+    development_tools_available: true,
     ...overrides,
   }
 }

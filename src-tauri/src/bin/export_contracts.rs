@@ -49,6 +49,56 @@ fn main() -> Result<(), Box<dyn Error>> {
     export::<ExitRequest>("ExitRequest", &config, &mut schemas)?;
     export::<ApiResponse<ExitResult>>("ExitResponse", &config, &mut schemas)?;
     export::<DomainEvent>("DomainEvent", &config, &mut schemas)?;
+    export::<GlobalConfigurationGetRequest>(
+        "GlobalConfigurationGetRequest",
+        &config,
+        &mut schemas,
+    )?;
+    export::<ApiResponse<GlobalConfiguration>>(
+        "GlobalConfigurationGetResponse",
+        &config,
+        &mut schemas,
+    )?;
+    export::<GlobalConfigurationSaveRequest>(
+        "GlobalConfigurationSaveRequest",
+        &config,
+        &mut schemas,
+    )?;
+    export::<ApiResponse<GlobalConfiguration>>(
+        "GlobalConfigurationSaveResponse",
+        &config,
+        &mut schemas,
+    )?;
+    export::<AgentListRequest>("AgentListRequest", &config, &mut schemas)?;
+    export::<ApiResponse<Vec<AgentConfiguration>>>("AgentListResponse", &config, &mut schemas)?;
+    export::<AgentSaveRequest>("AgentSaveRequest", &config, &mut schemas)?;
+    export::<ApiResponse<AgentConfiguration>>("AgentSaveResponse", &config, &mut schemas)?;
+    export::<UserProfileGetRequest>("UserProfileGetRequest", &config, &mut schemas)?;
+    export::<ApiResponse<UserProfile>>("UserProfileGetResponse", &config, &mut schemas)?;
+    export::<UserProfileSaveRequest>("UserProfileSaveRequest", &config, &mut schemas)?;
+    export::<ApiResponse<UserProfile>>("UserProfileSaveResponse", &config, &mut schemas)?;
+    export::<SecretSetRequest>("SecretSetRequest", &config, &mut schemas)?;
+    export::<ApiResponse<SecretStatus>>("SecretSetResponse", &config, &mut schemas)?;
+    export::<SecretDeleteRequest>("SecretDeleteRequest", &config, &mut schemas)?;
+    export::<ApiResponse<SecretStatus>>("SecretDeleteResponse", &config, &mut schemas)?;
+    export::<SecretStatusRequest>("SecretStatusRequest", &config, &mut schemas)?;
+    export::<ApiResponse<SecretStatus>>("SecretStatusResponse", &config, &mut schemas)?;
+    export::<ModelProfileTestRequest>("ModelProfileTestRequest", &config, &mut schemas)?;
+    export::<ApiResponse<ModelTestResult>>("ModelProfileTestResponse", &config, &mut schemas)?;
+    export::<DevelopmentModelImportRequest>(
+        "DevelopmentModelImportRequest",
+        &config,
+        &mut schemas,
+    )?;
+    export::<ApiResponse<GlobalConfiguration>>(
+        "DevelopmentModelImportResponse",
+        &config,
+        &mut schemas,
+    )?;
+    export::<AvatarImportRequest>("AvatarImportRequest", &config, &mut schemas)?;
+    export::<ApiResponse<Option<AvatarObject>>>("AvatarImportResponse", &config, &mut schemas)?;
+    export::<AvatarReadRequest>("AvatarReadRequest", &config, &mut schemas)?;
+    export::<ApiResponse<AvatarData>>("AvatarReadResponse", &config, &mut schemas)?;
     AppSnapshot::export_all(&config)?;
     ChatSendResult::export_all(&config)?;
     MessagePage::export_all(&config)?;

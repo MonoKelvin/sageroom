@@ -62,14 +62,15 @@ impl DbWorker {
                     }
                 }
             })?;
-        initialization
-            .recv_timeout(Duration::from_secs(10))
-            .map_err(|_| {
-                AppError::new(
-                    ErrorCode::IoError,
-                    "打开聊天数据超过等待上限，原文件已保留。",
-                )
-            })??;
+        if let Err(error) = initialization.recv().map_err(|_| {
+            AppError::new(
+                ErrorCode::IoError,
+                "本地数据工作线程未完成初始化，原文件已保留。",
+            )
+        })? {
+            let _ = thread.join();
+            return Err(error);
+        }
         let closed = Arc::new(AtomicBool::new(false));
         let search = SearchService::new(root.join("chat.sqlite3"), generation, closed.clone())?;
         Ok(Arc::new(Self {
@@ -141,6 +142,86 @@ impl DbWorker {
                 sink(&event);
             }
             Ok(appearance)
+        })
+        .await
+    }
+
+    pub async fn get_global_configuration(
+        &self,
+        request: GlobalConfigurationGetRequest,
+    ) -> AppResult<GlobalConfiguration> {
+        self.call(move |database| database.get_global_configuration(&request.data_generation_id))
+            .await
+    }
+
+    pub async fn save_global_configuration(
+        &self,
+        request: GlobalConfigurationSaveRequest,
+    ) -> AppResult<GlobalConfiguration> {
+        let sink = self.event_sink.clone();
+        self.call(move |database| {
+            let (result, event) = database.save_global_configuration(request)?;
+            if let Some(event) = event {
+                sink(&event);
+            }
+            Ok(result)
+        })
+        .await
+    }
+
+    pub async fn list_agents(
+        &self,
+        request: AgentListRequest,
+    ) -> AppResult<Vec<AgentConfiguration>> {
+        self.call(move |database| database.list_agents(&request.data_generation_id))
+            .await
+    }
+
+    pub async fn save_agent(&self, request: AgentSaveRequest) -> AppResult<AgentConfiguration> {
+        let sink = self.event_sink.clone();
+        self.call(move |database| {
+            let (result, event) = database.save_agent(request)?;
+            if let Some(event) = event {
+                sink(&event);
+            }
+            Ok(result)
+        })
+        .await
+    }
+
+    pub async fn get_user_profile(&self, request: UserProfileGetRequest) -> AppResult<UserProfile> {
+        self.call(move |database| database.get_user_profile(&request.data_generation_id))
+            .await
+    }
+
+    pub async fn save_user_profile(
+        &self,
+        request: UserProfileSaveRequest,
+    ) -> AppResult<UserProfile> {
+        let sink = self.event_sink.clone();
+        self.call(move |database| {
+            let (result, event) = database.save_user_profile(request)?;
+            if let Some(event) = event {
+                sink(&event);
+            }
+            Ok(result)
+        })
+        .await
+    }
+
+    pub async fn set_credential_reference(
+        &self,
+        generation: String,
+        id: String,
+        revision: DecimalString,
+        reference: Option<String>,
+    ) -> AppResult<()> {
+        let sink = self.event_sink.clone();
+        self.call(move |database| {
+            database.check_generation(&generation)?;
+            let event = database.replace_credential_reference(&id, &revision, reference)?;
+            sink(&event);
+            Ok(())
         })
         .await
     }

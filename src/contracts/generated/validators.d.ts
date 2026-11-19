@@ -1,9 +1,17 @@
 import type { ValidateFunction } from "ajv"
-import type { ApiFailure, ApiResponse, ApiSuccess, AppError, AppSnapshot, AppSnapshotRequest, Appearance, AppearanceSaveRequest, CancelSearchRequest, CancelSearchResult, ChatListRequest, ChatMessage, ChatSearchRequest, ChatSendRequest, ChatSendResult, DecimalString, DomainEvent, ErrorCode, EventPayload, ExitRequest, ExitResult, MessagePage, MessagePart, MessageState, Participant, ParticipantKind, ParticipantStatus, Retryability, Room, SchemaVersion, SearchHit, SearchPage, SearchSemantics, SenderSnapshot, Theme } from "./index"
+import type { AgentConfiguration, AgentListRequest, AgentModelSnapshot, AgentPreferences, AgentSaveRequest, AgentType, ApiFailure, ApiResponse, ApiSuccess, AppError, AppSnapshot, AppSnapshotRequest, Appearance, AppearanceSaveRequest, AvatarData, AvatarImportRequest, AvatarObject, AvatarReadRequest, CancelSearchRequest, CancelSearchResult, ChatListRequest, ChatMessage, ChatSearchRequest, ChatSendRequest, ChatSendResult, DataUsage, DecimalString, DevelopmentModelImportRequest, DomainEvent, ErrorCode, EventPayload, ExitRequest, ExitResult, GlobalConfiguration, GlobalConfigurationGetRequest, GlobalConfigurationSaveRequest, MessagePage, MessagePart, MessageState, ModelParameters, ModelProfile, ModelProfileInput, ModelProfileTestRequest, ModelProtocol, ModelTestResult, Participant, ParticipantKind, ParticipantStatus, PersonaDimensions, PersonaPreset, ReasoningMode, Retryability, Room, SchemaVersion, SearchHit, SearchPage, SearchSemantics, SecretDeleteRequest, SecretSetRequest, SecretStatus, SecretStatusRequest, SenderSnapshot, Theme, UserProfile, UserProfileGetRequest, UserProfileSaveRequest } from "./index"
+export const validateAgentListRequest: ValidateFunction<AgentListRequest>
+export const validateAgentListResponse: ValidateFunction<ApiResponse<AgentConfiguration[]>>
+export const validateAgentSaveRequest: ValidateFunction<AgentSaveRequest>
+export const validateAgentSaveResponse: ValidateFunction<ApiResponse<AgentConfiguration>>
 export const validateAppSnapshotRequest: ValidateFunction<AppSnapshotRequest>
 export const validateAppSnapshotResponse: ValidateFunction<ApiResponse<AppSnapshot>>
 export const validateAppearanceSaveRequest: ValidateFunction<AppearanceSaveRequest>
 export const validateAppearanceSaveResponse: ValidateFunction<ApiResponse<Appearance>>
+export const validateAvatarImportRequest: ValidateFunction<AvatarImportRequest>
+export const validateAvatarImportResponse: ValidateFunction<ApiResponse<AvatarObject | null>>
+export const validateAvatarReadRequest: ValidateFunction<AvatarReadRequest>
+export const validateAvatarReadResponse: ValidateFunction<ApiResponse<AvatarData>>
 export const validateCancelSearchRequest: ValidateFunction<CancelSearchRequest>
 export const validateCancelSearchResponse: ValidateFunction<ApiResponse<CancelSearchResult>>
 export const validateChatListRequest: ValidateFunction<ChatListRequest>
@@ -12,6 +20,24 @@ export const validateChatSearchRequest: ValidateFunction<ChatSearchRequest>
 export const validateChatSearchResponse: ValidateFunction<ApiResponse<SearchPage>>
 export const validateChatSendRequest: ValidateFunction<ChatSendRequest>
 export const validateChatSendResponse: ValidateFunction<ApiResponse<ChatSendResult>>
+export const validateDevelopmentModelImportRequest: ValidateFunction<DevelopmentModelImportRequest>
+export const validateDevelopmentModelImportResponse: ValidateFunction<ApiResponse<GlobalConfiguration>>
 export const validateDomainEvent: ValidateFunction<DomainEvent>
 export const validateExitRequest: ValidateFunction<ExitRequest>
 export const validateExitResponse: ValidateFunction<ApiResponse<ExitResult>>
+export const validateGlobalConfigurationGetRequest: ValidateFunction<GlobalConfigurationGetRequest>
+export const validateGlobalConfigurationGetResponse: ValidateFunction<ApiResponse<GlobalConfiguration>>
+export const validateGlobalConfigurationSaveRequest: ValidateFunction<GlobalConfigurationSaveRequest>
+export const validateGlobalConfigurationSaveResponse: ValidateFunction<ApiResponse<GlobalConfiguration>>
+export const validateModelProfileTestRequest: ValidateFunction<ModelProfileTestRequest>
+export const validateModelProfileTestResponse: ValidateFunction<ApiResponse<ModelTestResult>>
+export const validateSecretDeleteRequest: ValidateFunction<SecretDeleteRequest>
+export const validateSecretDeleteResponse: ValidateFunction<ApiResponse<SecretStatus>>
+export const validateSecretSetRequest: ValidateFunction<SecretSetRequest>
+export const validateSecretSetResponse: ValidateFunction<ApiResponse<SecretStatus>>
+export const validateSecretStatusRequest: ValidateFunction<SecretStatusRequest>
+export const validateSecretStatusResponse: ValidateFunction<ApiResponse<SecretStatus>>
+export const validateUserProfileGetRequest: ValidateFunction<UserProfileGetRequest>
+export const validateUserProfileGetResponse: ValidateFunction<ApiResponse<UserProfile>>
+export const validateUserProfileSaveRequest: ValidateFunction<UserProfileSaveRequest>
+export const validateUserProfileSaveResponse: ValidateFunction<ApiResponse<UserProfile>>

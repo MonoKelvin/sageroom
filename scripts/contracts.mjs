@@ -21,6 +21,19 @@ const responseTypes = {
   CancelSearch: "CancelSearchResult",
   AppearanceSave: "Appearance",
   Exit: "ExitResult",
+  GlobalConfigurationGet: "GlobalConfiguration",
+  GlobalConfigurationSave: "GlobalConfiguration",
+  AgentList: "AgentConfiguration[]",
+  AgentSave: "AgentConfiguration",
+  UserProfileGet: "UserProfile",
+  UserProfileSave: "UserProfile",
+  SecretSet: "SecretStatus",
+  SecretDelete: "SecretStatus",
+  SecretStatus: "SecretStatus",
+  ModelProfileTest: "ModelTestResult",
+  DevelopmentModelImport: "GlobalConfiguration",
+  AvatarImport: "AvatarObject | null",
+  AvatarRead: "AvatarData",
 }
 
 function files(directory, prefix = "") {
@@ -35,7 +48,7 @@ try {
   if (result.status !== 0) throw new Error("Rust 合同导出失败")
   const schemas = JSON.parse(readFileSync(path.join(temporary, "schemas.json"), "utf8"))
   const ajv = new Ajv2020({ strict: true, allErrors: false, code: { source: true, esm: true } })
-  for (const format of ["int32", "int64", "uint32", "uint64", "float", "double"]) ajv.addFormat(format, true)
+  for (const format of ["int32", "int64", "uint8", "uint32", "uint64", "float", "double"]) ajv.addFormat(format, true)
   const exports = {}
   for (const [name, schema] of Object.entries(schemas)) {
     ajv.addSchema(schema, name)

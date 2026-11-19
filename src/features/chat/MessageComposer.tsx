@@ -5,12 +5,13 @@ import { errorMessage } from "@/app/ipc"
 import { textValidationError } from "./textValidation"
 
 type Props = {
+  active?: boolean
   dataGenerationId: string | null
   disabled: boolean
   onSend: (text: string, requestId: string) => Promise<unknown>
 }
 
-export function MessageComposer({ dataGenerationId, disabled, onSend }: Props) {
+export function MessageComposer({ active = true, dataGenerationId, disabled, onSend }: Props) {
   const [draft, setDraft] = useState("")
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -28,15 +29,16 @@ export function MessageComposer({ dataGenerationId, disabled, onSend }: Props) {
   const isRetry = retryGeneration !== null && retryGeneration === dataGenerationId
 
   useEffect(() => {
+    if (!active) return
     const textarea = input.current
     if (!textarea) return
     textarea.style.height = "auto"
     textarea.style.height = `${Math.min(160, Math.max(72, textarea.scrollHeight))}px`
-  }, [draft])
+  }, [active, draft])
 
   async function submit(event?: FormEvent) {
     event?.preventDefault()
-    if (disabled || inFlight.current || composing.current) return
+    if (!active || disabled || inFlight.current || composing.current) return
     const invalid = textValidationError(draft)
     if (invalid) {
       setError(invalid)
@@ -81,15 +83,15 @@ export function MessageComposer({ dataGenerationId, disabled, onSend }: Props) {
   }
 
   return (
-    <form onSubmit={(event) => void submit(event)} className="shrink-0 border-t border-border/60 bg-chrome px-3 pb-3 pt-2.5">
-      <div className="rounded-xl bg-content px-3 pt-2.5 ring-1 ring-input/70 focus-within:ring-2 focus-within:ring-ring">
+    <form onSubmit={(event) => void submit(event)} className="message-composer">
+      <div className="composer-field">
         <textarea
           ref={input}
           aria-label="消息输入"
           placeholder="说点什么……"
           value={draft}
           rows={3}
-          className="block max-h-40 min-h-18 w-full resize-none overflow-y-auto bg-transparent text-sm leading-relaxed outline-none placeholder:text-text-secondary"
+          className="composer-input"
           onChange={(event) => {
             draftRevision.current += 1
             failedRequest.current = null
@@ -117,7 +119,7 @@ export function MessageComposer({ dataGenerationId, disabled, onSend }: Props) {
           </Button>
         </div>
       </div>
-      <p id="composer-error" role={error || validationError ? "alert" : undefined} className="mt-1.5 min-h-4 text-xs text-destructive">
+      <p id="composer-error" role={error || validationError ? "alert" : undefined} className="composer-error mt-1.5 text-xs text-destructive">
         {error || validationError || ""}
       </p>
     </form>

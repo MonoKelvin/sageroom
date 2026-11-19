@@ -175,12 +175,22 @@ export function useChatSession() {
     if (event.payload.kind === "appearance_changed") {
       next.appearance = event.payload.appearance
       assignSnapshot(next)
-    } else {
+    } else if (event.payload.kind === "participant_profile_changed") {
+      const participant = event.payload.participant
+      next.participants = current.participants.map((existing) => existing.id === participant.id ? participant : existing)
+      if (current.local_user.id === participant.id) next.local_user = participant
+      assignSnapshot(next)
+    } else if (event.payload.kind === "agent_configuration_changed") {
+      assignSnapshot(next)
+      await synchronize()
+    } else if (event.payload.kind === "message_committed") {
       if (compareSequence(event.payload.message_seq, current.latest_message_seq) > 0) {
         next.latest_message_seq = event.payload.message_seq
       }
       assignSnapshot(next)
       await synchronizeMessages()
+    } else {
+      assignSnapshot(next)
     }
   }, [assignSnapshot, synchronize, synchronizeMessages])
 

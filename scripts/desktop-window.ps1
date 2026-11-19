@@ -1,9 +1,13 @@
 ﻿param(
     [Parameter(Mandatory = $true)][int]$ProcessId,
-    [ValidateSet('status', 'show', 'resize', 'tray-open', 'tray-quit')][string]$Action = 'status',
+    [ValidateSet('status', 'show', 'resize', 'maximize', 'restore', 'hit-test', 'capture', 'avatar-choose', 'avatar-cancel', 'tray-open', 'tray-quit')][string]$Action = 'status',
     [string]$Tooltip = '',
-    [int]$Width = 420,
-    [int]$Height = 780
+    [int]$Width = 1100,
+    [int]$Height = 780,
+    [int]$X = 0,
+    [int]$Y = 0,
+    [string]$FilePath = '',
+    [string]$ImageFile = ''
 )
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
@@ -14,6 +18,60 @@ using System.Runtime.InteropServices;
 public static class SageroomWindowTest {
     public delegate bool EnumCallback(IntPtr handle, IntPtr data);
     [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] public struct Point { public int X, Y; }
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr handle, out Rect rectangle);
+    [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr handle, ref Point point);
+    [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr handle);
+    [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr handle);
+    [DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr handle, uint message, IntPtr wparam, IntPtr lparam, uint flags, uint timeout, out UIntPtr result);
+    public static long HitTest(IntPtr handle, int x, int y) {
+        Point point = new Point { X = x, Y = y };
+        if (!ClientToScreen(handle, ref point)) { throw new InvalidOperationException("无法转换窗口客户区坐标。"); }
+        int packed = (point.X & 0xffff) | ((point.Y & 0xffff) << 16);
+        UIntPtr result;
+        if (SendMessageTimeout(handle, 0x84, IntPtr.Zero, new IntPtr(packed), 2, 1000, out result) == IntPtr.Zero) { throw new InvalidOperationException("窗口命中查询超过等待上限。"); }
+        return unchecked((long)result.ToUInt64());
+    }
+    public static IntPtr FindOwnedWindow(uint processId, string title) {
+        IntPtr found = IntPtr.Zero;
+        EnumCallback callback = delegate(IntPtr handle, IntPtr data) {
+            uint owner;
+            GetWindowThreadProcessId(handle, out owner);
+            StringBuilder text = new StringBuilder(512);
+            GetWindowText(handle, text, 512);
+            if (owner == processId && text.ToString() == title) { found = handle; return false; }
+            return true;
+        };
+        EnumWindows(callback, IntPtr.Zero);
+        return found;
+    }
+    public static void CloseOwnedDialog(uint processId, string title) {
+        IntPtr handle = FindOwnedWindow(processId, title);
+        if (handle == IntPtr.Zero) { return; }
+        UIntPtr result;
+        SendMessageTimeout(handle, 0x10, IntPtr.Zero, IntPtr.Zero, 2, 1000, out result);
+    }
+    [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr handle, EnumCallback callback, IntPtr data);
+    [DllImport("user32.dll")] public static extern int GetDlgCtrlID(IntPtr handle);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr handle, StringBuilder name, int maximum);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageTimeoutW")] public static extern IntPtr SendTextTimeout(IntPtr handle, uint message, IntPtr wparam, string text, uint flags, uint timeout, out UIntPtr result);
+    [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr handle, uint message, IntPtr wparam, IntPtr lparam);
+    public static void SelectAvatarFile(uint processId, string path) {
+        IntPtr dialog = FindOwnedWindow(processId, "选择头像");
+        if (dialog == IntPtr.Zero) { throw new InvalidOperationException("未找到测试进程的头像选择窗口。"); }
+        IntPtr edit = IntPtr.Zero;
+        EnumCallback callback = delegate(IntPtr handle, IntPtr data) {
+            var name = new StringBuilder(256);
+            GetClassName(handle, name, 256);
+            if (GetDlgCtrlID(handle) == 1148 && name.ToString() == "Edit") { edit = handle; return false; }
+            return true;
+        };
+        EnumChildWindows(dialog, callback, IntPtr.Zero);
+        if (edit == IntPtr.Zero) { throw new InvalidOperationException("无法识别测试选择器的文件名输入控件。"); }
+        UIntPtr result;
+        if (SendTextTimeout(edit, 0xC, IntPtr.Zero, path, 2, 1000, out result) == IntPtr.Zero) { throw new InvalidOperationException("设置文件名超过等待上限。"); }
+        if (!PostMessage(dialog, 0x111, new IntPtr(1), IntPtr.Zero)) { throw new InvalidOperationException("提交原生选择器失败。"); }
+    }
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumCallback callback, IntPtr data);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr handle, out uint process);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr handle, StringBuilder text, int maximum);
@@ -50,7 +108,32 @@ if ($Action -eq 'show') {
 if ($Action -eq 'resize') {
     $null = [SageroomWindowTest]::SetWindowPos($window, [IntPtr]::Zero, 0, 0, $Width, $Height, 6)
 }
+if ($Action -eq 'maximize') { $null = [SageroomWindowTest]::ShowWindow($window, 3) }
+if ($Action -eq 'restore') { $null = [SageroomWindowTest]::ShowWindow($window, 9) }
+$hit = $null
+if ($Action -eq 'hit-test') { $hit = [SageroomWindowTest]::HitTest($window, $X, $Y) }
 
+if ($Action -eq 'capture') {
+    if ([string]::IsNullOrWhiteSpace($ImageFile)) { throw '窗口取证需要指定图片文件。' }
+    if (-not [SageroomWindowTest]::IsWindowVisible($window)) { throw '不能截取隐藏的测试窗口。' }
+    $null = [SageroomWindowTest]::SetForegroundWindow($window)
+    Add-Type -AssemblyName System.Drawing
+    $bounds = New-Object SageroomWindowTest+Rect
+    $origin = New-Object SageroomWindowTest+Point
+    $null = [SageroomWindowTest]::GetClientRect($window, [ref]$bounds)
+    $null = [SageroomWindowTest]::ClientToScreen($window, [ref]$origin)
+    $bitmap = New-Object System.Drawing.Bitmap ($bounds.Right - $bounds.Left), ($bounds.Bottom - $bounds.Top)
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    try {
+        $graphics.CopyFromScreen($origin.X, $origin.Y, 0, 0, $bitmap.Size)
+        $bitmap.Save($ImageFile, [System.Drawing.Imaging.ImageFormat]::Png)
+    } finally { $graphics.Dispose(); $bitmap.Dispose() }
+}
+if ($Action -eq 'avatar-cancel') { [SageroomWindowTest]::CloseOwnedDialog([uint32]$ProcessId, '选择头像') }
+if ($Action -eq 'avatar-choose') {
+    if ([string]::IsNullOrWhiteSpace($FilePath)) { throw '头像测试需要指定测试图片。' }
+    [SageroomWindowTest]::SelectAvatarFile([uint32]$ProcessId, $FilePath)
+}
 if ($Action -like 'tray-*') {
     if ([string]::IsNullOrWhiteSpace($Tooltip)) { throw '托盘测试必须指定唯一的测试应用提示文本。' }
     Add-Type -AssemblyName UIAutomationClient
@@ -100,12 +183,19 @@ if ($Action -like 'tray-*') {
 }
 
 $rectangle = New-Object SageroomWindowTest+Rect
+$client = New-Object SageroomWindowTest+Rect
+$null = [SageroomWindowTest]::GetClientRect($window, [ref]$client)
 $null = [SageroomWindowTest]::GetWindowRect($window, [ref]$rectangle)
 @{
     process_id = $ProcessId
     handle = $window.ToInt64().ToString()
     visible = [SageroomWindowTest]::IsWindowVisible($window)
     minimized = [SageroomWindowTest]::IsIconic($window)
+    maximized = [SageroomWindowTest]::IsZoomed($window)
+    dpi = [SageroomWindowTest]::GetDpiForWindow($window)
+    client_width = $client.Right - $client.Left
+    client_height = $client.Bottom - $client.Top
+    hit_test = $hit
     width = $rectangle.Right - $rectangle.Left
     height = $rectangle.Bottom - $rectangle.Top
 } | ConvertTo-Json -Compress

@@ -121,6 +121,7 @@ fn populate_corpus(database: &mut Database, size: i64) {
     let sender = serde_json::to_string(&SenderSnapshot {
         display_name: "基准昵称".into(),
         kind: ParticipantKind::User,
+        avatar_id: None,
     })
     .unwrap();
     let transaction = database.conn.transaction().unwrap();
@@ -1107,7 +1108,7 @@ fn future_schema_is_rejected_before_writing_database_bytes() {
     let (directory, database) = database();
     database
         .conn
-        .pragma_update(None, "user_version", 2)
+        .pragma_update(None, "user_version", 3)
         .unwrap();
     drop(database);
     let path = directory.path().join("chat.sqlite3");

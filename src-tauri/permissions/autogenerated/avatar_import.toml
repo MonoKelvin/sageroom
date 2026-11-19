@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-avatar-import"
+description = "Enables the avatar_import command without any pre-configured scope."
+commands.allow = ["avatar_import"]
+
+[[permission]]
+identifier = "deny-avatar-import"
+description = "Denies the avatar_import command without any pre-configured scope."
+commands.deny = ["avatar_import"]

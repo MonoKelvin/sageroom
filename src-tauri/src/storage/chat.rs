@@ -33,7 +33,7 @@ pub fn read_appearance(conn: &Connection) -> AppResult<Appearance> {
 }
 
 fn participants(conn: &Connection) -> AppResult<Vec<Participant>> {
-    let mut statement = conn.prepare("SELECT id, kind, display_name, introduction, status, builtin_key FROM participants ORDER BY kind DESC, created_at, id")?;
+    let mut statement = conn.prepare("SELECT id, kind, display_name, introduction, status, builtin_key, avatar_id, profile_revision FROM participants ORDER BY kind DESC, created_at, id")?;
     let rows = statement.query_map([], |row| {
         Ok((
             row.get::<_, String>(0)?,
@@ -42,20 +42,26 @@ fn participants(conn: &Connection) -> AppResult<Vec<Participant>> {
             row.get::<_, String>(3)?,
             row.get::<_, String>(4)?,
             row.get::<_, Option<String>>(5)?,
+            row.get::<_, Option<String>>(6)?,
+            row.get::<_, i64>(7)?,
         ))
     })?;
     rows.collect::<rusqlite::Result<Vec<_>>>()?
         .into_iter()
-        .map(|(id, kind, display_name, introduction, status, builtin)| {
-            Ok(Participant {
-                id,
-                display_name,
-                introduction,
-                kind: serde_json::from_value(serde_json::Value::String(kind))?,
-                status: serde_json::from_value(serde_json::Value::String(status))?,
-                is_builtin: builtin.is_some(),
-            })
-        })
+        .map(
+            |(id, kind, display_name, introduction, status, builtin, avatar_id, revision)| {
+                Ok(Participant {
+                    id,
+                    display_name,
+                    introduction,
+                    kind: serde_json::from_value(serde_json::Value::String(kind))?,
+                    status: serde_json::from_value(serde_json::Value::String(status))?,
+                    is_builtin: builtin.is_some(),
+                    avatar_id,
+                    profile_revision: revision.into(),
+                })
+            },
+        )
         .collect()
 }
 
@@ -84,7 +90,7 @@ fn read_events(conn: &Connection, after: i64, generation: &str) -> AppResult<Vec
         .collect()
 }
 
-fn record_event(
+pub(crate) fn record_event(
     transaction: &Transaction<'_>,
     payload: EventPayload,
     generation: &str,
@@ -110,7 +116,7 @@ fn record_event(
     })
 }
 
-fn replay_request(
+pub(crate) fn replay_request(
     conn: &Connection,
     id: &str,
     operation: &str,
@@ -134,7 +140,7 @@ fn replay_request(
     }
 }
 
-fn record_request(
+pub(crate) fn record_request(
     transaction: &Transaction<'_>,
     id: &str,
     operation: &str,
@@ -261,6 +267,31 @@ impl Database {
         let generation = self.generation_id.clone();
         let user_id = self.local_user_id.clone();
         let data_directory = self.root.to_string_lossy().into_owned();
+        let mut database_bytes = 0_i64;
+        for name in ["chat.sqlite3", "chat.sqlite3-wal", "chat.sqlite3-shm"] {
+            match std::fs::metadata(self.root.join(name)) {
+                Ok(metadata) => {
+                    let bytes: i64 = metadata.len().try_into().map_err(|_| {
+                        AppError::new(ErrorCode::DataRootInvalid, "数据文件大小超出支持范围。")
+                    })?;
+                    database_bytes = database_bytes.checked_add(bytes).ok_or_else(|| {
+                        AppError::new(ErrorCode::DataRootInvalid, "数据文件大小超出支持范围。")
+                    })?;
+                }
+                Err(error)
+                    if name != "chat.sqlite3" && error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        let avatar_bytes: i64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(byte_size),0) FROM avatar_objects",
+            [],
+            |row| row.get(0),
+        )?;
+        let data_usage = DataUsage {
+            database_bytes: database_bytes.into(),
+            avatar_bytes: avatar_bytes.into(),
+        };
         let after = request
             .last_event_seq
             .as_ref()
@@ -319,7 +350,9 @@ impl Database {
             events,
             requires_full_reload,
             data_directory,
+            data_usage,
             app_version: env!("CARGO_PKG_VERSION").to_owned(),
+            development_tools_available: cfg!(debug_assertions),
         })
     }
 
@@ -411,9 +444,9 @@ impl Database {
                 ));
             }
         }
-        let (owner, display_name, kind): (String, String, String) = transaction.query_row(
-            "SELECT r.owner_participant_id, p.display_name, p.kind FROM room r JOIN participants p ON p.id = ?1 WHERE r.singleton = 1",
-            [&user_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        let (owner, display_name, kind, avatar_id): (String, String, String, Option<String>) = transaction.query_row(
+            "SELECT r.owner_participant_id, p.display_name, p.kind, p.avatar_id FROM room r JOIN participants p ON p.id = ?1 WHERE r.singleton = 1",
+            [&user_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )?;
         if request.mention_all && owner != user_id {
             return Err(AppError::new(
@@ -446,10 +479,17 @@ impl Database {
         let snapshot = SenderSnapshot {
             display_name,
             kind: serde_json::from_value(serde_json::Value::String(kind))?,
+            avatar_id,
         };
         let message_id = Uuid::now_v7().to_string();
         transaction.execute("INSERT INTO messages(id, room_id, sender_id, sender_snapshot_json, created_at, quote_message_id, mention_all) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)", params![message_id, room_id, user_id, serde_json::to_string(&snapshot)?, now_ms(), request.quote_message_id, request.mention_all])?;
         let message_seq = transaction.last_insert_rowid();
+        super::configuration::update_avatar_refs(
+            &transaction,
+            "message",
+            &message_id,
+            &snapshot.avatar_id,
+        )?;
         for (ordinal, part) in request.parts.iter().enumerate() {
             if let MessagePart::Text { text } = part {
                 transaction.execute(

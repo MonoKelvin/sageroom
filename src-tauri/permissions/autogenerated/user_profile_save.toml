@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-user-profile-save"
+description = "Enables the user_profile_save command without any pre-configured scope."
+commands.allow = ["user_profile_save"]
+
+[[permission]]
+identifier = "deny-user-profile-save"
+description = "Denies the user_profile_save command without any pre-configured scope."
+commands.deny = ["user_profile_save"]

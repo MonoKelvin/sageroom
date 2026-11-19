@@ -125,6 +125,14 @@ pub struct Participant {
     pub introduction: String,
     pub status: ParticipantStatus,
     pub is_builtin: bool,
+    #[serde(default)]
+    pub avatar_id: Option<String>,
+    #[serde(default = "default_profile_revision")]
+    pub profile_revision: DecimalString,
+}
+
+fn default_profile_revision() -> DecimalString {
+    DecimalString("1".into())
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
@@ -166,6 +174,8 @@ pub enum MessagePart {
 pub struct SenderSnapshot {
     pub display_name: String,
     pub kind: ParticipantKind,
+    #[serde(default)]
+    pub avatar_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -204,6 +214,16 @@ pub enum EventPayload {
     AppearanceChanged {
         appearance: Appearance,
     },
+    ParticipantProfileChanged {
+        participant: Participant,
+    },
+    AgentConfigurationChanged {
+        agent_id: String,
+        revision: DecimalString,
+    },
+    GlobalConfigurationChanged {
+        revision: DecimalString,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
@@ -230,6 +250,13 @@ pub struct AppSnapshotRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(deny_unknown_fields)]
+pub struct DataUsage {
+    pub database_bytes: DecimalString,
+    pub avatar_bytes: DecimalString,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
 pub struct AppSnapshot {
     pub data_generation_id: String,
     pub room: Room,
@@ -241,7 +268,9 @@ pub struct AppSnapshot {
     pub events: Vec<DomainEvent>,
     pub requires_full_reload: bool,
     pub data_directory: String,
+    pub data_usage: DataUsage,
     pub app_version: String,
+    pub development_tools_available: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
@@ -370,4 +399,303 @@ pub struct ExitRequest {
 #[serde(deny_unknown_fields)]
 pub struct ExitResult {
     pub shutting_down: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelProtocol {
+    OpenaiChatCompletions,
+    AnthropicMessages,
+    OpenaiResponses,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningMode {
+    Off,
+    Enabled,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ModelParameters {
+    #[schemars(range(min = 0.0, max = 2.0))]
+    pub temperature: f64,
+    #[schemars(range(min = 0.0, max = 1.0))]
+    pub top_p: f64,
+    #[schemars(range(min = 1, max = 32768))]
+    pub max_output_tokens: u32,
+    #[schemars(range(min = 256, max = 128000))]
+    pub input_budget: u32,
+    pub reasoning: ReasoningMode,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ModelProfileInput {
+    pub id: String,
+    #[schemars(length(min = 1, max = 80))]
+    pub name: String,
+    pub protocol: ModelProtocol,
+    #[schemars(length(min = 1, max = 2048))]
+    pub base_url: String,
+    #[schemars(length(min = 1, max = 200))]
+    pub model_name: String,
+    pub parameters: ModelParameters,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ModelProfile {
+    pub id: String,
+    pub name: String,
+    pub protocol: ModelProtocol,
+    pub base_url: String,
+    pub model_name: String,
+    pub parameters: ModelParameters,
+    pub revision: DecimalString,
+    pub credential_configured: bool,
+}
+
+impl ModelProfile {
+    pub fn input(&self) -> ModelProfileInput {
+        ModelProfileInput {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            protocol: self.protocol.clone(),
+            base_url: self.base_url.clone(),
+            model_name: self.model_name.clone(),
+            parameters: self.parameters.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PersonaDimensions {
+    #[schemars(range(max = 100))]
+    pub professional: u8,
+    #[schemars(range(max = 100))]
+    pub formal: u8,
+    #[schemars(range(max = 100))]
+    pub casual: u8,
+    #[schemars(range(max = 100))]
+    pub humor: u8,
+    #[schemars(range(max = 100))]
+    pub direct: u8,
+    #[schemars(range(max = 100))]
+    pub empathy: u8,
+    #[schemars(range(max = 100))]
+    pub social_energy: u8,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PersonaPreset {
+    pub id: String,
+    pub name: String,
+    pub language_style: String,
+    pub address_terms: Vec<String>,
+    pub skill: String,
+    pub dimensions: PersonaDimensions,
+    pub revision: DecimalString,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AgentPreferences {
+    #[schemars(range(min = 1, max = 5000))]
+    pub request_limit_daily: u32,
+    pub persistent_memory: bool,
+    pub allow_autonomous_wake: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct GlobalConfiguration {
+    pub revision: DecimalString,
+    pub model_profiles: Vec<ModelProfile>,
+    pub persona_presets: Vec<PersonaPreset>,
+    pub runtime_defaults: AgentPreferences,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct GlobalConfigurationGetRequest {
+    pub data_generation_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct GlobalConfigurationSaveRequest {
+    pub data_generation_id: String,
+    pub client_request_id: String,
+    pub expected_revision: DecimalString,
+    pub model_profiles: Vec<ModelProfileInput>,
+    pub persona_presets: Vec<PersonaPreset>,
+    pub runtime_defaults: AgentPreferences,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct AgentModelSnapshot {
+    pub source_profile_id: String,
+    pub source_profile_revision: DecimalString,
+    pub profile: ModelProfileInput,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentType {
+    Social,
+    Tool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct AgentConfiguration {
+    pub agent_id: String,
+    pub revision: DecimalString,
+    pub display_name: String,
+    pub introduction: String,
+    pub gender_description: Option<String>,
+    pub address_terms: Vec<String>,
+    pub language_style: String,
+    pub skill: String,
+    pub dimensions: PersonaDimensions,
+    pub avatar_id: Option<String>,
+    pub agent_type: AgentType,
+    pub model: Option<AgentModelSnapshot>,
+    pub preferences: AgentPreferences,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AgentListRequest {
+    pub data_generation_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AgentSaveRequest {
+    pub data_generation_id: String,
+    pub client_request_id: String,
+    pub expected_revision: Option<DecimalString>,
+    pub configuration: AgentConfiguration,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct UserProfile {
+    pub participant_id: String,
+    pub display_name: String,
+    pub introduction: String,
+    pub avatar_id: Option<String>,
+    pub revision: DecimalString,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct UserProfileGetRequest {
+    pub data_generation_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct UserProfileSaveRequest {
+    pub data_generation_id: String,
+    pub client_request_id: String,
+    pub expected_revision: DecimalString,
+    pub display_name: String,
+    pub introduction: String,
+    pub avatar_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct DevelopmentModelImportRequest {
+    pub data_generation_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ModelProfileTestRequest {
+    pub data_generation_id: String,
+    pub profile_id: String,
+    pub expected_revision: DecimalString,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ModelTestResult {
+    pub profile_id: String,
+    pub revision: DecimalString,
+    pub protocol: ModelProtocol,
+    pub available: bool,
+    pub usage_input_tokens: Option<u32>,
+    pub usage_output_tokens: Option<u32>,
+    pub elapsed_ms: u32,
+}
+
+#[derive(Clone, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct SecretSetRequest {
+    pub data_generation_id: String,
+    pub profile_id: String,
+    pub expected_revision: DecimalString,
+    pub api_key: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct SecretDeleteRequest {
+    pub data_generation_id: String,
+    pub profile_id: String,
+    pub expected_revision: DecimalString,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct SecretStatusRequest {
+    pub data_generation_id: String,
+    pub profile_id: String,
+    pub expected_revision: DecimalString,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct SecretStatus {
+    pub profile_id: String,
+    pub configured: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AvatarImportRequest {
+    pub data_generation_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AvatarObject {
+    pub id: String,
+    pub mime_type: String,
+    pub width: u32,
+    pub height: u32,
+    pub byte_size: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AvatarReadRequest {
+    pub data_generation_id: String,
+    pub avatar_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AvatarData {
+    pub avatar_id: String,
+    pub mime_type: String,
+    pub data_base64: String,
 }

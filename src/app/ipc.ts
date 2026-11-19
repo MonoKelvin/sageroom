@@ -18,6 +18,26 @@ import type {
   ExitResult,
   MessagePage,
   SearchPage,
+  GlobalConfiguration,
+  GlobalConfigurationGetRequest,
+  GlobalConfigurationSaveRequest,
+  AgentConfiguration,
+  AgentListRequest,
+  AgentSaveRequest,
+  UserProfile,
+  UserProfileGetRequest,
+  UserProfileSaveRequest,
+  SecretSetRequest,
+  SecretDeleteRequest,
+  SecretStatusRequest,
+  SecretStatus,
+  ModelProfileTestRequest,
+  ModelTestResult,
+  DevelopmentModelImportRequest,
+  AvatarImportRequest,
+  AvatarReadRequest,
+  AvatarObject,
+  AvatarData,
 } from "@/contracts/generated"
 import {
   validateAppSnapshotRequest,
@@ -35,6 +55,32 @@ import {
   validateDomainEvent,
   validateExitRequest,
   validateExitResponse,
+  validateGlobalConfigurationGetRequest,
+  validateGlobalConfigurationGetResponse,
+  validateGlobalConfigurationSaveRequest,
+  validateGlobalConfigurationSaveResponse,
+  validateAgentListRequest,
+  validateAgentListResponse,
+  validateAgentSaveRequest,
+  validateAgentSaveResponse,
+  validateUserProfileGetRequest,
+  validateUserProfileGetResponse,
+  validateUserProfileSaveRequest,
+  validateUserProfileSaveResponse,
+  validateSecretSetRequest,
+  validateSecretSetResponse,
+  validateSecretDeleteRequest,
+  validateSecretDeleteResponse,
+  validateSecretStatusRequest,
+  validateSecretStatusResponse,
+  validateModelProfileTestRequest,
+  validateModelProfileTestResponse,
+  validateDevelopmentModelImportRequest,
+  validateDevelopmentModelImportResponse,
+  validateAvatarImportRequest,
+  validateAvatarImportResponse,
+  validateAvatarReadRequest,
+  validateAvatarReadResponse,
 } from "@/contracts/generated/validators.js"
 
 type Validator = (value: unknown) => boolean
@@ -107,6 +153,32 @@ export const ipc = {
     request("cancel_search", input, validateCancelSearchRequest, validateCancelSearchResponse),
   saveAppearance: (input: AppearanceSaveRequest): Promise<Appearance> =>
     request("appearance_save", input, validateAppearanceSaveRequest, validateAppearanceSaveResponse),
+  getGlobalConfiguration: (input: GlobalConfigurationGetRequest): Promise<GlobalConfiguration> =>
+    request("global_configuration_get", input, validateGlobalConfigurationGetRequest, validateGlobalConfigurationGetResponse),
+  saveGlobalConfiguration: (input: GlobalConfigurationSaveRequest): Promise<GlobalConfiguration> =>
+    request("global_configuration_save", input, validateGlobalConfigurationSaveRequest, validateGlobalConfigurationSaveResponse),
+  listAgents: (input: AgentListRequest): Promise<AgentConfiguration[]> =>
+    request("agent_list", input, validateAgentListRequest, validateAgentListResponse),
+  saveAgent: (input: AgentSaveRequest): Promise<AgentConfiguration> =>
+    request("agent_save", input, validateAgentSaveRequest, validateAgentSaveResponse),
+  getUserProfile: (input: UserProfileGetRequest): Promise<UserProfile> =>
+    request("user_profile_get", input, validateUserProfileGetRequest, validateUserProfileGetResponse),
+  saveUserProfile: (input: UserProfileSaveRequest): Promise<UserProfile> =>
+    request("user_profile_save", input, validateUserProfileSaveRequest, validateUserProfileSaveResponse),
+  setSecret: (input: SecretSetRequest): Promise<SecretStatus> =>
+    request("secret_set", input, validateSecretSetRequest, validateSecretSetResponse),
+  deleteSecret: (input: SecretDeleteRequest): Promise<SecretStatus> =>
+    request("secret_delete", input, validateSecretDeleteRequest, validateSecretDeleteResponse),
+  secretStatus: (input: SecretStatusRequest): Promise<SecretStatus> =>
+    request("secret_status", input, validateSecretStatusRequest, validateSecretStatusResponse),
+  testModel: (input: ModelProfileTestRequest): Promise<ModelTestResult> =>
+    request("model_profile_test", input, validateModelProfileTestRequest, validateModelProfileTestResponse),
+  importDevelopmentModel: (input: DevelopmentModelImportRequest): Promise<GlobalConfiguration> =>
+    request("development_model_import", input, validateDevelopmentModelImportRequest, validateDevelopmentModelImportResponse),
+  importAvatar: (input: AvatarImportRequest): Promise<AvatarObject | null> =>
+    request("avatar_import", input, validateAvatarImportRequest, validateAvatarImportResponse),
+  readAvatar: (input: AvatarReadRequest): Promise<AvatarData> =>
+    request("avatar_read", input, validateAvatarReadRequest, validateAvatarReadResponse),
   exit: (input: ExitRequest): Promise<ExitResult> =>
     request("app_request_exit", input, validateExitRequest, validateExitResponse),
   async subscribe(onEvent: (event: DomainEvent) => void, onError: (error: IpcError) => void) {

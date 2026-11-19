@@ -1,6 +1,7 @@
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use tauri::{Manager, State, WebviewWindow};
+use tauri_plugin_dialog::DialogExt;
 
 use super::{lifecycle, state::AppState};
 use crate::domain::{contracts::*, error::AppResult};
@@ -123,6 +124,231 @@ pub async fn appearance_save(
     let result = async {
         trusted_window(&window)?;
         state.worker()?.save_appearance(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn global_configuration_get(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<GlobalConfiguration>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.global_configuration(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn global_configuration_save(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<GlobalConfiguration>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state
+            .worker()?
+            .save_global_configuration(decode(request)?)
+            .await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn agent_list(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<Vec<AgentConfiguration>>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.worker()?.list_agents(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn agent_save(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<AgentConfiguration>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.worker()?.save_agent(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn user_profile_get(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<UserProfile>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.worker()?.get_user_profile(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn user_profile_save(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<UserProfile>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.worker()?.save_user_profile(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn secret_set(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<SecretStatus>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.set_secret(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn secret_delete(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<SecretStatus>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.delete_secret(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn secret_status(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<SecretStatus>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.secret_status(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn model_profile_test(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<ModelTestResult>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.test_model(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn development_model_import(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<GlobalConfiguration>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.import_development_model(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn avatar_import(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<Option<AvatarObject>>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let request: AvatarImportRequest = decode(request)?;
+        let worker = state.worker()?;
+        let generation = request.data_generation_id.clone();
+        worker
+            .call(move |database| database.check_generation(&generation))
+            .await?;
+        let _permit = state
+            .avatar_gate
+            .try_acquire()
+            .map_err(|_| AppError::new(ErrorCode::Backpressure, "请先完成当前头像选择。"))?;
+        let normalized = tauri::async_runtime::spawn_blocking(move || -> AppResult<_> {
+            let selected = window
+                .dialog()
+                .file()
+                .set_parent(&window)
+                .set_title("选择头像")
+                .add_filter("PNG / JPEG", &["png", "jpg", "jpeg"])
+                .blocking_pick_file();
+            let Some(selected) = selected else {
+                return Ok(None);
+            };
+            let path = selected
+                .into_path()
+                .map_err(|_| AppError::invalid("avatar", "只能选择本地 PNG/JPEG 文件。"))?;
+            crate::attachments::avatar::read_selection(&path).map(Some)
+        })
+        .await
+        .map_err(|_| AppError::new(ErrorCode::InternalError, "头像读取未完成。"))??;
+        let Some(normalized) = normalized else {
+            return Ok(None);
+        };
+        worker
+            .call(move |database| database.import_avatar(&request.data_generation_id, normalized))
+            .await
+            .map(Some)
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn avatar_read(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<AvatarData>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let request: AvatarReadRequest = decode(request)?;
+        state
+            .worker()?
+            .call(move |database| {
+                database.read_avatar(&request.data_generation_id, &request.avatar_id)
+            })
+            .await
     }
     .await;
     Ok(result.into())

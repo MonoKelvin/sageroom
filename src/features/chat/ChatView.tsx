@@ -1,122 +1,86 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react"
-import { getCurrentWindow } from "@tauri-apps/api/window"
-import { IconMinus, IconSearch, IconSettings, IconUsers, IconX } from "@tabler/icons-react"
-import { AppearanceDialog } from "@/app/AppearanceDialog"
-import { ipc, isDesktopEnvironment } from "@/app/ipc"
-import { useAppearance } from "@/app/useAppearance"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { IconMessageCircle, IconSearch, IconUsers, IconX } from "@tabler/icons-react"
+import type { ApplicationPageProps } from "@/app/navigation"
+import type { AppSnapshot } from "@/contracts/generated"
+import { Avatar } from "@/components/Avatar"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { MessageComposer } from "./MessageComposer"
 import { MessageList } from "./MessageList"
 import { SearchPanel } from "./SearchPanel"
-import { useChatSession } from "./useChatSession"
+import { availableScenes, sceneAdapters } from "./scenes"
 
-export function ChatView() {
-  const session = useChatSession()
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [membersOpen, setMembersOpen] = useState(false)
-  const [windowError, setWindowError] = useState<string | null>(null)
+function GroupInformation({ snapshot, onClose, onNavigate }: { snapshot: AppSnapshot; onClose: () => void; onNavigate: ApplicationPageProps["onNavigate"] }) {
+  return <aside className="chat-side-panel" aria-label="群信息">
+    <header className="chat-panel-heading"><h3 className="panel-title">群信息</h3><button type="button" className="icon-button" aria-label="关闭群信息" onClick={onClose}><IconX size={18} aria-hidden="true" /></button></header>
+    <div className="chat-panel-content panel-scroll">
+      <p className="font-medium [overflow-wrap:anywhere]">{snapshot.room.name}</p>
+      <p className="form-caption mt-1">{snapshot.participants.length} 位成员 · 本地群聊</p>
+      <ul className="mt-6 space-y-5">{snapshot.participants.map((participant) => <li key={participant.id} className="flex min-w-0 items-start gap-3">
+        <Avatar name={participant.display_name} avatarId={participant.avatar_id} generation={snapshot.data_generation_id} />
+        <div className="min-w-0"><p className="truncate font-medium" title={participant.display_name}>{participant.display_name}</p><p className="form-caption">{participant.kind === "user" ? "本地用户" : "智能体 · 尚未启动"}</p>{participant.introduction && <p className="form-caption mt-1 [overflow-wrap:anywhere]">{participant.introduction}</p>}</div>
+      </li>)}</ul>
+      <p className="form-caption mt-6">群主仅有群管理权限，在聊天中与其他成员平等。</p>
+      <Button variant="secondary" size="sm" className="mt-4" onClick={() => onNavigate("agents")}>管理智能体</Button>
+    </div>
+  </aside>
+}
+
+export function ChatView({ session, active, onNavigate }: ApplicationPageProps) {
+  const [panel, setPanel] = useState<"search" | "members" | null>(null)
   const snapshot = session.snapshot
-  const focusReturns = useRef<Record<"search" | "settings" | "members", HTMLElement | null>>({ search: null, settings: null, members: null })
-  useAppearance(snapshot?.appearance)
+  const scenes = snapshot ? availableScenes(snapshot) : []
+  const scene = scenes[0]
+  const returnTarget = useRef<HTMLElement | null>(null)
 
-  const openPanel = useCallback((panel: "search" | "settings" | "members") => {
-    if ((panel === "search" && searchOpen) || (panel === "settings" && settingsOpen) || (panel === "members" && membersOpen)) return
-    focusReturns.current[panel] = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    if (panel === "search") setSearchOpen(true)
-    else if (panel === "settings") setSettingsOpen(true)
-    else setMembersOpen(true)
-  }, [membersOpen, searchOpen, settingsOpen])
-
-  function returnFocus(panel: "search" | "settings" | "members") {
-    const target = focusReturns.current[panel]
-    if (target?.isConnected) target.focus()
-  }
+  const openPanel = useCallback((next: "search" | "members") => {
+    returnTarget.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setPanel((current) => current === next ? null : next)
+  }, [])
+  const closePanel = useCallback(() => {
+    setPanel(null)
+    if (active && returnTarget.current?.isConnected) returnTarget.current.focus()
+  }, [active])
 
   useEffect(() => {
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (!event.ctrlKey || event.altKey || event.isComposing) return
-      if (event.key.toLowerCase() === "f") {
+    if (!active) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.isComposing) return
+      if (event.ctrlKey && !event.altKey && event.key.toLowerCase() === "f") {
         event.preventDefault()
-        openPanel("search")
-      } else if (event.key === ",") {
+        if (panel !== "search") openPanel("search")
+      } else if (event.key === "Escape" && panel) {
         event.preventDefault()
-        openPanel("settings")
+        closePanel()
       }
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [openPanel])
+  }, [active, closePanel, openPanel, panel])
 
-  async function windowAction(action: "minimize" | "close" | "drag" | "maximize") {
-    if (!isDesktopEnvironment()) {
-      setWindowError("请在桌面应用中使用窗口控制。")
-      return
-    }
-    try {
-      const current = getCurrentWindow()
-      if (action === "minimize") await current.minimize()
-      else if (action === "close") await current.close()
-      else if (action === "maximize") await current.toggleMaximize()
-      else await current.startDragging()
-    } catch {
-      setWindowError("无法完成窗口操作，请重试。")
-    }
-  }
-
-  function drag(event: MouseEvent<HTMLElement>) {
-    if (event.button !== 0 || (event.target instanceof Element && event.target.closest("button"))) return
-    void windowAction("drag")
-  }
-
-  async function exit() {
-    await ipc.exit({ data_generation_id: snapshot?.data_generation_id ?? null })
-  }
-
-  return (
-    <main className="flex h-full min-h-0 flex-col bg-canvas text-text-primary">
-      <header className="flex h-16 shrink-0 select-none items-center gap-1 border-b border-border/60 bg-chrome px-2.5" onMouseDown={drag} onDoubleClick={(event) => { if (!(event.target instanceof Element && event.target.closest("button"))) void windowAction("maximize") }}>
-        <div className="min-w-0 flex-1 px-1.5">
-          <h1 className="truncate text-sm font-semibold" title={snapshot?.room.name ?? "Sageroom"}>{snapshot?.room.name ?? "Sageroom"}</h1>
-          <p className="mt-0.5 truncate text-[11px] text-text-secondary">{session.loading ? "正在读取本地聊天" : snapshot ? "本地聊天室" : "本地数据未就绪"}</p>
+  return <div className="workspace-layout chat-workspace">
+    <aside className="workspace-list chat-scene-list" aria-label="聊天对象">
+      <div className="panel-heading"><h1 className="panel-title">聊天</h1></div>
+      {scenes.map((item) => <button type="button" key={item.id} className="list-entry" data-active={item.id === scene?.id} onClick={closePanel}>
+        <span className="chat-scene-avatar" aria-hidden="true"><IconUsers size={23} stroke={1.5} /></span>
+        <span className="min-w-0"><strong className="block truncate font-medium">{item.name}</strong><span className="form-caption">{item.kind === "group" ? "群聊" : "私聊"}</span></span>
+      </button>)}
+      {!snapshot && <p className="form-caption p-3">{session.loading ? "正在读取聊天对象…" : "本地数据尚未就绪。"}</p>}
+    </aside>
+    <section className="surface-card workspace-detail chat-card" aria-label="当前聊天">
+      <header className="panel-heading chat-heading"><div className="min-w-0"><h2 className="panel-title truncate" title={scene?.name ?? "Sageroom"}>{scene?.name ?? "Sageroom"}</h2><p className="panel-description">{snapshot ? `${snapshot.participants.length} 位成员` : session.loading ? "正在读取本地聊天" : "本地数据未就绪"}</p></div><div className="flex shrink-0 gap-1">
+        <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label="搜索聊天" aria-expanded={panel === "search"} onClick={() => openPanel("search")}><IconSearch size={20} stroke={1.5} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>搜索 Ctrl+F</TooltipContent></Tooltip>
+        <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label="群信息" aria-expanded={panel === "members"} onClick={() => openPanel("members")}><IconUsers size={20} stroke={1.5} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>群信息</TooltipContent></Tooltip>
+      </div></header>
+      {session.error && <div className="chat-error" role="alert"><p>{session.error}</p><Button size="sm" variant="ghost" onClick={() => void session.reload()}>重新读取</Button></div>}
+      <div className="chat-body">
+        <div className="chat-conversation">
+          {session.page && snapshot ? <MessageList key={session.windowRevision} active={active} page={session.page} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !session.page.has_more_after} hasNewMessages={session.hasNewMessages} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={session.goToLatest} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}
+          <MessageComposer active={active} dataGenerationId={snapshot?.data_generation_id ?? null} disabled={!snapshot} onSend={(text, requestId) => sceneAdapters[scene?.kind ?? "group"]!.send(session, text, requestId)} />
         </div>
-        <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="查看成员" onClick={() => openPanel("members")}><IconUsers size={18} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>成员</TooltipContent></Tooltip>
-        <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="搜索聊天" onClick={() => openPanel("search")}><IconSearch size={18} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>搜索 Ctrl+F</TooltipContent></Tooltip>
-        <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="打开设置" onClick={() => openPanel("settings")}><IconSettings size={18} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>设置 Ctrl+,</TooltipContent></Tooltip>
-        <div className="mx-0.5 h-4 w-px bg-border/70" aria-hidden="true" />
-        <Button variant="ghost" size="icon-sm" aria-label="最小化窗口" onClick={() => void windowAction("minimize")}><IconMinus size={18} aria-hidden="true" /></Button>
-        <Button variant="ghost" size="icon-sm" aria-label="关闭到托盘" onClick={() => void windowAction("close")}><IconX size={18} aria-hidden="true" /></Button>
-      </header>
-
-      {(session.error || windowError) && <div role="alert" className="flex shrink-0 items-start justify-between gap-2 border-b border-border/60 bg-content px-3 py-2 text-sm"><p className="min-w-0 leading-relaxed text-destructive">{session.error || windowError}</p><Button size="sm" variant="ghost" className="h-6 shrink-0 px-2 text-xs" onClick={() => { setWindowError(null); void session.reload() }}>重新读取</Button></div>}
-      <div className="flex min-h-0 flex-1 flex-col mx-auto w-full max-w-3xl">
-        {session.page && snapshot ? <MessageList
-          key={session.windowRevision}
-          page={session.page}
-          localUserId={snapshot.local_user.id}
-          firstItemIndex={session.firstItemIndex}
-          targetMessageId={session.targetMessageId}
-          followLatest={session.atBottom && !session.page.has_more_after}
-          hasNewMessages={session.hasNewMessages}
-          loadingMore={session.loadingMore}
-          onLoadOlder={session.loadOlder}
-          onLoadNewer={session.loadNewer}
-          onAtBottomChange={session.updateAtBottom}
-          onRenderedAnchorChange={session.updateRenderedAnchor}
-          onGoToLatest={session.goToLatest}
-        /> : <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-text-secondary" role="status">{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</div>}
-        <MessageComposer dataGenerationId={snapshot?.data_generation_id ?? null} disabled={!snapshot} onSend={session.send} />
+        <SearchPanel open={panel === "search" && active} onOpenChange={(open) => { if (!open) closePanel() }} generation={snapshot?.data_generation_id ?? null} onLocate={session.jumpTo} />
+        {panel === "members" && snapshot && <GroupInformation snapshot={snapshot} onClose={closePanel} onNavigate={onNavigate} />}
       </div>
-
-      <SearchPanel open={searchOpen} onOpenChange={setSearchOpen} generation={snapshot?.data_generation_id ?? null} onLocate={session.jumpTo} onReturnFocus={() => returnFocus("search")} />
-      <AppearanceDialog open={settingsOpen} onOpenChange={setSettingsOpen} snapshot={snapshot} onSaved={session.applyAppearance} onExit={exit} onReturnFocus={() => returnFocus("settings")} />
-      <Dialog open={membersOpen} onOpenChange={setMembersOpen}>
-        <DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); returnFocus("members") }}><DialogHeader><DialogTitle>群成员</DialogTitle><DialogDescription>社交成员与本地用户平等，不因群主身份拥有聊天优先权。</DialogDescription></DialogHeader>
-          {snapshot ? <ul className="space-y-4">{snapshot.participants.map((participant) => <li key={participant.id} className="flex min-w-0 items-start gap-3"><span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 font-medium text-primary">{[...participant.display_name][0] ?? "?"}</span><div className="min-w-0"><p className="truncate text-sm font-medium">{participant.display_name}<span className="ml-2 text-xs font-normal text-text-secondary">{participant.kind === "user" ? "本地用户" : "智能体"}</span></p><p className="mt-1 text-xs leading-relaxed text-text-secondary">{participant.status === "needs_configuration" ? "需要配置模型，暂不参与聊天" : "在聊天室中"}</p><p className="mt-1 text-xs leading-relaxed text-text-secondary [overflow-wrap:anywhere]">{participant.introduction}</p></div></li>)}</ul> : <p className="text-sm text-text-secondary">成员资料尚未就绪。</p>}
-        </DialogContent>
-      </Dialog>
-    </main>
-  )
+    </section>
+  </div>
 }

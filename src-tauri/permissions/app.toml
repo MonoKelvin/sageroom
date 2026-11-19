@@ -32,3 +32,28 @@ commands.allow = ["appearance_save"]
 identifier = "app-exit"
 description = "明确退出本地应用"
 commands.allow = ["app_request_exit"]
+
+[[permission]]
+identifier = "configuration-read"
+description = "读取本地全局预设、成员配置和用户资料"
+commands.allow = ["global_configuration_get", "agent_list", "user_profile_get"]
+
+[[permission]]
+identifier = "configuration-write"
+description = "保存绑定世代和版本的本地配置与资料"
+commands.allow = ["global_configuration_save", "agent_save", "user_profile_save"]
+
+[[permission]]
+identifier = "credentials-manage"
+description = "写入或解绑模型凭据，只返回是否配置"
+commands.allow = ["secret_set", "secret_delete", "secret_status"]
+
+[[permission]]
+identifier = "model-test"
+description = "受限模型连通测试与仅开发版本的临时模型导入"
+commands.allow = ["model_profile_test", "development_model_import"]
+
+[[permission]]
+identifier = "avatar-manage"
+description = "原生选择头像并以不透明对象标识读取"
+commands.allow = ["avatar_import", "avatar_read"]

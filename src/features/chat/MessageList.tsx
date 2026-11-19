@@ -3,6 +3,7 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso"
 import { IconArrowDown } from "@tabler/icons-react"
 import type { ChatMessage, MessagePage } from "@/contracts/generated"
 import { Button } from "@/components/ui/button"
+import { Avatar } from "@/components/Avatar"
 import { cn } from "@/lib/utils"
 
 type ListContext = { loadingMore: boolean; hasMoreBefore: boolean }
@@ -24,7 +25,7 @@ function messageText(message: ChatMessage): string {
   return message.parts.flatMap((part) => part.kind === "text" ? [part.text] : []).join("")
 }
 
-function MessageRow({ message, self, highlighted }: { message: ChatMessage; self: boolean; highlighted: boolean }) {
+function MessageRow({ message, self, highlighted, generation }: { message: ChatMessage; self: boolean; highlighted: boolean; generation?: string }) {
   return (
     <article
       data-message-id={message.id}
@@ -33,10 +34,8 @@ function MessageRow({ message, self, highlighted }: { message: ChatMessage; self
       aria-label={`${message.sender_snapshot.display_name}的消息`}
     >
       <div className={cn("flex min-w-0 items-start gap-2", self && "flex-row-reverse")}>
-        <div aria-hidden="true" className={cn("mt-5 flex size-7 shrink-0 items-center justify-center rounded-lg text-xs font-medium", self ? "bg-primary/10 text-primary" : "bg-content text-text-secondary")}>
-          {[...message.sender_snapshot.display_name][0] ?? "?"}
-        </div>
-        <div className={cn("flex min-w-0 max-w-[82%] flex-col", self ? "items-end" : "items-start")}>
+        <div className="mt-5"><Avatar name={message.sender_snapshot.display_name} avatarId={message.sender_snapshot.avatar_id} generation={generation} size={32} /></div>
+        <div className={cn("flex min-w-0 max-w-[min(82%,640px)] flex-col", self ? "items-end" : "items-start")}>
           <div className={cn("mb-1 flex max-w-full items-center gap-2 text-xs text-text-secondary", self && "flex-row-reverse")}>
             <span className="truncate">{message.sender_snapshot.display_name}</span>
             <time className="shrink-0 text-[11px]" dateTime={new Date(message.created_at).toISOString()}>{timeFormatter.format(message.created_at)}</time>
@@ -51,6 +50,8 @@ function MessageRow({ message, self, highlighted }: { message: ChatMessage; self
 }
 
 type Props = {
+  active?: boolean
+  generation?: string
   page: MessagePage
   localUserId: string
   firstItemIndex: number
@@ -66,7 +67,7 @@ type Props = {
 }
 
 export function MessageList({
-  page, localUserId, firstItemIndex, targetMessageId, followLatest, hasNewMessages,
+  active = true, generation, page, localUserId, firstItemIndex, targetMessageId, followLatest, hasNewMessages,
   loadingMore, onLoadOlder, onLoadNewer, onAtBottomChange, onRenderedAnchorChange, onGoToLatest,
 }: Props) {
   const list = useRef<VirtuosoHandle>(null)
@@ -75,18 +76,18 @@ export function MessageList({
     : "LAST")
 
   useEffect(() => {
-    if (!followLatest || targetMessageId || !page.last_seq) return
+    if (!active || !followLatest || targetMessageId || !page.last_seq) return
     // followOutput 在等长窗口替换时不触发，需显式保持底部。
     const frame = requestAnimationFrame(() => list.current?.scrollToIndex({ index: "LAST", behavior: "auto" }))
     return () => cancelAnimationFrame(frame)
-  }, [followLatest, page.last_seq, targetMessageId])
+  }, [active, followLatest, page.last_seq, targetMessageId])
 
   if (page.items.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-8 pb-10 text-center">
         <div aria-hidden="true" className="mb-5 flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-lg font-medium text-primary">S</div>
         <p className="font-medium">这里还很安静</p>
-        <p className="mt-2 max-w-60 text-sm leading-relaxed text-text-secondary">先说点什么。消息保存在本机，Sage 尚未配置模型，暂时不会参与聊天。</p>
+        <p className="mt-2 max-w-60 text-sm leading-relaxed text-text-secondary">先说点什么。消息保存在本机，智能体的运行任务尚未启用。</p>
       </div>
     )
   }
@@ -103,14 +104,14 @@ export function MessageList({
         computeItemKey={(_, message) => message.id}
         increaseViewportBy={{ top: 150, bottom: 150 }}
         atBottomThreshold={36}
-        atBottomStateChange={onAtBottomChange}
+        atBottomStateChange={(value) => { if (active) onAtBottomChange(value) }}
         rangeChanged={({ startIndex }) => {
           const anchor = page.items[startIndex - firstItemIndex]
-          if (anchor) onRenderedAnchorChange({ id: anchor.id, seq: anchor.seq })
+          if (active && anchor) onRenderedAnchorChange({ id: anchor.id, seq: anchor.seq })
         }}
         followOutput={(atBottom) => !targetMessageId && followLatest && atBottom ? "auto" : false}
-        startReached={() => { if (page.has_more_before) void onLoadOlder() }}
-        endReached={() => { if (page.has_more_after) void onLoadNewer() }}
+        startReached={() => { if (active && page.has_more_before) void onLoadOlder() }}
+        endReached={() => { if (active && page.has_more_after) void onLoadNewer() }}
         components={listComponents}
         itemContent={(index, message) => {
           const dataIndex = index - firstItemIndex
@@ -119,7 +120,7 @@ export function MessageList({
           return (
             <>
               {newDay && <p className="py-3 text-center text-xs text-text-secondary">{dateFormatter.format(message.created_at)}</p>}
-              <MessageRow message={message} self={message.sender_id === localUserId} highlighted={message.id === targetMessageId} />
+              <MessageRow message={message} self={message.sender_id === localUserId} highlighted={message.id === targetMessageId} generation={generation} />
             </>
           )
         }}

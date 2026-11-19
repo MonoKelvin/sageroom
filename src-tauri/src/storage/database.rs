@@ -16,6 +16,16 @@ use crate::domain::{
 };
 
 pub const MIGRATION: &str = include_str!("migrations/0001_initial.sql");
+pub const MIGRATION_V2: &str = include_str!("migrations/0002_configuration.sql");
+pub const CURRENT_SCHEMA: u32 = 2;
+
+pub fn migration_hash(version: u32) -> String {
+    if version == 1 {
+        fingerprint(MIGRATION.as_bytes())
+    } else {
+        fingerprint(format!("{}\n{MIGRATION_V2}", fingerprint(MIGRATION.as_bytes())).as_bytes())
+    }
+}
 
 pub struct Database {
     pub(crate) conn: Connection,
@@ -73,13 +83,13 @@ fn schema_rows(conn: &Connection) -> AppResult<Vec<SchemaRow>> {
 
 pub fn verify_database(conn: &Connection) -> AppResult<()> {
     let version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    if version > 1 {
+    if version > CURRENT_SCHEMA {
         return Err(AppError::new(
             ErrorCode::SchemaUnsupported,
             "此数据库来自较新版本，请使用对应版本打开；原文件未改动。",
         ));
     }
-    if version != 1 {
+    if !matches!(version, 1 | 2) {
         return Err(AppError::new(
             ErrorCode::DataRootInvalid,
             "该目录没有可识别的 Sageroom 数据库，原文件已保留。",
@@ -87,18 +97,21 @@ pub fn verify_database(conn: &Connection) -> AppResult<()> {
     }
     let expected = Connection::open_in_memory()?;
     expected.execute_batch(MIGRATION)?;
+    if version == 2 {
+        expected.execute_batch(MIGRATION_V2)?;
+    }
     if schema_rows(conn)? != schema_rows(&expected)? {
         return Err(AppError::new(
             ErrorCode::DataRootInvalid,
             "数据库结构与当前应用不一致，原文件已保留，请检查有效备份。",
         ));
     }
-    let hash: String = conn.query_row(
-        "SELECT migration_hash FROM app_meta WHERE singleton = 1",
+    let (hash, metadata_version): (String, u32) = conn.query_row(
+        "SELECT migration_hash, schema_version FROM app_meta WHERE singleton = 1",
         [],
-        |row| row.get(0),
+        |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
-    if hash != fingerprint(MIGRATION.as_bytes()) {
+    if hash != migration_hash(version) || metadata_version != version {
         return Err(AppError::new(
             ErrorCode::SchemaUnsupported,
             "数据库版本校验不匹配，原文件已保留。",
@@ -121,27 +134,137 @@ pub fn verify_database(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
-fn verify_manifest(path: &Path, root_id: &str) -> AppResult<()> {
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpgradeRecord {
+    root_id: String,
+    from_version: u32,
+    to_version: u32,
+    migration_hash: String,
+    snapshot_id: String,
+}
+
+fn read_metadata<T: serde::de::DeserializeOwned>(path: &Path) -> AppResult<T> {
     let mut bytes = Vec::new();
     File::open(path)?.take(4097).read_to_end(&mut bytes)?;
     if bytes.len() > 4096 {
         return Err(AppError::new(
             ErrorCode::DataRootInvalid,
-            "数据目录清单无效，原文件已保留。",
+            "数据目录清单超过长度上限，原文件已保留。",
         ));
     }
-    let manifest: DataManifest = serde_json::from_slice(&bytes).map_err(|_| {
+    serde_json::from_slice(&bytes).map_err(|_| {
         AppError::new(
             ErrorCode::DataRootInvalid,
             "数据目录清单损坏，原文件已保留。",
         )
-    })?;
-    if manifest.format_version != 1 || manifest.schema_version != 1 || manifest.root_id != root_id {
+    })
+}
+
+fn write_metadata(path: &Path, value: &impl Serialize) -> AppResult<()> {
+    let temporary = path.with_file_name(format!("metadata-{}.tmp", Uuid::now_v7()));
+    let result: AppResult<()> = (|| {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)?;
+        serde_json::to_writer(&mut file, value)?;
+        file.flush()?;
+        file.sync_all()?;
+        fs::rename(&temporary, path)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
+fn write_manifest(root: &Path, root_id: &str, version: u32) -> AppResult<()> {
+    write_metadata(
+        &root.join("data-manifest.json"),
+        &DataManifest {
+            format_version: 1,
+            root_id: root_id.into(),
+            schema_version: version,
+        },
+    )
+}
+
+fn verify_upgrade_record(root: &Path, record: &UpgradeRecord, root_id: &str) -> AppResult<()> {
+    if record.root_id != root_id
+        || record.from_version != 1
+        || record.to_version != 2
+        || record.migration_hash != migration_hash(2)
+        || Uuid::parse_str(&record.snapshot_id).is_err()
+    {
         return Err(AppError::new(
             ErrorCode::DataRootInvalid,
-            "数据目录清单与数据库不匹配，未切换或覆盖原数据。",
+            "升级恢复记录与当前数据库不匹配，原文件已保留。",
         ));
     }
+    let snapshot = open_reader(
+        &root
+            .join("backups")
+            .join(format!("{}.sqlite3", record.snapshot_id)),
+    )?;
+    verify_database(&snapshot)?;
+    let (snapshot_root, version): (String, u32) = snapshot.query_row(
+        "SELECT root_id, schema_version FROM app_meta WHERE singleton=1",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    if snapshot_root != root_id || version != 1 {
+        return Err(AppError::new(
+            ErrorCode::DataRootInvalid,
+            "升级前快照不匹配，未覆盖或切换原数据库。",
+        ));
+    }
+    Ok(())
+}
+
+fn upgrade_database(
+    conn: &mut Connection,
+    root: &Path,
+    root_id: &str,
+    existing: Option<UpgradeRecord>,
+) -> AppResult<()> {
+    let journal = root.join("schema-upgrade.json");
+    if existing.is_none() {
+        let backups = root.join("backups");
+        fs::create_dir_all(&backups)?;
+        let record = UpgradeRecord {
+            root_id: root_id.into(),
+            from_version: 1,
+            to_version: 2,
+            migration_hash: migration_hash(2),
+            snapshot_id: Uuid::now_v7().to_string(),
+        };
+        super::backup::backup_database(
+            conn,
+            &backups.join(format!("{}.sqlite3", record.snapshot_id)),
+        )?;
+        write_metadata(&journal, &record)?;
+    }
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    conn.progress_handler(1000, Some(move || std::time::Instant::now() >= deadline))?;
+    let result: AppResult<()> = (|| {
+        let transaction =
+            conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        transaction.execute_batch(MIGRATION_V2)?;
+        super::configuration::seed_configuration(&transaction)?;
+        transaction.execute(
+            "UPDATE app_meta SET schema_version=2, migration_hash=?1 WHERE singleton=1",
+            [migration_hash(2)],
+        )?;
+        verify_database(&transaction)?;
+        transaction.commit()?;
+        Ok(())
+    })();
+    conn.progress_handler(0, None::<fn() -> bool>)?;
+    result?;
+    write_manifest(root, root_id, 2)?;
+    fs::remove_file(journal)?;
     Ok(())
 }
 
@@ -151,7 +274,7 @@ fn initialize_new_database(root: &Path, destination: &Path) -> AppResult<()> {
     let operation = staging.join(format!("init-{}", Uuid::now_v7()));
     fs::create_dir(&operation)?;
     let candidate = operation.join(format!("chat-{}.sqlite3", Uuid::now_v7()));
-    let result = (|| {
+    let result: AppResult<()> = (|| {
         let mut conn = Connection::open_with_flags(
             &candidate,
             OpenFlags::SQLITE_OPEN_READ_WRITE
@@ -186,6 +309,12 @@ fn initialize_new_database(root: &Path, destination: &Path) -> AppResult<()> {
             params![room_id, user_id],
         )?;
         transaction.execute("INSERT INTO app_settings VALUES (1, 'system', 0, 1)", [])?;
+        transaction.execute_batch(MIGRATION_V2)?;
+        super::configuration::seed_configuration(&transaction)?;
+        transaction.execute(
+            "UPDATE app_meta SET schema_version=2, migration_hash=?1 WHERE singleton=1",
+            [migration_hash(2)],
+        )?;
         transaction.commit()?;
         verify_database(&conn)?;
         conn.close().map_err(|(_, error)| AppError::from(error))?;
@@ -230,59 +359,73 @@ impl Database {
 
         let path = root.join("chat.sqlite3");
         let manifest_path = root.join("data-manifest.json");
-        let exists = path.exists();
-        if !exists && manifest_path.exists() {
+        let journal_path = root.join("schema-upgrade.json");
+        if !path.exists() && (manifest_path.exists() || journal_path.exists()) {
             return Err(AppError::new(
                 ErrorCode::DataRootInvalid,
                 "既有数据目录的聊天数据库缺失，未创建空库，请检查原目录或备份。",
             ));
         }
-        if exists {
-            let candidate = open_reader(&path)?;
-            verify_database(&candidate)?;
-            let root_id: String = candidate.query_row(
-                "SELECT root_id FROM app_meta WHERE singleton = 1",
-                [],
-                |row| row.get(0),
-            )?;
-            if manifest_path.exists() {
-                verify_manifest(&manifest_path, &root_id)?;
-            }
-        } else {
+        if !path.exists() {
             initialize_new_database(root, &path)?;
         }
-        let conn = Connection::open_with_flags(
-            path,
+        let candidate = open_reader(&path)?;
+        verify_database(&candidate)?;
+        let (root_id, version): (String, u32) = candidate.query_row(
+            "SELECT root_id, schema_version FROM app_meta WHERE singleton=1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        let upgrade: Option<UpgradeRecord> = if journal_path.exists() {
+            Some(read_metadata(&journal_path)?)
+        } else {
+            None
+        };
+        if let Some(record) = &upgrade {
+            verify_upgrade_record(root, record, &root_id)?;
+        }
+        let manifest: Option<DataManifest> = if manifest_path.exists() {
+            Some(read_metadata(&manifest_path)?)
+        } else {
+            None
+        };
+        if let Some(manifest) = &manifest {
+            let recoverable_commit =
+                version == 2 && manifest.schema_version == 1 && upgrade.is_some();
+            if manifest.format_version != 1
+                || manifest.root_id != root_id
+                || (manifest.schema_version != version && !recoverable_commit)
+            {
+                return Err(AppError::new(
+                    ErrorCode::DataRootInvalid,
+                    "数据目录清单与数据库不匹配，未切换或覆盖原数据。",
+                ));
+            }
+        }
+        drop(candidate);
+        let mut conn = Connection::open_with_flags(
+            &path,
             OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )?;
         configure_connection(&conn)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
-
-        verify_database(&conn)?;
-        let root_id: String = conn.query_row(
-            "SELECT root_id FROM app_meta WHERE singleton = 1",
-            [],
-            |row| row.get(0),
-        )?;
-        if !manifest_path.exists() {
-            // 首次提交后中断时，仅从已验证的数据库元数据恢复清单。
-            let temporary = root.join(format!("manifest-{}.tmp", Uuid::now_v7()));
-            let mut file = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&temporary)?;
-            serde_json::to_writer(
-                &mut file,
-                &DataManifest {
-                    format_version: 1,
-                    root_id,
-                    schema_version: 1,
-                },
-            )?;
-            file.flush()?;
-            file.sync_all()?;
-            fs::rename(temporary, &manifest_path)?;
+        if version == 1 {
+            if manifest.is_none() {
+                write_manifest(root, &root_id, 1)?;
+            }
+            upgrade_database(&mut conn, root, &root_id, upgrade)?;
+        } else if manifest
+            .as_ref()
+            .is_none_or(|manifest| manifest.schema_version != CURRENT_SCHEMA)
+            || upgrade.is_some()
+        {
+            // SQLite 已提交、清单尚未发布时，只沿已验证的升级记录向前恢复。
+            write_manifest(root, &root_id, CURRENT_SCHEMA)?;
+            if upgrade.is_some() {
+                fs::remove_file(journal_path)?;
+            }
         }
+        verify_database(&conn)?;
         let local_user_id = conn.query_row(
             "SELECT id FROM participants WHERE kind = 'user'",
             [],

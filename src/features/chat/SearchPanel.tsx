@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type FormEvent } from "react"
 import { IconSearch, IconX } from "@tabler/icons-react"
 import type { SearchPage } from "@/contracts/generated"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { errorMessage, ipc } from "@/app/ipc"
 
 const formatter = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
@@ -104,7 +103,7 @@ function SearchForm({ generation, onLocate, onClose }: FormProps) {
   return (
     <div className="min-w-0">
       <form className="flex gap-2" onSubmit={submit}>
-        <input autoFocus aria-label="搜索聊天文本" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="查找原文中的字词" className="h-9 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+        <input autoFocus aria-label="搜索聊天文本" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="查找原文中的字词" className="form-control h-10 min-w-0 flex-1" />
         <Button type="submit" size="icon" aria-label="开始搜索"><IconSearch size={18} aria-hidden="true" /></Button>
         {pending && <Button size="icon" variant="ghost" aria-label="取消检索" onClick={() => void cancel()}><IconX size={18} aria-hidden="true" /></Button>}
       </form>
@@ -135,12 +134,9 @@ export function SearchPanel({ open, onOpenChange, generation, onLocate, onReturn
   onLocate: (seq: string, messageId: string) => Promise<void>
   onReturnFocus?: () => void
 }) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent onCloseAutoFocus={(event) => { if (onReturnFocus) { event.preventDefault(); onReturnFocus() } }}>
-        <DialogHeader><DialogTitle>搜索聊天</DialogTitle><DialogDescription>按原文子串查找，不使用语义推测或搜索表达式。</DialogDescription></DialogHeader>
-        {generation ? <SearchForm key={generation} generation={generation} onLocate={onLocate} onClose={() => onOpenChange(false)} /> : <p className="text-sm text-text-secondary">本地聊天数据尚未就绪。</p>}
-      </DialogContent>
-    </Dialog>
-  )
+  if (!open) return null
+  return <aside className="chat-side-panel" aria-label="搜索聊天" onKeyDown={(event) => { if (event.key === "Escape" && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); onOpenChange(false); onReturnFocus?.() } }}>
+    <header className="chat-panel-heading"><h3 className="panel-title">搜索聊天</h3><button type="button" className="icon-button" aria-label="关闭搜索" onClick={() => { onOpenChange(false); onReturnFocus?.() }}><IconX size={18} aria-hidden="true" /></button></header>
+    <div className="chat-panel-content panel-scroll">{generation ? <SearchForm key={generation} generation={generation} onLocate={onLocate} onClose={() => onOpenChange(false)} /> : <p className="form-caption">本地聊天数据尚未就绪。</p>}</div>
+  </aside>
 }

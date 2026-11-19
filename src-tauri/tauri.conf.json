@@ -14,15 +14,15 @@
       {
         "label": "main",
         "title": "Sageroom",
-        "width": 420,
+        "width": 1100,
         "height": 780,
-        "minWidth": 360,
-        "minHeight": 560,
+        "minWidth": 860,
+        "minHeight": 620,
         "decorations": false,
-        "shadow": true,
-        "transparent": false,
+        "shadow": false,
+        "transparent": true,
         "center": true,
-        "backgroundColor": "#EEF2F3"
+        "backgroundColor": "#00000000"
       }
     ],
     "security": {

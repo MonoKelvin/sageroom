@@ -1,21 +1,1142 @@
 {
-  "AppSnapshotRequest": {
-    "$defs": {
-      "DecimalString": {
-        "maxLength": 19,
-        "pattern": "^(0|[1-9][0-9]*)$",
+  "AgentListRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "AgentListRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
         "type": "string"
       }
     },
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
+    "required": [
+      "data_generation_id"
+    ]
+  },
+  "AgentListResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/AgentConfiguration"
+            }
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "AgentConfiguration": {
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "introduction": {
+            "type": "string"
+          },
+          "gender_description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "address_terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "language_style": {
+            "type": "string"
+          },
+          "skill": {
+            "type": "string"
+          },
+          "dimensions": {
+            "$ref": "#/$defs/PersonaDimensions"
+          },
+          "avatar_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "agent_type": {
+            "$ref": "#/$defs/AgentType"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/AgentModelSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preferences": {
+            "$ref": "#/$defs/AgentPreferences"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "agent_id",
+          "revision",
+          "display_name",
+          "introduction",
+          "gender_description",
+          "address_terms",
+          "language_style",
+          "skill",
+          "dimensions",
+          "avatar_id",
+          "agent_type",
+          "model",
+          "preferences"
+        ]
+      },
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      },
+      "PersonaDimensions": {
+        "type": "object",
+        "properties": {
+          "professional": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "formal": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "casual": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "humor": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "direct": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "empathy": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "social_energy": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "professional",
+          "formal",
+          "casual",
+          "humor",
+          "direct",
+          "empathy",
+          "social_energy"
+        ]
+      },
+      "AgentType": {
+        "type": "string",
+        "enum": [
+          "social",
+          "tool"
+        ]
+      },
+      "AgentModelSnapshot": {
+        "type": "object",
+        "properties": {
+          "source_profile_id": {
+            "type": "string"
+          },
+          "source_profile_revision": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "profile": {
+            "$ref": "#/$defs/ModelProfileInput"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "source_profile_id",
+          "source_profile_revision",
+          "profile"
+        ]
+      },
+      "ModelProfileInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "protocol": {
+            "$ref": "#/$defs/ModelProtocol"
+          },
+          "base_url": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "model_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "parameters": {
+            "$ref": "#/$defs/ModelParameters"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "protocol",
+          "base_url",
+          "model_name",
+          "parameters"
+        ]
+      },
+      "ModelProtocol": {
+        "type": "string",
+        "enum": [
+          "openai_chat_completions",
+          "anthropic_messages",
+          "openai_responses"
+        ]
+      },
+      "ModelParameters": {
+        "type": "object",
+        "properties": {
+          "temperature": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0.0,
+            "maximum": 2.0
+          },
+          "top_p": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 1,
+            "maximum": 32768
+          },
+          "input_budget": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 256,
+            "maximum": 128000
+          },
+          "reasoning": {
+            "$ref": "#/$defs/ReasoningMode"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "temperature",
+          "top_p",
+          "max_output_tokens",
+          "input_budget",
+          "reasoning"
+        ]
+      },
+      "ReasoningMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "enabled"
+        ]
+      },
+      "AgentPreferences": {
+        "type": "object",
+        "properties": {
+          "request_limit_daily": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 1,
+            "maximum": 5000
+          },
+          "persistent_memory": {
+            "type": "boolean"
+          },
+          "allow_autonomous_wake": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "request_limit_daily",
+          "persistent_memory",
+          "allow_autonomous_wake"
+        ]
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
+  },
+  "AgentSaveRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "AgentSaveRequest",
+    "type": "object",
     "properties": {
       "data_generation_id": {
-        "default": null,
+        "type": "string"
+      },
+      "client_request_id": {
+        "type": "string"
+      },
+      "expected_revision": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/DecimalString"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "configuration": {
+        "$ref": "#/$defs/AgentConfiguration"
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "data_generation_id",
+      "client_request_id",
+      "configuration"
+    ],
+    "$defs": {
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      },
+      "AgentConfiguration": {
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "introduction": {
+            "type": "string"
+          },
+          "gender_description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "address_terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "language_style": {
+            "type": "string"
+          },
+          "skill": {
+            "type": "string"
+          },
+          "dimensions": {
+            "$ref": "#/$defs/PersonaDimensions"
+          },
+          "avatar_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "agent_type": {
+            "$ref": "#/$defs/AgentType"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/AgentModelSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preferences": {
+            "$ref": "#/$defs/AgentPreferences"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "agent_id",
+          "revision",
+          "display_name",
+          "introduction",
+          "address_terms",
+          "language_style",
+          "skill",
+          "dimensions",
+          "agent_type",
+          "preferences"
+        ]
+      },
+      "PersonaDimensions": {
+        "type": "object",
+        "properties": {
+          "professional": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "formal": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "casual": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "humor": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "direct": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "empathy": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "social_energy": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "professional",
+          "formal",
+          "casual",
+          "humor",
+          "direct",
+          "empathy",
+          "social_energy"
+        ]
+      },
+      "AgentType": {
+        "type": "string",
+        "enum": [
+          "social",
+          "tool"
+        ]
+      },
+      "AgentModelSnapshot": {
+        "type": "object",
+        "properties": {
+          "source_profile_id": {
+            "type": "string"
+          },
+          "source_profile_revision": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "profile": {
+            "$ref": "#/$defs/ModelProfileInput"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "source_profile_id",
+          "source_profile_revision",
+          "profile"
+        ]
+      },
+      "ModelProfileInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "protocol": {
+            "$ref": "#/$defs/ModelProtocol"
+          },
+          "base_url": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "model_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "parameters": {
+            "$ref": "#/$defs/ModelParameters"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "protocol",
+          "base_url",
+          "model_name",
+          "parameters"
+        ]
+      },
+      "ModelProtocol": {
+        "type": "string",
+        "enum": [
+          "openai_chat_completions",
+          "anthropic_messages",
+          "openai_responses"
+        ]
+      },
+      "ModelParameters": {
+        "type": "object",
+        "properties": {
+          "temperature": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0.0,
+            "maximum": 2.0
+          },
+          "top_p": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 1,
+            "maximum": 32768
+          },
+          "input_budget": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 256,
+            "maximum": 128000
+          },
+          "reasoning": {
+            "$ref": "#/$defs/ReasoningMode"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "temperature",
+          "top_p",
+          "max_output_tokens",
+          "input_budget",
+          "reasoning"
+        ]
+      },
+      "ReasoningMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "enabled"
+        ]
+      },
+      "AgentPreferences": {
+        "type": "object",
+        "properties": {
+          "request_limit_daily": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 1,
+            "maximum": 5000
+          },
+          "persistent_memory": {
+            "type": "boolean"
+          },
+          "allow_autonomous_wake": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "request_limit_daily",
+          "persistent_memory",
+          "allow_autonomous_wake"
+        ]
+      }
+    }
+  },
+  "AgentSaveResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "$ref": "#/$defs/AgentConfiguration"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "AgentConfiguration": {
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "introduction": {
+            "type": "string"
+          },
+          "gender_description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "address_terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "language_style": {
+            "type": "string"
+          },
+          "skill": {
+            "type": "string"
+          },
+          "dimensions": {
+            "$ref": "#/$defs/PersonaDimensions"
+          },
+          "avatar_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "agent_type": {
+            "$ref": "#/$defs/AgentType"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/AgentModelSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preferences": {
+            "$ref": "#/$defs/AgentPreferences"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "agent_id",
+          "revision",
+          "display_name",
+          "introduction",
+          "gender_description",
+          "address_terms",
+          "language_style",
+          "skill",
+          "dimensions",
+          "avatar_id",
+          "agent_type",
+          "model",
+          "preferences"
+        ]
+      },
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      },
+      "PersonaDimensions": {
+        "type": "object",
+        "properties": {
+          "professional": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "formal": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "casual": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "humor": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "direct": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "empathy": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "social_energy": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "professional",
+          "formal",
+          "casual",
+          "humor",
+          "direct",
+          "empathy",
+          "social_energy"
+        ]
+      },
+      "AgentType": {
+        "type": "string",
+        "enum": [
+          "social",
+          "tool"
+        ]
+      },
+      "AgentModelSnapshot": {
+        "type": "object",
+        "properties": {
+          "source_profile_id": {
+            "type": "string"
+          },
+          "source_profile_revision": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "profile": {
+            "$ref": "#/$defs/ModelProfileInput"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "source_profile_id",
+          "source_profile_revision",
+          "profile"
+        ]
+      },
+      "ModelProfileInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "protocol": {
+            "$ref": "#/$defs/ModelProtocol"
+          },
+          "base_url": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "model_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "parameters": {
+            "$ref": "#/$defs/ModelParameters"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "protocol",
+          "base_url",
+          "model_name",
+          "parameters"
+        ]
+      },
+      "ModelProtocol": {
+        "type": "string",
+        "enum": [
+          "openai_chat_completions",
+          "anthropic_messages",
+          "openai_responses"
+        ]
+      },
+      "ModelParameters": {
+        "type": "object",
+        "properties": {
+          "temperature": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0.0,
+            "maximum": 2.0
+          },
+          "top_p": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 1,
+            "maximum": 32768
+          },
+          "input_budget": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 256,
+            "maximum": 128000
+          },
+          "reasoning": {
+            "$ref": "#/$defs/ReasoningMode"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "temperature",
+          "top_p",
+          "max_output_tokens",
+          "input_budget",
+          "reasoning"
+        ]
+      },
+      "ReasoningMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "enabled"
+        ]
+      },
+      "AgentPreferences": {
+        "type": "object",
+        "properties": {
+          "request_limit_daily": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 1,
+            "maximum": 5000
+          },
+          "persistent_memory": {
+            "type": "boolean"
+          },
+          "allow_autonomous_wake": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "request_limit_daily",
+          "persistent_memory",
+          "allow_autonomous_wake"
+        ]
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
+  },
+  "AppSnapshotRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "AppSnapshotRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
         "type": [
           "string",
           "null"
-        ]
+        ],
+        "default": null
       },
       "last_event_seq": {
         "anyOf": [
@@ -29,121 +1150,99 @@
         "default": null
       }
     },
-    "title": "AppSnapshotRequest",
-    "type": "object"
+    "additionalProperties": false,
+    "$defs": {
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      }
+    }
   },
   "AppSnapshotResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
     "$defs": {
-      "ApiFailure": {
-        "additionalProperties": false,
+      "ApiSuccess": {
+        "type": "object",
         "properties": {
-          "error": {
-            "$ref": "#/$defs/AppError"
-          },
           "schema_version": {
             "$ref": "#/$defs/SchemaVersion"
-          }
-        },
-        "required": [
-          "schema_version",
-          "error"
-        ],
-        "type": "object"
-      },
-      "ApiSuccess": {
-        "additionalProperties": false,
-        "properties": {
+          },
           "data": {
             "$ref": "#/$defs/AppSnapshot"
-          },
-          "schema_version": {
-            "$ref": "#/$defs/SchemaVersion"
           }
         },
+        "additionalProperties": false,
         "required": [
           "schema_version",
           "data"
-        ],
-        "type": "object"
+        ]
       },
-      "AppError": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "$ref": "#/$defs/ErrorCode"
-          },
-          "field_path": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "may_have_been_charged": {
-            "type": "boolean"
-          },
-          "message": {
-            "type": "string"
-          },
-          "retryability": {
-            "$ref": "#/$defs/Retryability"
-          },
-          "trace_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "code",
-          "message",
-          "retryability",
-          "field_path",
-          "trace_id",
-          "may_have_been_charged"
-        ],
-        "type": "object"
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
       },
       "AppSnapshot": {
-        "additionalProperties": false,
+        "type": "object",
         "properties": {
-          "app_version": {
-            "type": "string"
-          },
-          "appearance": {
-            "$ref": "#/$defs/Appearance"
-          },
-          "data_directory": {
-            "type": "string"
-          },
           "data_generation_id": {
             "type": "string"
           },
-          "events": {
-            "items": {
-              "$ref": "#/$defs/DomainEvent"
-            },
-            "type": "array"
-          },
-          "latest_event_seq": {
-            "$ref": "#/$defs/DecimalString"
-          },
-          "latest_message_seq": {
-            "$ref": "#/$defs/DecimalString"
+          "room": {
+            "$ref": "#/$defs/Room"
           },
           "local_user": {
             "$ref": "#/$defs/Participant"
           },
           "participants": {
+            "type": "array",
             "items": {
               "$ref": "#/$defs/Participant"
-            },
-            "type": "array"
+            }
+          },
+          "appearance": {
+            "$ref": "#/$defs/Appearance"
+          },
+          "latest_message_seq": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "latest_event_seq": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/DomainEvent"
+            }
           },
           "requires_full_reload": {
             "type": "boolean"
           },
-          "room": {
-            "$ref": "#/$defs/Room"
+          "data_directory": {
+            "type": "string"
+          },
+          "data_usage": {
+            "$ref": "#/$defs/DataUsage"
+          },
+          "app_version": {
+            "type": "string"
+          },
+          "development_tools_available": {
+            "type": "boolean"
           }
         },
+        "additionalProperties": false,
         "required": [
           "data_generation_id",
           "room",
@@ -155,199 +1254,14 @@
           "events",
           "requires_full_reload",
           "data_directory",
-          "app_version"
-        ],
-        "type": "object"
-      },
-      "Appearance": {
-        "additionalProperties": false,
-        "properties": {
-          "reduce_motion": {
-            "type": "boolean"
-          },
-          "revision": {
-            "$ref": "#/$defs/DecimalString"
-          },
-          "theme": {
-            "$ref": "#/$defs/Theme"
-          }
-        },
-        "required": [
-          "theme",
-          "reduce_motion",
-          "revision"
-        ],
-        "type": "object"
-      },
-      "DecimalString": {
-        "maxLength": 19,
-        "pattern": "^(0|[1-9][0-9]*)$",
-        "type": "string"
-      },
-      "DomainEvent": {
-        "additionalProperties": false,
-        "properties": {
-          "data_generation_id": {
-            "type": "string"
-          },
-          "event_id": {
-            "type": "string"
-          },
-          "event_seq": {
-            "$ref": "#/$defs/DecimalString"
-          },
-          "occurred_at": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "type": "integer"
-          },
-          "payload": {
-            "$ref": "#/$defs/EventPayload"
-          },
-          "schema_version": {
-            "$ref": "#/$defs/SchemaVersion"
-          }
-        },
-        "required": [
-          "schema_version",
-          "data_generation_id",
-          "event_seq",
-          "event_id",
-          "occurred_at",
-          "payload"
-        ],
-        "type": "object"
-      },
-      "ErrorCode": {
-        "enum": [
-          "INVALID_INPUT",
-          "PERMISSION_DENIED",
-          "DATA_GENERATION_CHANGED",
-          "IDEMPOTENCY_CONFLICT",
-          "CONFIG_CONFLICT",
-          "BACKPRESSURE",
-          "SHUTTING_DOWN",
-          "DB_BUSY",
-          "DB_CORRUPT",
-          "DISK_FULL",
-          "IO_ERROR",
-          "SCHEMA_UNSUPPORTED",
-          "DATA_ROOT_INVALID",
-          "MESSAGE_NOT_FOUND",
-          "SEARCH_CANCELLED",
-          "SEARCH_TIMEOUT",
-          "CAPABILITY_UNSUPPORTED",
-          "INTERNAL_ERROR"
-        ],
-        "type": "string"
-      },
-      "EventPayload": {
-        "oneOf": [
-          {
-            "additionalProperties": false,
-            "properties": {
-              "kind": {
-                "const": "message_committed",
-                "type": "string"
-              },
-              "message_id": {
-                "type": "string"
-              },
-              "message_seq": {
-                "$ref": "#/$defs/DecimalString"
-              },
-              "sender_id": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind",
-              "message_id",
-              "message_seq",
-              "sender_id"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "appearance": {
-                "$ref": "#/$defs/Appearance"
-              },
-              "kind": {
-                "const": "appearance_changed",
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind",
-              "appearance"
-            ],
-            "type": "object"
-          }
+          "data_usage",
+          "app_version",
+          "development_tools_available"
         ]
       },
-      "Participant": {
-        "additionalProperties": false,
-        "properties": {
-          "display_name": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "introduction": {
-            "type": "string"
-          },
-          "is_builtin": {
-            "type": "boolean"
-          },
-          "kind": {
-            "$ref": "#/$defs/ParticipantKind"
-          },
-          "status": {
-            "$ref": "#/$defs/ParticipantStatus"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "display_name",
-          "introduction",
-          "status",
-          "is_builtin"
-        ],
-        "type": "object"
-      },
-      "ParticipantKind": {
-        "enum": [
-          "user",
-          "agent"
-        ],
-        "type": "string"
-      },
-      "ParticipantStatus": {
-        "enum": [
-          "present",
-          "needs_configuration"
-        ],
-        "type": "string"
-      },
-      "Retryability": {
-        "enum": [
-          "never",
-          "retry",
-          "after_user_action"
-        ],
-        "type": "string"
-      },
       "Room": {
-        "additionalProperties": false,
+        "type": "object",
         "properties": {
-          "content_epoch": {
-            "$ref": "#/$defs/DecimalString"
-          },
           "id": {
             "type": "string"
           },
@@ -359,136 +1273,285 @@
           },
           "version": {
             "$ref": "#/$defs/DecimalString"
+          },
+          "content_epoch": {
+            "$ref": "#/$defs/DecimalString"
           }
         },
+        "additionalProperties": false,
         "required": [
           "id",
           "name",
           "owner_participant_id",
           "version",
           "content_epoch"
-        ],
-        "type": "object"
+        ]
       },
-      "SchemaVersion": {
-        "enum": [
-          "0.3"
-        ],
-        "type": "string"
-      },
-      "Theme": {
-        "enum": [
-          "system",
-          "light",
-          "dark"
-        ],
-        "type": "string"
-      }
-    },
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "anyOf": [
-      {
-        "$ref": "#/$defs/ApiSuccess"
-      },
-      {
-        "$ref": "#/$defs/ApiFailure"
-      }
-    ],
-    "title": "ApiResponse"
-  },
-  "AppearanceSaveRequest": {
-    "$defs": {
       "DecimalString": {
+        "type": "string",
         "maxLength": 19,
-        "pattern": "^(0|[1-9][0-9]*)$",
-        "type": "string"
+        "pattern": "^(0|[1-9][0-9]*)$"
       },
-      "Theme": {
-        "enum": [
-          "system",
-          "light",
-          "dark"
-        ],
-        "type": "string"
-      }
-    },
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "additionalProperties": false,
-    "properties": {
-      "client_request_id": {
-        "type": "string"
-      },
-      "data_generation_id": {
-        "type": "string"
-      },
-      "expected_revision": {
-        "$ref": "#/$defs/DecimalString"
-      },
-      "reduce_motion": {
-        "type": "boolean"
-      },
-      "theme": {
-        "$ref": "#/$defs/Theme"
-      }
-    },
-    "required": [
-      "data_generation_id",
-      "client_request_id",
-      "expected_revision",
-      "theme",
-      "reduce_motion"
-    ],
-    "title": "AppearanceSaveRequest",
-    "type": "object"
-  },
-  "AppearanceSaveResponse": {
-    "$defs": {
-      "ApiFailure": {
-        "additionalProperties": false,
+      "Participant": {
+        "type": "object",
         "properties": {
-          "error": {
-            "$ref": "#/$defs/AppError"
+          "id": {
+            "type": "string"
           },
-          "schema_version": {
-            "$ref": "#/$defs/SchemaVersion"
-          }
-        },
-        "required": [
-          "schema_version",
-          "error"
-        ],
-        "type": "object"
-      },
-      "ApiSuccess": {
-        "additionalProperties": false,
-        "properties": {
-          "data": {
-            "$ref": "#/$defs/Appearance"
+          "kind": {
+            "$ref": "#/$defs/ParticipantKind"
           },
-          "schema_version": {
-            "$ref": "#/$defs/SchemaVersion"
-          }
-        },
-        "required": [
-          "schema_version",
-          "data"
-        ],
-        "type": "object"
-      },
-      "AppError": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "$ref": "#/$defs/ErrorCode"
+          "display_name": {
+            "type": "string"
           },
-          "field_path": {
+          "introduction": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/$defs/ParticipantStatus"
+          },
+          "is_builtin": {
+            "type": "boolean"
+          },
+          "avatar_id": {
             "type": [
               "string",
               "null"
+            ],
+            "default": null
+          },
+          "profile_revision": {
+            "$ref": "#/$defs/DecimalString",
+            "default": "1"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "display_name",
+          "introduction",
+          "status",
+          "is_builtin",
+          "avatar_id",
+          "profile_revision"
+        ]
+      },
+      "ParticipantKind": {
+        "type": "string",
+        "enum": [
+          "user",
+          "agent"
+        ]
+      },
+      "ParticipantStatus": {
+        "type": "string",
+        "enum": [
+          "present",
+          "needs_configuration"
+        ]
+      },
+      "Appearance": {
+        "type": "object",
+        "properties": {
+          "theme": {
+            "$ref": "#/$defs/Theme"
+          },
+          "reduce_motion": {
+            "type": "boolean"
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "theme",
+          "reduce_motion",
+          "revision"
+        ]
+      },
+      "Theme": {
+        "type": "string",
+        "enum": [
+          "system",
+          "light",
+          "dark"
+        ]
+      },
+      "DomainEvent": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data_generation_id": {
+            "type": "string"
+          },
+          "event_seq": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "event_id": {
+            "type": "string"
+          },
+          "occurred_at": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": -9007199254740991.0,
+            "maximum": 9007199254740991.0
+          },
+          "payload": {
+            "$ref": "#/$defs/EventPayload"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data_generation_id",
+          "event_seq",
+          "event_id",
+          "occurred_at",
+          "payload"
+        ]
+      },
+      "EventPayload": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "message_committed"
+              },
+              "message_id": {
+                "type": "string"
+              },
+              "message_seq": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "sender_id": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "message_id",
+              "message_seq",
+              "sender_id"
             ]
           },
-          "may_have_been_charged": {
-            "type": "boolean"
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "appearance_changed"
+              },
+              "appearance": {
+                "$ref": "#/$defs/Appearance"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "appearance"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "participant_profile_changed"
+              },
+              "participant": {
+                "$ref": "#/$defs/Participant"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "participant"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "agent_configuration_changed"
+              },
+              "agent_id": {
+                "type": "string"
+              },
+              "revision": {
+                "$ref": "#/$defs/DecimalString"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "agent_id",
+              "revision"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "global_configuration_changed"
+              },
+              "revision": {
+                "$ref": "#/$defs/DecimalString"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "revision"
+            ]
+          }
+        ]
+      },
+      "DataUsage": {
+        "type": "object",
+        "properties": {
+          "database_bytes": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "avatar_bytes": {
+            "$ref": "#/$defs/DecimalString"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "database_bytes",
+          "avatar_bytes"
+        ]
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
           },
           "message": {
             "type": "string"
@@ -496,10 +1559,20 @@
           "retryability": {
             "$ref": "#/$defs/Retryability"
           },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "trace_id": {
             "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
           }
         },
+        "additionalProperties": false,
         "required": [
           "code",
           "message",
@@ -507,35 +1580,10 @@
           "field_path",
           "trace_id",
           "may_have_been_charged"
-        ],
-        "type": "object"
-      },
-      "Appearance": {
-        "additionalProperties": false,
-        "properties": {
-          "reduce_motion": {
-            "type": "boolean"
-          },
-          "revision": {
-            "$ref": "#/$defs/DecimalString"
-          },
-          "theme": {
-            "$ref": "#/$defs/Theme"
-          }
-        },
-        "required": [
-          "theme",
-          "reduce_motion",
-          "revision"
-        ],
-        "type": "object"
-      },
-      "DecimalString": {
-        "maxLength": 19,
-        "pattern": "^(0|[1-9][0-9]*)$",
-        "type": "string"
+        ]
       },
       "ErrorCode": {
+        "type": "string",
         "enum": [
           "INVALID_INPUT",
           "PERMISSION_DENIED",
@@ -555,33 +1603,66 @@
           "SEARCH_TIMEOUT",
           "CAPABILITY_UNSUPPORTED",
           "INTERNAL_ERROR"
-        ],
-        "type": "string"
+        ]
       },
       "Retryability": {
+        "type": "string",
         "enum": [
           "never",
           "retry",
           "after_user_action"
-        ],
+        ]
+      }
+    }
+  },
+  "AppearanceSaveRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "AppearanceSaveRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
         "type": "string"
       },
-      "SchemaVersion": {
-        "enum": [
-          "0.3"
-        ],
+      "client_request_id": {
         "type": "string"
+      },
+      "expected_revision": {
+        "$ref": "#/$defs/DecimalString"
+      },
+      "theme": {
+        "$ref": "#/$defs/Theme"
+      },
+      "reduce_motion": {
+        "type": "boolean"
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "data_generation_id",
+      "client_request_id",
+      "expected_revision",
+      "theme",
+      "reduce_motion"
+    ],
+    "$defs": {
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
       },
       "Theme": {
+        "type": "string",
         "enum": [
           "system",
           "light",
           "dark"
-        ],
-        "type": "string"
+        ]
       }
-    },
+    }
+  },
+  "AppearanceSaveResponse": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
     "anyOf": [
       {
         "$ref": "#/$defs/ApiSuccess"
@@ -590,11 +1671,479 @@
         "$ref": "#/$defs/ApiFailure"
       }
     ],
-    "title": "ApiResponse"
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "$ref": "#/$defs/Appearance"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "Appearance": {
+        "type": "object",
+        "properties": {
+          "theme": {
+            "$ref": "#/$defs/Theme"
+          },
+          "reduce_motion": {
+            "type": "boolean"
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "theme",
+          "reduce_motion",
+          "revision"
+        ]
+      },
+      "Theme": {
+        "type": "string",
+        "enum": [
+          "system",
+          "light",
+          "dark"
+        ]
+      },
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
+  },
+  "AvatarImportRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "AvatarImportRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "data_generation_id"
+    ]
+  },
+  "AvatarImportResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/AvatarObject"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "AvatarObject": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "width": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "height": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "byte_size": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "mime_type",
+          "width",
+          "height",
+          "byte_size"
+        ]
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
+  },
+  "AvatarReadRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "AvatarReadRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      },
+      "avatar_id": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "data_generation_id",
+      "avatar_id"
+    ]
+  },
+  "AvatarReadResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "$ref": "#/$defs/AvatarData"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "AvatarData": {
+        "type": "object",
+        "properties": {
+          "avatar_id": {
+            "type": "string"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "data_base64": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "avatar_id",
+          "mime_type",
+          "data_base64"
+        ]
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
   },
   "CancelSearchRequest": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "additionalProperties": false,
+    "title": "CancelSearchRequest",
+    "type": "object",
     "properties": {
       "data_generation_id": {
         "type": "string"
@@ -603,61 +2152,83 @@
         "type": "string"
       }
     },
+    "additionalProperties": false,
     "required": [
       "data_generation_id",
       "search_id"
-    ],
-    "title": "CancelSearchRequest",
-    "type": "object"
+    ]
   },
   "CancelSearchResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
     "$defs": {
-      "ApiFailure": {
-        "additionalProperties": false,
+      "ApiSuccess": {
+        "type": "object",
         "properties": {
-          "error": {
-            "$ref": "#/$defs/AppError"
-          },
           "schema_version": {
             "$ref": "#/$defs/SchemaVersion"
-          }
-        },
-        "required": [
-          "schema_version",
-          "error"
-        ],
-        "type": "object"
-      },
-      "ApiSuccess": {
-        "additionalProperties": false,
-        "properties": {
+          },
           "data": {
             "$ref": "#/$defs/CancelSearchResult"
-          },
-          "schema_version": {
-            "$ref": "#/$defs/SchemaVersion"
           }
         },
+        "additionalProperties": false,
         "required": [
           "schema_version",
           "data"
-        ],
-        "type": "object"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "CancelSearchResult": {
+        "type": "object",
+        "properties": {
+          "search_id": {
+            "type": "string"
+          },
+          "cancellation_requested": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "search_id",
+          "cancellation_requested"
+        ]
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
       },
       "AppError": {
-        "additionalProperties": false,
+        "type": "object",
         "properties": {
           "code": {
             "$ref": "#/$defs/ErrorCode"
-          },
-          "field_path": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "may_have_been_charged": {
-            "type": "boolean"
           },
           "message": {
             "type": "string"
@@ -665,10 +2236,20 @@
           "retryability": {
             "$ref": "#/$defs/Retryability"
           },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "trace_id": {
             "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
           }
         },
+        "additionalProperties": false,
         "required": [
           "code",
           "message",
@@ -676,26 +2257,10 @@
           "field_path",
           "trace_id",
           "may_have_been_charged"
-        ],
-        "type": "object"
-      },
-      "CancelSearchResult": {
-        "additionalProperties": false,
-        "properties": {
-          "cancellation_requested": {
-            "type": "boolean"
-          },
-          "search_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "search_id",
-          "cancellation_requested"
-        ],
-        "type": "object"
+        ]
       },
       "ErrorCode": {
+        "type": "string",
         "enum": [
           "INVALID_INPUT",
           "PERMISSION_DENIED",
@@ -715,46 +2280,37 @@
           "SEARCH_TIMEOUT",
           "CAPABILITY_UNSUPPORTED",
           "INTERNAL_ERROR"
-        ],
-        "type": "string"
+        ]
       },
       "Retryability": {
+        "type": "string",
         "enum": [
           "never",
           "retry",
           "after_user_action"
-        ],
-        "type": "string"
-      },
-      "SchemaVersion": {
-        "enum": [
-          "0.3"
-        ],
-        "type": "string"
+        ]
       }
-    },
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "anyOf": [
-      {
-        "$ref": "#/$defs/ApiSuccess"
-      },
-      {
-        "$ref": "#/$defs/ApiFailure"
-      }
-    ],
-    "title": "ApiResponse"
+    }
   },
   "ChatListRequest": {
-    "$defs": {
-      "DecimalString": {
-        "maxLength": 19,
-        "pattern": "^(0|[1-9][0-9]*)$",
-        "type": "string"
-      }
-    },
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "additionalProperties": false,
+    "title": "ChatListRequest",
+    "type": "object",
     "properties": {
+      "data_generation_id": {
+        "type": "string"
+      },
+      "before_seq": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/DecimalString"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
       "after_seq": {
         "anyOf": [
           {
@@ -777,196 +2333,71 @@
         ],
         "default": null
       },
-      "before_seq": {
-        "anyOf": [
-          {
-            "$ref": "#/$defs/DecimalString"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null
-      },
-      "data_generation_id": {
-        "type": "string"
-      },
       "limit": {
+        "type": "integer",
         "format": "uint32",
-        "maximum": 200,
         "minimum": 1,
-        "type": "integer"
+        "maximum": 200
       }
     },
+    "additionalProperties": false,
     "required": [
       "data_generation_id",
       "limit"
     ],
-    "title": "ChatListRequest",
-    "type": "object"
+    "$defs": {
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      }
+    }
   },
   "ChatListResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
     "$defs": {
-      "ApiFailure": {
-        "additionalProperties": false,
+      "ApiSuccess": {
+        "type": "object",
         "properties": {
-          "error": {
-            "$ref": "#/$defs/AppError"
-          },
           "schema_version": {
             "$ref": "#/$defs/SchemaVersion"
-          }
-        },
-        "required": [
-          "schema_version",
-          "error"
-        ],
-        "type": "object"
-      },
-      "ApiSuccess": {
-        "additionalProperties": false,
-        "properties": {
+          },
           "data": {
             "$ref": "#/$defs/MessagePage"
-          },
-          "schema_version": {
-            "$ref": "#/$defs/SchemaVersion"
           }
         },
+        "additionalProperties": false,
         "required": [
           "schema_version",
           "data"
-        ],
-        "type": "object"
+        ]
       },
-      "AppError": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "$ref": "#/$defs/ErrorCode"
-          },
-          "field_path": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "may_have_been_charged": {
-            "type": "boolean"
-          },
-          "message": {
-            "type": "string"
-          },
-          "retryability": {
-            "$ref": "#/$defs/Retryability"
-          },
-          "trace_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "code",
-          "message",
-          "retryability",
-          "field_path",
-          "trace_id",
-          "may_have_been_charged"
-        ],
-        "type": "object"
-      },
-      "ChatMessage": {
-        "additionalProperties": false,
-        "properties": {
-          "created_at": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "type": "integer"
-          },
-          "id": {
-            "type": "string"
-          },
-          "mention_all": {
-            "type": "boolean"
-          },
-          "mention_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "parts": {
-            "items": {
-              "$ref": "#/$defs/MessagePart"
-            },
-            "type": "array"
-          },
-          "quote_message_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "sender_id": {
-            "type": "string"
-          },
-          "sender_snapshot": {
-            "$ref": "#/$defs/SenderSnapshot"
-          },
-          "seq": {
-            "$ref": "#/$defs/DecimalString"
-          },
-          "state": {
-            "$ref": "#/$defs/MessageState"
-          }
-        },
-        "required": [
-          "id",
-          "seq",
-          "sender_id",
-          "sender_snapshot",
-          "created_at",
-          "state",
-          "parts",
-          "quote_message_id",
-          "mention_ids",
-          "mention_all"
-        ],
-        "type": "object"
-      },
-      "DecimalString": {
-        "maxLength": 19,
-        "pattern": "^(0|[1-9][0-9]*)$",
-        "type": "string"
-      },
-      "ErrorCode": {
+      "SchemaVersion": {
+        "type": "string",
         "enum": [
-          "INVALID_INPUT",
-          "PERMISSION_DENIED",
-          "DATA_GENERATION_CHANGED",
-          "IDEMPOTENCY_CONFLICT",
-          "CONFIG_CONFLICT",
-          "BACKPRESSURE",
-          "SHUTTING_DOWN",
-          "DB_BUSY",
-          "DB_CORRUPT",
-          "DISK_FULL",
-          "IO_ERROR",
-          "SCHEMA_UNSUPPORTED",
-          "DATA_ROOT_INVALID",
-          "MESSAGE_NOT_FOUND",
-          "SEARCH_CANCELLED",
-          "SEARCH_TIMEOUT",
-          "CAPABILITY_UNSUPPORTED",
-          "INTERNAL_ERROR"
-        ],
-        "type": "string"
+          "0.3"
+        ]
       },
       "MessagePage": {
-        "additionalProperties": false,
+        "type": "object",
         "properties": {
           "data_generation_id": {
             "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/ChatMessage"
+            }
           },
           "first_seq": {
             "anyOf": [
@@ -978,18 +2409,6 @@
               }
             ]
           },
-          "has_more_after": {
-            "type": "boolean"
-          },
-          "has_more_before": {
-            "type": "boolean"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/$defs/ChatMessage"
-            },
-            "type": "array"
-          },
           "last_seq": {
             "anyOf": [
               {
@@ -1000,13 +2419,20 @@
               }
             ]
           },
-          "latest_event_seq": {
-            "$ref": "#/$defs/DecimalString"
+          "has_more_before": {
+            "type": "boolean"
+          },
+          "has_more_after": {
+            "type": "boolean"
           },
           "latest_message_seq": {
             "$ref": "#/$defs/DecimalString"
+          },
+          "latest_event_seq": {
+            "$ref": "#/$defs/DecimalString"
           }
         },
+        "additionalProperties": false,
         "required": [
           "data_generation_id",
           "items",
@@ -1016,207 +2442,188 @@
           "has_more_after",
           "latest_message_seq",
           "latest_event_seq"
-        ],
-        "type": "object"
-      },
-      "MessagePart": {
-        "oneOf": [
-          {
-            "additionalProperties": false,
-            "properties": {
-              "kind": {
-                "const": "text",
-                "type": "string"
-              },
-              "text": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind",
-              "text"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "attachment_id": {
-                "type": "string"
-              },
-              "kind": {
-                "const": "attachment",
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind",
-              "attachment_id"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "emote_id": {
-                "type": "string"
-              },
-              "kind": {
-                "const": "emote",
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind",
-              "emote_id"
-            ],
-            "type": "object"
-          }
         ]
       },
-      "MessageState": {
-        "enum": [
-          "visible",
-          "recalled",
-          "deleted"
-        ],
-        "type": "string"
+      "ChatMessage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "seq": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "sender_id": {
+            "type": "string"
+          },
+          "sender_snapshot": {
+            "$ref": "#/$defs/SenderSnapshot"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": -9007199254740991.0,
+            "maximum": 9007199254740991.0
+          },
+          "state": {
+            "$ref": "#/$defs/MessageState"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/MessagePart"
+            }
+          },
+          "quote_message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mention_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mention_all": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "seq",
+          "sender_id",
+          "sender_snapshot",
+          "created_at",
+          "state",
+          "parts",
+          "quote_message_id",
+          "mention_ids",
+          "mention_all"
+        ]
       },
-      "ParticipantKind": {
-        "enum": [
-          "user",
-          "agent"
-        ],
-        "type": "string"
-      },
-      "Retryability": {
-        "enum": [
-          "never",
-          "retry",
-          "after_user_action"
-        ],
-        "type": "string"
-      },
-      "SchemaVersion": {
-        "enum": [
-          "0.3"
-        ],
-        "type": "string"
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
       },
       "SenderSnapshot": {
-        "additionalProperties": false,
+        "type": "object",
         "properties": {
           "display_name": {
             "type": "string"
           },
           "kind": {
             "$ref": "#/$defs/ParticipantKind"
-          }
-        },
-        "required": [
-          "display_name",
-          "kind"
-        ],
-        "type": "object"
-      }
-    },
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "anyOf": [
-      {
-        "$ref": "#/$defs/ApiSuccess"
-      },
-      {
-        "$ref": "#/$defs/ApiFailure"
-      }
-    ],
-    "title": "ApiResponse"
-  },
-  "ChatSearchRequest": {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "additionalProperties": false,
-    "properties": {
-      "cursor": {
-        "default": null,
-        "type": [
-          "string",
-          "null"
-        ]
-      },
-      "data_generation_id": {
-        "type": "string"
-      },
-      "limit": {
-        "format": "uint32",
-        "maximum": 200,
-        "minimum": 1,
-        "type": "integer"
-      },
-      "query": {
-        "maxLength": 256,
-        "minLength": 1,
-        "type": "string"
-      },
-      "search_id": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "data_generation_id",
-      "search_id",
-      "query",
-      "limit"
-    ],
-    "title": "ChatSearchRequest",
-    "type": "object"
-  },
-  "ChatSearchResponse": {
-    "$defs": {
-      "ApiFailure": {
-        "additionalProperties": false,
-        "properties": {
-          "error": {
-            "$ref": "#/$defs/AppError"
           },
-          "schema_version": {
-            "$ref": "#/$defs/SchemaVersion"
-          }
-        },
-        "required": [
-          "schema_version",
-          "error"
-        ],
-        "type": "object"
-      },
-      "ApiSuccess": {
-        "additionalProperties": false,
-        "properties": {
-          "data": {
-            "$ref": "#/$defs/SearchPage"
-          },
-          "schema_version": {
-            "$ref": "#/$defs/SchemaVersion"
-          }
-        },
-        "required": [
-          "schema_version",
-          "data"
-        ],
-        "type": "object"
-      },
-      "AppError": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "$ref": "#/$defs/ErrorCode"
-          },
-          "field_path": {
+          "avatar_id": {
             "type": [
               "string",
               "null"
+            ],
+            "default": null
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "display_name",
+          "kind",
+          "avatar_id"
+        ]
+      },
+      "ParticipantKind": {
+        "type": "string",
+        "enum": [
+          "user",
+          "agent"
+        ]
+      },
+      "MessageState": {
+        "type": "string",
+        "enum": [
+          "visible",
+          "recalled",
+          "deleted"
+        ]
+      },
+      "MessagePart": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "text"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "text"
             ]
           },
-          "may_have_been_charged": {
-            "type": "boolean"
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "attachment"
+              },
+              "attachment_id": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "attachment_id"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "emote"
+              },
+              "emote_id": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "emote_id"
+            ]
+          }
+        ]
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
           },
           "message": {
             "type": "string"
@@ -1224,10 +2631,20 @@
           "retryability": {
             "$ref": "#/$defs/Retryability"
           },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "trace_id": {
             "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
           }
         },
+        "additionalProperties": false,
         "required": [
           "code",
           "message",
@@ -1235,15 +2652,10 @@
           "field_path",
           "trace_id",
           "may_have_been_charged"
-        ],
-        "type": "object"
-      },
-      "DecimalString": {
-        "maxLength": 19,
-        "pattern": "^(0|[1-9][0-9]*)$",
-        "type": "string"
+        ]
       },
       "ErrorCode": {
+        "type": "string",
         "enum": [
           "INVALID_INPUT",
           "PERMISSION_DENIED",
@@ -1263,85 +2675,122 @@
           "SEARCH_TIMEOUT",
           "CAPABILITY_UNSUPPORTED",
           "INTERNAL_ERROR"
-        ],
-        "type": "string"
+        ]
       },
       "Retryability": {
+        "type": "string",
         "enum": [
           "never",
           "retry",
           "after_user_action"
-        ],
+        ]
+      }
+    }
+  },
+  "ChatSearchRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ChatSearchRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
         "type": "string"
       },
-      "SchemaVersion": {
-        "enum": [
-          "0.3"
-        ],
+      "search_id": {
         "type": "string"
       },
-      "SearchHit": {
-        "additionalProperties": false,
+      "query": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "cursor": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "default": null
+      },
+      "limit": {
+        "type": "integer",
+        "format": "uint32",
+        "minimum": 1,
+        "maximum": 200
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "data_generation_id",
+      "search_id",
+      "query",
+      "limit"
+    ]
+  },
+  "ChatSearchResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
         "properties": {
-          "created_at": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
-            "type": "integer"
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
           },
-          "message_id": {
-            "type": "string"
-          },
-          "sender_display_name": {
-            "type": "string"
-          },
-          "seq": {
-            "$ref": "#/$defs/DecimalString"
-          },
-          "snippet": {
-            "type": "string"
+          "data": {
+            "$ref": "#/$defs/SearchPage"
           }
         },
+        "additionalProperties": false,
         "required": [
-          "message_id",
-          "seq",
-          "sender_display_name",
-          "snippet",
-          "created_at"
-        ],
-        "type": "object"
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
       },
       "SearchPage": {
-        "additionalProperties": false,
+        "type": "object",
         "properties": {
           "data_generation_id": {
             "type": "string"
           },
-          "has_more": {
-            "type": "boolean"
+          "search_id": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "semantics": {
+            "$ref": "#/$defs/SearchSemantics"
           },
           "items": {
+            "type": "array",
             "items": {
               "$ref": "#/$defs/SearchHit"
-            },
-            "type": "array"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
           },
           "next_cursor": {
             "type": [
               "string",
               "null"
             ]
-          },
-          "query": {
-            "type": "string"
-          },
-          "search_id": {
-            "type": "string"
-          },
-          "semantics": {
-            "$ref": "#/$defs/SearchSemantics"
           }
         },
+        "additionalProperties": false,
         "required": [
           "data_generation_id",
           "search_id",
@@ -1350,175 +2799,71 @@
           "items",
           "has_more",
           "next_cursor"
-        ],
-        "type": "object"
+        ]
       },
       "SearchSemantics": {
+        "type": "string",
         "enum": [
           "literal_unicode_substring"
-        ],
-        "type": "string"
-      }
-    },
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "anyOf": [
-      {
-        "$ref": "#/$defs/ApiSuccess"
-      },
-      {
-        "$ref": "#/$defs/ApiFailure"
-      }
-    ],
-    "title": "ApiResponse"
-  },
-  "ChatSendRequest": {
-    "$defs": {
-      "MessagePart": {
-        "oneOf": [
-          {
-            "additionalProperties": false,
-            "properties": {
-              "kind": {
-                "const": "text",
-                "type": "string"
-              },
-              "text": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind",
-              "text"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "attachment_id": {
-                "type": "string"
-              },
-              "kind": {
-                "const": "attachment",
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind",
-              "attachment_id"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
-              "emote_id": {
-                "type": "string"
-              },
-              "kind": {
-                "const": "emote",
-                "type": "string"
-              }
-            },
-            "required": [
-              "kind",
-              "emote_id"
-            ],
-            "type": "object"
-          }
         ]
-      }
-    },
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "additionalProperties": false,
-    "properties": {
-      "client_request_id": {
-        "type": "string"
       },
-      "data_generation_id": {
-        "type": "string"
-      },
-      "mention_all": {
-        "type": "boolean"
-      },
-      "mention_ids": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      },
-      "parts": {
-        "items": {
-          "$ref": "#/$defs/MessagePart"
-        },
-        "type": "array"
-      },
-      "quote_message_id": {
-        "default": null,
-        "type": [
-          "string",
-          "null"
-        ]
-      }
-    },
-    "required": [
-      "data_generation_id",
-      "client_request_id",
-      "parts",
-      "mention_ids",
-      "mention_all"
-    ],
-    "title": "ChatSendRequest",
-    "type": "object"
-  },
-  "ChatSendResponse": {
-    "$defs": {
-      "ApiFailure": {
-        "additionalProperties": false,
+      "SearchHit": {
+        "type": "object",
         "properties": {
-          "error": {
-            "$ref": "#/$defs/AppError"
+          "message_id": {
+            "type": "string"
           },
+          "seq": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "sender_display_name": {
+            "type": "string"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": -9007199254740991.0,
+            "maximum": 9007199254740991.0
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "message_id",
+          "seq",
+          "sender_display_name",
+          "snippet",
+          "created_at"
+        ]
+      },
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
           "schema_version": {
             "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
           }
         },
+        "additionalProperties": false,
         "required": [
           "schema_version",
           "error"
-        ],
-        "type": "object"
-      },
-      "ApiSuccess": {
-        "additionalProperties": false,
-        "properties": {
-          "data": {
-            "$ref": "#/$defs/ChatSendResult"
-          },
-          "schema_version": {
-            "$ref": "#/$defs/SchemaVersion"
-          }
-        },
-        "required": [
-          "schema_version",
-          "data"
-        ],
-        "type": "object"
+        ]
       },
       "AppError": {
-        "additionalProperties": false,
+        "type": "object",
         "properties": {
           "code": {
             "$ref": "#/$defs/ErrorCode"
-          },
-          "field_path": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "may_have_been_charged": {
-            "type": "boolean"
           },
           "message": {
             "type": "string"
@@ -1526,10 +2871,20 @@
           "retryability": {
             "$ref": "#/$defs/Retryability"
           },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "trace_id": {
             "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
           }
         },
+        "additionalProperties": false,
         "required": [
           "code",
           "message",
@@ -1537,39 +2892,10 @@
           "field_path",
           "trace_id",
           "may_have_been_charged"
-        ],
-        "type": "object"
-      },
-      "ChatSendResult": {
-        "additionalProperties": false,
-        "properties": {
-          "data_generation_id": {
-            "type": "string"
-          },
-          "event_seq": {
-            "$ref": "#/$defs/DecimalString"
-          },
-          "message_id": {
-            "type": "string"
-          },
-          "message_seq": {
-            "$ref": "#/$defs/DecimalString"
-          }
-        },
-        "required": [
-          "data_generation_id",
-          "message_id",
-          "message_seq",
-          "event_seq"
-        ],
-        "type": "object"
-      },
-      "DecimalString": {
-        "maxLength": 19,
-        "pattern": "^(0|[1-9][0-9]*)$",
-        "type": "string"
+        ]
       },
       "ErrorCode": {
+        "type": "string",
         "enum": [
           "INVALID_INPUT",
           "PERMISSION_DENIED",
@@ -1589,25 +2915,121 @@
           "SEARCH_TIMEOUT",
           "CAPABILITY_UNSUPPORTED",
           "INTERNAL_ERROR"
-        ],
-        "type": "string"
+        ]
       },
       "Retryability": {
+        "type": "string",
         "enum": [
           "never",
           "retry",
           "after_user_action"
-        ],
+        ]
+      }
+    }
+  },
+  "ChatSendRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ChatSendRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
         "type": "string"
       },
-      "SchemaVersion": {
-        "enum": [
-          "0.3"
-        ],
+      "client_request_id": {
         "type": "string"
+      },
+      "parts": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/MessagePart"
+        }
+      },
+      "quote_message_id": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "default": null
+      },
+      "mention_ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "mention_all": {
+        "type": "boolean"
       }
     },
+    "additionalProperties": false,
+    "required": [
+      "data_generation_id",
+      "client_request_id",
+      "parts",
+      "mention_ids",
+      "mention_all"
+    ],
+    "$defs": {
+      "MessagePart": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "text"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "text"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "attachment"
+              },
+              "attachment_id": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "attachment_id"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "emote"
+              },
+              "emote_id": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "emote_id"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "ChatSendResponse": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
     "anyOf": [
       {
         "$ref": "#/$defs/ApiSuccess"
@@ -1616,43 +3038,579 @@
         "$ref": "#/$defs/ApiFailure"
       }
     ],
-    "title": "ApiResponse"
-  },
-  "DomainEvent": {
     "$defs": {
-      "Appearance": {
-        "additionalProperties": false,
+      "ApiSuccess": {
+        "type": "object",
         "properties": {
-          "reduce_motion": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "$ref": "#/$defs/ChatSendResult"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "ChatSendResult": {
+        "type": "object",
+        "properties": {
+          "data_generation_id": {
+            "type": "string"
+          },
+          "message_id": {
+            "type": "string"
+          },
+          "message_seq": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "event_seq": {
+            "$ref": "#/$defs/DecimalString"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "data_generation_id",
+          "message_id",
+          "message_seq",
+          "event_seq"
+        ]
+      },
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
             "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
+  },
+  "DevelopmentModelImportRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "DevelopmentModelImportRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "data_generation_id"
+    ]
+  },
+  "DevelopmentModelImportResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "$ref": "#/$defs/GlobalConfiguration"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "GlobalConfiguration": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "model_profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/ModelProfile"
+            }
+          },
+          "persona_presets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/PersonaPreset"
+            }
+          },
+          "runtime_defaults": {
+            "$ref": "#/$defs/AgentPreferences"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "revision",
+          "model_profiles",
+          "persona_presets",
+          "runtime_defaults"
+        ]
+      },
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      },
+      "ModelProfile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "protocol": {
+            "$ref": "#/$defs/ModelProtocol"
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "model_name": {
+            "type": "string"
+          },
+          "parameters": {
+            "$ref": "#/$defs/ModelParameters"
           },
           "revision": {
             "$ref": "#/$defs/DecimalString"
           },
-          "theme": {
-            "$ref": "#/$defs/Theme"
+          "credential_configured": {
+            "type": "boolean"
           }
         },
+        "additionalProperties": false,
         "required": [
-          "theme",
-          "reduce_motion",
+          "id",
+          "name",
+          "protocol",
+          "base_url",
+          "model_name",
+          "parameters",
+          "revision",
+          "credential_configured"
+        ]
+      },
+      "ModelProtocol": {
+        "type": "string",
+        "enum": [
+          "openai_chat_completions",
+          "anthropic_messages",
+          "openai_responses"
+        ]
+      },
+      "ModelParameters": {
+        "type": "object",
+        "properties": {
+          "temperature": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0.0,
+            "maximum": 2.0
+          },
+          "top_p": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 1,
+            "maximum": 32768
+          },
+          "input_budget": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 256,
+            "maximum": 128000
+          },
+          "reasoning": {
+            "$ref": "#/$defs/ReasoningMode"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "temperature",
+          "top_p",
+          "max_output_tokens",
+          "input_budget",
+          "reasoning"
+        ]
+      },
+      "ReasoningMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "enabled"
+        ]
+      },
+      "PersonaPreset": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "language_style": {
+            "type": "string"
+          },
+          "address_terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skill": {
+            "type": "string"
+          },
+          "dimensions": {
+            "$ref": "#/$defs/PersonaDimensions"
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "language_style",
+          "address_terms",
+          "skill",
+          "dimensions",
           "revision"
-        ],
-        "type": "object"
+        ]
+      },
+      "PersonaDimensions": {
+        "type": "object",
+        "properties": {
+          "professional": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "formal": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "casual": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "humor": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "direct": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "empathy": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "social_energy": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "professional",
+          "formal",
+          "casual",
+          "humor",
+          "direct",
+          "empathy",
+          "social_energy"
+        ]
+      },
+      "AgentPreferences": {
+        "type": "object",
+        "properties": {
+          "request_limit_daily": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 1,
+            "maximum": 5000
+          },
+          "persistent_memory": {
+            "type": "boolean"
+          },
+          "allow_autonomous_wake": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "request_limit_daily",
+          "persistent_memory",
+          "allow_autonomous_wake"
+        ]
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
+  },
+  "DomainEvent": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "DomainEvent",
+    "type": "object",
+    "properties": {
+      "schema_version": {
+        "$ref": "#/$defs/SchemaVersion"
+      },
+      "data_generation_id": {
+        "type": "string"
+      },
+      "event_seq": {
+        "$ref": "#/$defs/DecimalString"
+      },
+      "event_id": {
+        "type": "string"
+      },
+      "occurred_at": {
+        "type": "integer",
+        "format": "int64",
+        "minimum": -9007199254740991.0,
+        "maximum": 9007199254740991.0
+      },
+      "payload": {
+        "$ref": "#/$defs/EventPayload"
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "schema_version",
+      "data_generation_id",
+      "event_seq",
+      "event_id",
+      "occurred_at",
+      "payload"
+    ],
+    "$defs": {
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
       },
       "DecimalString": {
+        "type": "string",
         "maxLength": 19,
-        "pattern": "^(0|[1-9][0-9]*)$",
-        "type": "string"
+        "pattern": "^(0|[1-9][0-9]*)$"
       },
       "EventPayload": {
         "oneOf": [
           {
-            "additionalProperties": false,
+            "type": "object",
             "properties": {
               "kind": {
-                "const": "message_committed",
-                "type": "string"
+                "type": "string",
+                "const": "message_committed"
               },
               "message_id": {
                 "type": "string"
@@ -1664,147 +3622,259 @@
                 "type": "string"
               }
             },
+            "additionalProperties": false,
             "required": [
               "kind",
               "message_id",
               "message_seq",
               "sender_id"
-            ],
-            "type": "object"
+            ]
           },
           {
-            "additionalProperties": false,
+            "type": "object",
             "properties": {
+              "kind": {
+                "type": "string",
+                "const": "appearance_changed"
+              },
               "appearance": {
                 "$ref": "#/$defs/Appearance"
-              },
-              "kind": {
-                "const": "appearance_changed",
-                "type": "string"
               }
             },
+            "additionalProperties": false,
             "required": [
               "kind",
               "appearance"
-            ],
-            "type": "object"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "participant_profile_changed"
+              },
+              "participant": {
+                "$ref": "#/$defs/Participant"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "participant"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "agent_configuration_changed"
+              },
+              "agent_id": {
+                "type": "string"
+              },
+              "revision": {
+                "$ref": "#/$defs/DecimalString"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "agent_id",
+              "revision"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "global_configuration_changed"
+              },
+              "revision": {
+                "$ref": "#/$defs/DecimalString"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "revision"
+            ]
           }
         ]
       },
-      "SchemaVersion": {
-        "enum": [
-          "0.3"
-        ],
-        "type": "string"
+      "Appearance": {
+        "type": "object",
+        "properties": {
+          "theme": {
+            "$ref": "#/$defs/Theme"
+          },
+          "reduce_motion": {
+            "type": "boolean"
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "theme",
+          "reduce_motion",
+          "revision"
+        ]
       },
       "Theme": {
+        "type": "string",
         "enum": [
           "system",
           "light",
           "dark"
-        ],
-        "type": "string"
-      }
-    },
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "additionalProperties": false,
-    "properties": {
-      "data_generation_id": {
-        "type": "string"
-      },
-      "event_id": {
-        "type": "string"
-      },
-      "event_seq": {
-        "$ref": "#/$defs/DecimalString"
-      },
-      "occurred_at": {
-        "format": "int64",
-        "maximum": 9007199254740991.0,
-        "minimum": -9007199254740991.0,
-        "type": "integer"
-      },
-      "payload": {
-        "$ref": "#/$defs/EventPayload"
-      },
-      "schema_version": {
-        "$ref": "#/$defs/SchemaVersion"
-      }
-    },
-    "required": [
-      "schema_version",
-      "data_generation_id",
-      "event_seq",
-      "event_id",
-      "occurred_at",
-      "payload"
-    ],
-    "title": "DomainEvent",
-    "type": "object"
-  },
-  "ExitRequest": {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "additionalProperties": false,
-    "properties": {
-      "data_generation_id": {
-        "default": null,
-        "type": [
-          "string",
-          "null"
         ]
-      }
-    },
-    "title": "ExitRequest",
-    "type": "object"
-  },
-  "ExitResponse": {
-    "$defs": {
-      "ApiFailure": {
-        "additionalProperties": false,
-        "properties": {
-          "error": {
-            "$ref": "#/$defs/AppError"
-          },
-          "schema_version": {
-            "$ref": "#/$defs/SchemaVersion"
-          }
-        },
-        "required": [
-          "schema_version",
-          "error"
-        ],
-        "type": "object"
       },
-      "ApiSuccess": {
-        "additionalProperties": false,
+      "Participant": {
+        "type": "object",
         "properties": {
-          "data": {
-            "$ref": "#/$defs/ExitResult"
+          "id": {
+            "type": "string"
           },
-          "schema_version": {
-            "$ref": "#/$defs/SchemaVersion"
-          }
-        },
-        "required": [
-          "schema_version",
-          "data"
-        ],
-        "type": "object"
-      },
-      "AppError": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "$ref": "#/$defs/ErrorCode"
+          "kind": {
+            "$ref": "#/$defs/ParticipantKind"
           },
-          "field_path": {
+          "display_name": {
+            "type": "string"
+          },
+          "introduction": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/$defs/ParticipantStatus"
+          },
+          "is_builtin": {
+            "type": "boolean"
+          },
+          "avatar_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "default": null
           },
-          "may_have_been_charged": {
+          "profile_revision": {
+            "$ref": "#/$defs/DecimalString",
+            "default": "1"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "display_name",
+          "introduction",
+          "status",
+          "is_builtin",
+          "avatar_id",
+          "profile_revision"
+        ]
+      },
+      "ParticipantKind": {
+        "type": "string",
+        "enum": [
+          "user",
+          "agent"
+        ]
+      },
+      "ParticipantStatus": {
+        "type": "string",
+        "enum": [
+          "present",
+          "needs_configuration"
+        ]
+      }
+    }
+  },
+  "ExitRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ExitRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "default": null
+      }
+    },
+    "additionalProperties": false
+  },
+  "ExitResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "$ref": "#/$defs/ExitResult"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "ExitResult": {
+        "type": "object",
+        "properties": {
+          "shutting_down": {
             "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "shutting_down"
+        ]
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
           },
           "message": {
             "type": "string"
@@ -1812,10 +3882,20 @@
           "retryability": {
             "$ref": "#/$defs/Retryability"
           },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "trace_id": {
             "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
           }
         },
+        "additionalProperties": false,
         "required": [
           "code",
           "message",
@@ -1823,10 +3903,10 @@
           "field_path",
           "trace_id",
           "may_have_been_charged"
-        ],
-        "type": "object"
+        ]
       },
       "ErrorCode": {
+        "type": "string",
         "enum": [
           "INVALID_INPUT",
           "PERMISSION_DENIED",
@@ -1846,37 +3926,35 @@
           "SEARCH_TIMEOUT",
           "CAPABILITY_UNSUPPORTED",
           "INTERNAL_ERROR"
-        ],
-        "type": "string"
-      },
-      "ExitResult": {
-        "additionalProperties": false,
-        "properties": {
-          "shutting_down": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "shutting_down"
-        ],
-        "type": "object"
+        ]
       },
       "Retryability": {
+        "type": "string",
         "enum": [
           "never",
           "retry",
           "after_user_action"
-        ],
-        "type": "string"
-      },
-      "SchemaVersion": {
-        "enum": [
-          "0.3"
-        ],
+        ]
+      }
+    }
+  },
+  "GlobalConfigurationGetRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "GlobalConfigurationGetRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
         "type": "string"
       }
     },
+    "additionalProperties": false,
+    "required": [
+      "data_generation_id"
+    ]
+  },
+  "GlobalConfigurationGetResponse": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
     "anyOf": [
       {
         "$ref": "#/$defs/ApiSuccess"
@@ -1885,6 +3963,2052 @@
         "$ref": "#/$defs/ApiFailure"
       }
     ],
-    "title": "ApiResponse"
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "$ref": "#/$defs/GlobalConfiguration"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "GlobalConfiguration": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "model_profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/ModelProfile"
+            }
+          },
+          "persona_presets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/PersonaPreset"
+            }
+          },
+          "runtime_defaults": {
+            "$ref": "#/$defs/AgentPreferences"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "revision",
+          "model_profiles",
+          "persona_presets",
+          "runtime_defaults"
+        ]
+      },
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      },
+      "ModelProfile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "protocol": {
+            "$ref": "#/$defs/ModelProtocol"
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "model_name": {
+            "type": "string"
+          },
+          "parameters": {
+            "$ref": "#/$defs/ModelParameters"
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "credential_configured": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "protocol",
+          "base_url",
+          "model_name",
+          "parameters",
+          "revision",
+          "credential_configured"
+        ]
+      },
+      "ModelProtocol": {
+        "type": "string",
+        "enum": [
+          "openai_chat_completions",
+          "anthropic_messages",
+          "openai_responses"
+        ]
+      },
+      "ModelParameters": {
+        "type": "object",
+        "properties": {
+          "temperature": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0.0,
+            "maximum": 2.0
+          },
+          "top_p": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 1,
+            "maximum": 32768
+          },
+          "input_budget": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 256,
+            "maximum": 128000
+          },
+          "reasoning": {
+            "$ref": "#/$defs/ReasoningMode"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "temperature",
+          "top_p",
+          "max_output_tokens",
+          "input_budget",
+          "reasoning"
+        ]
+      },
+      "ReasoningMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "enabled"
+        ]
+      },
+      "PersonaPreset": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "language_style": {
+            "type": "string"
+          },
+          "address_terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skill": {
+            "type": "string"
+          },
+          "dimensions": {
+            "$ref": "#/$defs/PersonaDimensions"
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "language_style",
+          "address_terms",
+          "skill",
+          "dimensions",
+          "revision"
+        ]
+      },
+      "PersonaDimensions": {
+        "type": "object",
+        "properties": {
+          "professional": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "formal": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "casual": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "humor": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "direct": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "empathy": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "social_energy": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "professional",
+          "formal",
+          "casual",
+          "humor",
+          "direct",
+          "empathy",
+          "social_energy"
+        ]
+      },
+      "AgentPreferences": {
+        "type": "object",
+        "properties": {
+          "request_limit_daily": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 1,
+            "maximum": 5000
+          },
+          "persistent_memory": {
+            "type": "boolean"
+          },
+          "allow_autonomous_wake": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "request_limit_daily",
+          "persistent_memory",
+          "allow_autonomous_wake"
+        ]
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
+  },
+  "GlobalConfigurationSaveRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "GlobalConfigurationSaveRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      },
+      "client_request_id": {
+        "type": "string"
+      },
+      "expected_revision": {
+        "$ref": "#/$defs/DecimalString"
+      },
+      "model_profiles": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/ModelProfileInput"
+        }
+      },
+      "persona_presets": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/PersonaPreset"
+        }
+      },
+      "runtime_defaults": {
+        "$ref": "#/$defs/AgentPreferences"
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "data_generation_id",
+      "client_request_id",
+      "expected_revision",
+      "model_profiles",
+      "persona_presets",
+      "runtime_defaults"
+    ],
+    "$defs": {
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      },
+      "ModelProfileInput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "protocol": {
+            "$ref": "#/$defs/ModelProtocol"
+          },
+          "base_url": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "model_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "parameters": {
+            "$ref": "#/$defs/ModelParameters"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "protocol",
+          "base_url",
+          "model_name",
+          "parameters"
+        ]
+      },
+      "ModelProtocol": {
+        "type": "string",
+        "enum": [
+          "openai_chat_completions",
+          "anthropic_messages",
+          "openai_responses"
+        ]
+      },
+      "ModelParameters": {
+        "type": "object",
+        "properties": {
+          "temperature": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0.0,
+            "maximum": 2.0
+          },
+          "top_p": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 1,
+            "maximum": 32768
+          },
+          "input_budget": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 256,
+            "maximum": 128000
+          },
+          "reasoning": {
+            "$ref": "#/$defs/ReasoningMode"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "temperature",
+          "top_p",
+          "max_output_tokens",
+          "input_budget",
+          "reasoning"
+        ]
+      },
+      "ReasoningMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "enabled"
+        ]
+      },
+      "PersonaPreset": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "language_style": {
+            "type": "string"
+          },
+          "address_terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skill": {
+            "type": "string"
+          },
+          "dimensions": {
+            "$ref": "#/$defs/PersonaDimensions"
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "language_style",
+          "address_terms",
+          "skill",
+          "dimensions",
+          "revision"
+        ]
+      },
+      "PersonaDimensions": {
+        "type": "object",
+        "properties": {
+          "professional": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "formal": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "casual": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "humor": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "direct": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "empathy": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "social_energy": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "professional",
+          "formal",
+          "casual",
+          "humor",
+          "direct",
+          "empathy",
+          "social_energy"
+        ]
+      },
+      "AgentPreferences": {
+        "type": "object",
+        "properties": {
+          "request_limit_daily": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 1,
+            "maximum": 5000
+          },
+          "persistent_memory": {
+            "type": "boolean"
+          },
+          "allow_autonomous_wake": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "request_limit_daily",
+          "persistent_memory",
+          "allow_autonomous_wake"
+        ]
+      }
+    }
+  },
+  "GlobalConfigurationSaveResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "$ref": "#/$defs/GlobalConfiguration"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "GlobalConfiguration": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "model_profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/ModelProfile"
+            }
+          },
+          "persona_presets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/PersonaPreset"
+            }
+          },
+          "runtime_defaults": {
+            "$ref": "#/$defs/AgentPreferences"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "revision",
+          "model_profiles",
+          "persona_presets",
+          "runtime_defaults"
+        ]
+      },
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      },
+      "ModelProfile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "protocol": {
+            "$ref": "#/$defs/ModelProtocol"
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "model_name": {
+            "type": "string"
+          },
+          "parameters": {
+            "$ref": "#/$defs/ModelParameters"
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "credential_configured": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "protocol",
+          "base_url",
+          "model_name",
+          "parameters",
+          "revision",
+          "credential_configured"
+        ]
+      },
+      "ModelProtocol": {
+        "type": "string",
+        "enum": [
+          "openai_chat_completions",
+          "anthropic_messages",
+          "openai_responses"
+        ]
+      },
+      "ModelParameters": {
+        "type": "object",
+        "properties": {
+          "temperature": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0.0,
+            "maximum": 2.0
+          },
+          "top_p": {
+            "type": "number",
+            "format": "double",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 1,
+            "maximum": 32768
+          },
+          "input_budget": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 256,
+            "maximum": 128000
+          },
+          "reasoning": {
+            "$ref": "#/$defs/ReasoningMode"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "temperature",
+          "top_p",
+          "max_output_tokens",
+          "input_budget",
+          "reasoning"
+        ]
+      },
+      "ReasoningMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "enabled"
+        ]
+      },
+      "PersonaPreset": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "language_style": {
+            "type": "string"
+          },
+          "address_terms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skill": {
+            "type": "string"
+          },
+          "dimensions": {
+            "$ref": "#/$defs/PersonaDimensions"
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "language_style",
+          "address_terms",
+          "skill",
+          "dimensions",
+          "revision"
+        ]
+      },
+      "PersonaDimensions": {
+        "type": "object",
+        "properties": {
+          "professional": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "formal": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "casual": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "humor": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "direct": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "empathy": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "social_energy": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "professional",
+          "formal",
+          "casual",
+          "humor",
+          "direct",
+          "empathy",
+          "social_energy"
+        ]
+      },
+      "AgentPreferences": {
+        "type": "object",
+        "properties": {
+          "request_limit_daily": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 1,
+            "maximum": 5000
+          },
+          "persistent_memory": {
+            "type": "boolean"
+          },
+          "allow_autonomous_wake": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "request_limit_daily",
+          "persistent_memory",
+          "allow_autonomous_wake"
+        ]
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
+  },
+  "ModelProfileTestRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ModelProfileTestRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      },
+      "profile_id": {
+        "type": "string"
+      },
+      "expected_revision": {
+        "$ref": "#/$defs/DecimalString"
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "data_generation_id",
+      "profile_id",
+      "expected_revision"
+    ],
+    "$defs": {
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      }
+    }
+  },
+  "ModelProfileTestResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "$ref": "#/$defs/ModelTestResult"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "ModelTestResult": {
+        "type": "object",
+        "properties": {
+          "profile_id": {
+            "type": "string"
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "protocol": {
+            "$ref": "#/$defs/ModelProtocol"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "usage_input_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "usage_output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "profile_id",
+          "revision",
+          "protocol",
+          "available",
+          "usage_input_tokens",
+          "usage_output_tokens",
+          "elapsed_ms"
+        ]
+      },
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      },
+      "ModelProtocol": {
+        "type": "string",
+        "enum": [
+          "openai_chat_completions",
+          "anthropic_messages",
+          "openai_responses"
+        ]
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
+  },
+  "SecretDeleteRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "SecretDeleteRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      },
+      "profile_id": {
+        "type": "string"
+      },
+      "expected_revision": {
+        "$ref": "#/$defs/DecimalString"
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "data_generation_id",
+      "profile_id",
+      "expected_revision"
+    ],
+    "$defs": {
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      }
+    }
+  },
+  "SecretDeleteResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "$ref": "#/$defs/SecretStatus"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "SecretStatus": {
+        "type": "object",
+        "properties": {
+          "profile_id": {
+            "type": "string"
+          },
+          "configured": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "profile_id",
+          "configured"
+        ]
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
+  },
+  "SecretSetRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "SecretSetRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      },
+      "profile_id": {
+        "type": "string"
+      },
+      "expected_revision": {
+        "$ref": "#/$defs/DecimalString"
+      },
+      "api_key": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "data_generation_id",
+      "profile_id",
+      "expected_revision",
+      "api_key"
+    ],
+    "$defs": {
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      }
+    }
+  },
+  "SecretSetResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "$ref": "#/$defs/SecretStatus"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "SecretStatus": {
+        "type": "object",
+        "properties": {
+          "profile_id": {
+            "type": "string"
+          },
+          "configured": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "profile_id",
+          "configured"
+        ]
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
+  },
+  "SecretStatusRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "SecretStatusRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      },
+      "profile_id": {
+        "type": "string"
+      },
+      "expected_revision": {
+        "$ref": "#/$defs/DecimalString"
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "data_generation_id",
+      "profile_id",
+      "expected_revision"
+    ],
+    "$defs": {
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      }
+    }
+  },
+  "SecretStatusResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "$ref": "#/$defs/SecretStatus"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "SecretStatus": {
+        "type": "object",
+        "properties": {
+          "profile_id": {
+            "type": "string"
+          },
+          "configured": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "profile_id",
+          "configured"
+        ]
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
+  },
+  "UserProfileGetRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "UserProfileGetRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "data_generation_id"
+    ]
+  },
+  "UserProfileGetResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "$ref": "#/$defs/UserProfile"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "UserProfile": {
+        "type": "object",
+        "properties": {
+          "participant_id": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "introduction": {
+            "type": "string"
+          },
+          "avatar_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "participant_id",
+          "display_name",
+          "introduction",
+          "avatar_id",
+          "revision"
+        ]
+      },
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
+  },
+  "UserProfileSaveRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "UserProfileSaveRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      },
+      "client_request_id": {
+        "type": "string"
+      },
+      "expected_revision": {
+        "$ref": "#/$defs/DecimalString"
+      },
+      "display_name": {
+        "type": "string"
+      },
+      "introduction": {
+        "type": "string"
+      },
+      "avatar_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "data_generation_id",
+      "client_request_id",
+      "expected_revision",
+      "display_name",
+      "introduction"
+    ],
+    "$defs": {
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      }
+    }
+  },
+  "UserProfileSaveResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "$ref": "#/$defs/UserProfile"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "UserProfile": {
+        "type": "object",
+        "properties": {
+          "participant_id": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "introduction": {
+            "type": "string"
+          },
+          "avatar_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "participant_id",
+          "display_name",
+          "introduction",
+          "avatar_id",
+          "revision"
+        ]
+      },
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
   }
 }
