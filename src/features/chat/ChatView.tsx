@@ -16,6 +16,7 @@ function GroupInformation({ snapshot, onClose, onNavigate }: { snapshot: AppSnap
     <div className="chat-panel-content panel-scroll">
       <p className="font-medium [overflow-wrap:anywhere]">{snapshot.room.name}</p>
       <p className="form-caption mt-1">{snapshot.participants.length} 位成员 · 本地群聊</p>
+      <p className="form-caption mt-1">群资料编辑暂未开放。</p>
       <ul className="mt-6 space-y-5">{snapshot.participants.map((participant) => <li key={participant.id} className="flex min-w-0 items-start gap-3">
         <Avatar name={participant.display_name} avatarId={participant.avatar_id} generation={snapshot.data_generation_id} />
         <div className="min-w-0"><p className="truncate font-medium" title={participant.display_name}>{participant.display_name}</p><p className="form-caption">{participant.kind === "user" ? "本地用户" : "智能体 · 尚未启动"}</p>{participant.introduction && <p className="form-caption mt-1 [overflow-wrap:anywhere]">{participant.introduction}</p>}</div>
@@ -72,7 +73,7 @@ export function ChatView({ session, active, onNavigate }: ApplicationPageProps) 
         <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label="搜索聊天" aria-expanded={panel === "search"} onClick={() => openPanel("search")}><IconSearch size={20} stroke={1.5} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>搜索 Ctrl+F</TooltipContent></Tooltip>
         <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label="群信息" aria-expanded={panel === "members"} onClick={() => openPanel("members")}><IconUsers size={20} stroke={1.5} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>群信息</TooltipContent></Tooltip>
       </div></header>
-      {session.error && <div className="chat-error" role="alert"><p>{session.error}</p><Button size="sm" variant="ghost" onClick={() => void session.reload()}>重新读取</Button></div>}
+      {session.error && <div className="chat-error" role="alert"><p>{session.error}</p><Button size="sm" variant="ghost" onClick={() => void session.reload()}>重试连接</Button></div>}
       <div className="chat-body">
         <div className="chat-conversation">
           {session.page && snapshot ? <MessageList key={session.windowRevision} active={active} page={session.page} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !session.page.has_more_after} hasNewMessages={session.hasNewMessages} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={session.goToLatest} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}

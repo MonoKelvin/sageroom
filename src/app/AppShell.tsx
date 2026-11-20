@@ -6,11 +6,19 @@ import { applicationPages, type PageId } from "./navigation"
 import { NavigationRail } from "./NavigationRail"
 import { Titlebar } from "./Titlebar"
 import { useWindowState } from "./useWindowState"
+import { ConfigurationProvider } from "./ConfigurationProvider"
+import { useConfigurationAppearance, useConfigurationRuntime } from "./configurationContext"
 
 export type { ApplicationPageProps, PageId } from "./navigation"
 
 export function AppShell() {
   const session = useChatSession()
+  return <ConfigurationProvider snapshot={session.snapshot}><ApplicationShell session={session} /></ConfigurationProvider>
+}
+
+function ApplicationShell({ session }: { session: ReturnType<typeof useChatSession> }) {
+  const runtime = useConfigurationRuntime()
+  const previewAppearance = useConfigurationAppearance()
   const [currentPage, setCurrentPage] = useState<PageId>("chat")
   const windowState = useWindowState()
   const [pixelRatio, setPixelRatio] = useState(() => window.devicePixelRatio)
@@ -22,8 +30,16 @@ export function AppShell() {
   // WebView 缩放改变 CSS px，窗口轮廓仍与原生 DIP 命中区域对齐。
   const zoom = pixelRatio / windowState.nativeScale
   const frameStyle = { "--window-gutter": `${16 / zoom}px`, "--window-radius": `${20 / zoom}px`, "--frame-shadow-y": `${5 / zoom}px`, "--frame-shadow-blur": `${16 / zoom}px` } as CSSProperties
-  useAppearance(session.snapshot?.appearance)
+  useAppearance(previewAppearance ?? session.snapshot?.appearance)
   const navigate = useCallback((page: PageId) => setCurrentPage(page), [])
+
+  useEffect(() => {
+    const pointer = () => { document.documentElement.dataset.inputModality = "pointer" }
+    const keyboard = () => { document.documentElement.dataset.inputModality = "keyboard" }
+    window.addEventListener("pointerdown", pointer, true)
+    window.addEventListener("keydown", keyboard, true)
+    return () => { window.removeEventListener("pointerdown", pointer, true); window.removeEventListener("keydown", keyboard, true) }
+  }, [])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -40,12 +56,13 @@ export function AppShell() {
     <div className="stage" data-maximized={windowState.maximized} style={frameStyle}>
       <div className="canvas application-shell" data-maximized={windowState.maximized}>
         <Titlebar maximized={windowState.maximized} onAction={windowState.perform} />
-        {windowState.error && (
+        {(windowState.error || runtime.error) && (
           <div className="window-error" role="alert">
-            <span>{windowState.error}</span>
-            <button type="button" className="icon-button" aria-label="关闭窗口提示" onClick={windowState.clearError}><IconX size={16} stroke={1.5} aria-hidden="true" /></button>
+            <span>{windowState.error ?? runtime.error}</span>
+            <button type="button" className="icon-button" aria-label="关闭窗口提示" onClick={() => { windowState.clearError(); runtime.clearError() }}><IconX size={16} stroke={1.5} aria-hidden="true" /></button>
           </div>
         )}
+        {runtime.exiting && <div className="exit-progress" role="status">正在完成已应用修改并退出…</div>}
         <div className="application-body">
           <NavigationRail pages={applicationPages} current={currentPage} onNavigate={navigate} />
           <main className="application-pages">

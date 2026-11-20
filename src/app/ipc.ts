@@ -15,6 +15,8 @@ import type {
   ChatSendResult,
   DomainEvent,
   ExitRequest,
+  ExitReadyRequest,
+  AppLifecycleEvent,
   ExitResult,
   MessagePage,
   SearchPage,
@@ -55,6 +57,9 @@ import {
   validateDomainEvent,
   validateExitRequest,
   validateExitResponse,
+  validateExitReadyRequest,
+  validateExitReadyResponse,
+  validateAppLifecycleEvent,
   validateGlobalConfigurationGetRequest,
   validateGlobalConfigurationGetResponse,
   validateGlobalConfigurationSaveRequest,
@@ -181,6 +186,15 @@ export const ipc = {
     request("avatar_read", input, validateAvatarReadRequest, validateAvatarReadResponse),
   exit: (input: ExitRequest): Promise<ExitResult> =>
     request("app_request_exit", input, validateExitRequest, validateExitResponse),
+  completeExit: (input: ExitReadyRequest): Promise<ExitResult> =>
+    request("app_exit_ready", input, validateExitReadyRequest, validateExitReadyResponse),
+  async subscribeLifecycle(onEvent: (event: AppLifecycleEvent) => void, onError: (error: IpcError) => void) {
+    if (!isDesktopEnvironment()) throw clientError("请在桌面应用中使用窗口生命周期。", "CAPABILITY_UNSUPPORTED")
+    return listen<unknown>("sageroom://lifecycle", ({ payload }) => {
+      if (!validateAppLifecycleEvent(payload)) { onError(clientError("收到的生命周期事件不符合当前合同。")); return }
+      onEvent(payload as AppLifecycleEvent)
+    })
+  },
   async subscribe(onEvent: (event: DomainEvent) => void, onError: (error: IpcError) => void) {
     if (!isDesktopEnvironment()) {
       throw clientError("请在 Sageroom 桌面应用中使用聊天。", "CAPABILITY_UNSUPPORTED")

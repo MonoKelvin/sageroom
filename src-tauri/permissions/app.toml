@@ -31,7 +31,7 @@ commands.allow = ["appearance_save"]
 [[permission]]
 identifier = "app-exit"
 description = "明确退出本地应用"
-commands.allow = ["app_request_exit"]
+commands.allow = ["app_request_exit", "app_exit_ready"]
 
 [[permission]]
 identifier = "configuration-read"

@@ -1,6 +1,7 @@
 import * as React from "react"
 import * as TooltipPrimitive from "@radix-ui/react-tooltip"
 import { cn } from "@/lib/utils"
+import "./settings-controls.css"
 
 function TooltipProvider({
   delayDuration = 300,
@@ -29,13 +30,13 @@ function TooltipContent({
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         className={cn(
-          "z-50 max-w-72 rounded-md bg-foreground px-3 py-1.5 text-xs leading-relaxed break-words text-background shadow-sm",
+          "ui-tooltip z-50 max-w-72 rounded-lg px-3 py-2 text-xs leading-relaxed break-words",
           className,
         )}
         {...props}
       >
         {children}
-        <TooltipPrimitive.Arrow className="fill-foreground" />
+        <TooltipPrimitive.Arrow className="ui-tooltip-arrow" />
       </TooltipPrimitive.Content>
     </TooltipPrimitive.Portal>
   )

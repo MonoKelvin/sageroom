@@ -16,7 +16,7 @@ fn export<T: TS + JsonSchema + 'static>(
 ) -> Result<(), Box<dyn Error>> {
     T::export_all(config)?;
     let settings = SchemaSettings::draft2020_12().with(|settings| {
-        settings.contract = if name.ends_with("Response") || name == "DomainEvent" {
+        settings.contract = if name.ends_with("Response") || name.ends_with("Event") {
             Contract::Serialize
         } else {
             Contract::Deserialize
@@ -48,6 +48,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     export::<ApiResponse<Appearance>>("AppearanceSaveResponse", &config, &mut schemas)?;
     export::<ExitRequest>("ExitRequest", &config, &mut schemas)?;
     export::<ApiResponse<ExitResult>>("ExitResponse", &config, &mut schemas)?;
+    export::<ExitReadyRequest>("ExitReadyRequest", &config, &mut schemas)?;
+    export::<ApiResponse<ExitResult>>("ExitReadyResponse", &config, &mut schemas)?;
+    export::<AppLifecycleEvent>("AppLifecycleEvent", &config, &mut schemas)?;
     export::<DomainEvent>("DomainEvent", &config, &mut schemas)?;
     export::<GlobalConfigurationGetRequest>(
         "GlobalConfigurationGetRequest",

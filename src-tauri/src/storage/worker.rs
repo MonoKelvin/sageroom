@@ -20,9 +20,20 @@ enum Work {
     Stop(mpsc::Sender<()>),
 }
 
+#[derive(Default)]
+struct ShutdownProgress {
+    reply: Option<mpsc::Receiver<()>>,
+    database_stopped: bool,
+    complete: bool,
+}
+
 pub struct DbWorker {
     sender: mpsc::SyncSender<Work>,
     closed: Arc<AtomicBool>,
+    admission: Mutex<()>,
+    shutdown_progress: Mutex<ShutdownProgress>,
+    root: std::path::PathBuf,
+    generation: String,
     event_sink: EventSink,
     pub search: SearchService,
     thread: Mutex<Option<thread::JoinHandle<()>>>,
@@ -72,10 +83,18 @@ impl DbWorker {
             return Err(error);
         }
         let closed = Arc::new(AtomicBool::new(false));
-        let search = SearchService::new(root.join("chat.sqlite3"), generation, closed.clone())?;
+        let search = SearchService::new(
+            root.join("chat.sqlite3"),
+            generation.clone(),
+            closed.clone(),
+        )?;
         Ok(Arc::new(Self {
             sender,
             closed,
+            admission: Mutex::new(()),
+            shutdown_progress: Mutex::new(ShutdownProgress::default()),
+            root: root.to_owned(),
+            generation,
             event_sink,
             search,
             thread: Mutex::new(Some(thread)),
@@ -86,27 +105,25 @@ impl DbWorker {
         &self,
         operation: impl FnOnce(&mut Database) -> AppResult<T> + Send + 'static,
     ) -> AppResult<T> {
-        if self.closed.load(Ordering::Acquire) {
-            return Err(shutting_down());
-        }
-        let closed = self.closed.clone();
         let (reply, mut receiver) = tauri::async_runtime::channel(1);
-        self.sender
-            .try_send(Work::Run(Box::new(move |database| {
-                let result = if closed.load(Ordering::Acquire) {
-                    Err(shutting_down())
-                } else {
-                    operation(database)
-                };
-                let _ = reply.blocking_send(result);
-            })))
-            .map_err(|error| match error {
-                mpsc::TrySendError::Full(_) => AppError::new(
-                    ErrorCode::Backpressure,
-                    "本地数据队列已满，草稿未清除，请稍后重试。",
-                ),
-                mpsc::TrySendError::Disconnected(_) => shutting_down(),
-            })?;
+        {
+            let _admission = self.admission.lock().expect("准入锁被污染");
+            if self.closed.load(Ordering::Acquire) {
+                return Err(shutting_down());
+            }
+            self.sender
+                .try_send(Work::Run(Box::new(move |database| {
+                    // 入队即接受；关闭准入不能撤销已接受的事务。
+                    let _ = reply.blocking_send(operation(database));
+                })))
+                .map_err(|error| match error {
+                    mpsc::TrySendError::Full(_) => AppError::new(
+                        ErrorCode::Backpressure,
+                        "本地数据队列已满，草稿未清除，请稍后重试。",
+                    ),
+                    mpsc::TrySendError::Disconnected(_) => shutting_down(),
+                })?;
+        }
         receiver
             .recv()
             .await
@@ -226,42 +243,370 @@ impl DbWorker {
         .await
     }
 
-    pub async fn shutdown(self: Arc<Self>) -> AppResult<()> {
-        if self.closed.swap(true, Ordering::AcqRel) {
+    fn stop(&self, deadline: Instant) -> AppResult<()> {
+        let mut progress = loop {
+            match self.shutdown_progress.try_lock() {
+                Ok(progress) => break progress,
+                Err(std::sync::TryLockError::Poisoned(_)) => {
+                    return Err(AppError::new(
+                        ErrorCode::InternalError,
+                        "关闭状态异常，退出未完成。",
+                    ));
+                }
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    if Instant::now() >= deadline {
+                        return Err(AppError::new(
+                            ErrorCode::ShuttingDown,
+                            "关闭仍在执行，退出未完成。",
+                        ));
+                    }
+                    thread::sleep(Duration::from_millis(5));
+                }
+            }
+        };
+        if progress.complete {
             return Ok(());
         }
+        {
+            let _admission = self.admission.lock().expect("准入锁被污染");
+            self.closed.store(true, Ordering::Release);
+        }
         self.search.cancel_all();
-        tauri::async_runtime::spawn_blocking(move || {
-            let deadline = Instant::now() + Duration::from_secs(5);
+        if progress.reply.is_none() && !progress.database_stopped {
             let (reply, receiver) = mpsc::channel();
             let mut work = Work::Stop(reply);
             loop {
-                match self.sender.try_send(work) {
-                    Ok(()) => break,
-                    Err(mpsc::TrySendError::Disconnected(_)) => return Ok(()),
+                // closed 与所有 Run 入队同用准入锁，Stop 永远排在已接受请求后。
+                let admission = self.admission.lock().expect("准入锁被污染");
+                let sent = self.sender.try_send(work);
+                drop(admission);
+                match sent {
+                    Ok(()) => {
+                        progress.reply = Some(receiver);
+                        break;
+                    }
+                    Err(mpsc::TrySendError::Disconnected(_)) => {
+                        return Err(AppError::new(
+                            ErrorCode::InternalError,
+                            "数据工作线程异常停止，退出未完成。",
+                        ));
+                    }
                     Err(mpsc::TrySendError::Full(returned)) => {
                         work = returned;
                         if Instant::now() >= deadline {
+                            // Stop 尚未接受，可以安全重新开放原工作线程。
+                            let _admission = self.admission.lock().expect("准入锁被污染");
+                            self.closed.store(false, Ordering::Release);
                             return Err(shutting_down());
                         }
                         thread::sleep(Duration::from_millis(10));
                     }
                 }
             }
-            receiver
+        }
+        if !progress.database_stopped {
+            progress
+                .reply
+                .as_ref()
+                .expect("Stop 已入队")
                 .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-                .map_err(|_| shutting_down())?;
+                .map_err(|_| {
+                    AppError::new(
+                        ErrorCode::ShuttingDown,
+                        "数据排空超过退出截止，退出已取消。",
+                    )
+                })?;
+            progress.database_stopped = true;
+            progress.reply = None;
             if let Some(thread) = self.thread.lock().expect("工作线程锁被污染").take() {
-                let _ = thread.join();
+                thread.join().map_err(|_| {
+                    AppError::new(
+                        ErrorCode::InternalError,
+                        "数据工作线程异常停止，退出未完成。",
+                    )
+                })?;
             }
-            self.search.shutdown(deadline)
-        })
-        .await
-        .map_err(|_| {
-            AppError::new(
-                ErrorCode::InternalError,
-                "关闭工作线程时发生错误，未启动新的操作。",
-            )
-        })?
+        }
+        self.search.shutdown(deadline)?;
+        progress.complete = true;
+        Ok(())
+    }
+
+    pub async fn shutdown(self: Arc<Self>) -> AppResult<()> {
+        // 截止从调用开始计算；并发关闭不会因为 closed=true 被假作成功。
+        let deadline = Instant::now() + Duration::from_secs(5);
+        tauri::async_runtime::spawn_blocking(move || self.stop(deadline))
+            .await
+            .map_err(|_| AppError::new(ErrorCode::InternalError, "关闭工作线程时发生错误。"))?
+    }
+
+    pub(crate) fn recover(self: Arc<Self>) -> AppResult<Arc<Self>> {
+        if !self.closed.load(Ordering::Acquire) {
+            return Ok(self);
+        }
+        // 仅后台恢复等待真实排空；退出命令本身始终有界且已经报告取消。
+        {
+            let mut progress = self.shutdown_progress.lock().expect("关闭锁被污染");
+            if !progress.database_stopped {
+                if let Some(reply) = progress.reply.as_ref() {
+                    // 即使线程异常断开，也先等待 JoinHandle，确认旧写线程已结束。
+                    let _ = reply.recv();
+                }
+                if let Some(thread) = self.thread.lock().expect("工作线程锁被污染").take() {
+                    let _ = thread.join();
+                }
+                progress.reply = None;
+                progress.database_stopped = true;
+            }
+            self.search
+                .shutdown(Instant::now() + Duration::from_secs(5))?;
+        }
+        Self::open(&self.root, self.generation.clone(), self.event_sink.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::database::open_reader;
+    use super::*;
+    use std::{
+        future::Future,
+        task::{Context, Poll, Waker},
+    };
+    use tempfile::TempDir;
+
+    fn poll_pending<T>(future: std::pin::Pin<&mut impl Future<Output = T>>) {
+        assert!(matches!(
+            future.poll(&mut Context::from_waker(Waker::noop())),
+            Poll::Pending
+        ));
+    }
+
+    fn wait_closed(worker: &DbWorker) {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !worker.closed.load(Ordering::Acquire) {
+            assert!(Instant::now() < deadline);
+            thread::yield_now();
+        }
+    }
+
+    #[test]
+    fn accepted_write_drains_fifo_and_event_observes_commit_before_stop() {
+        let directory = TempDir::new().unwrap();
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let received = events.clone();
+        let path = directory.path().join("chat.sqlite3");
+        let worker = DbWorker::open(
+            directory.path(),
+            "fifo".into(),
+            Arc::new(move |event| {
+                let reader = open_reader(&path).unwrap();
+                let committed: i64 = reader
+                    .query_row("SELECT COUNT(*) FROM domain_events", [], |row| row.get(0))
+                    .unwrap();
+                assert_eq!(committed, 1);
+                received.lock().unwrap().push(event.clone());
+            }),
+        )
+        .unwrap();
+        let (started, running) = mpsc::channel();
+        let (release, blocked) = mpsc::channel();
+        let mut blocker = Box::pin(worker.call(move |_| {
+            started.send(()).unwrap();
+            blocked.recv().unwrap();
+            Ok(())
+        }));
+        poll_pending(blocker.as_mut());
+        running.recv_timeout(Duration::from_secs(2)).unwrap();
+        let mut write = Box::pin(worker.save_appearance(AppearanceSaveRequest {
+            data_generation_id: "fifo".into(),
+            client_request_id: "queued-write".into(),
+            expected_revision: 1_i64.into(),
+            theme: Theme::Dark,
+            reduce_motion: true,
+        }));
+        poll_pending(write.as_mut());
+        let stopping = worker.clone();
+        let stop = thread::spawn(move || tauri::async_runtime::block_on(stopping.shutdown()));
+        wait_closed(&worker);
+        assert!(!stop.is_finished());
+        assert_eq!(
+            tauri::async_runtime::block_on(worker.call(|_| Ok(())))
+                .unwrap_err()
+                .code,
+            ErrorCode::ShuttingDown
+        );
+        release.send(()).unwrap();
+        tauri::async_runtime::block_on(blocker).unwrap();
+        assert_eq!(
+            tauri::async_runtime::block_on(write).unwrap().revision.0,
+            "2"
+        );
+        stop.join().unwrap().unwrap();
+        assert!(worker.shutdown_progress.lock().unwrap().complete);
+        assert_eq!(events.lock().unwrap().len(), 1);
+        let mut database = Database::open(directory.path(), "reopen-fifo".into()).unwrap();
+        let snapshot = database
+            .snapshot(AppSnapshotRequest {
+                data_generation_id: None,
+                last_event_seq: None,
+            })
+            .unwrap();
+        assert_eq!(snapshot.appearance.theme, Theme::Dark);
+    }
+
+    #[test]
+    fn timed_out_stop_is_not_success_and_recovery_reopens_only_after_accepted_work() {
+        let directory = TempDir::new().unwrap();
+        let worker = DbWorker::open(directory.path(), "recover".into(), Arc::new(|_| {})).unwrap();
+        let (started, running) = mpsc::channel();
+        let (release, blocked) = mpsc::channel();
+        let mut blocker = Box::pin(worker.call(move |_| {
+            started.send(()).unwrap();
+            blocked.recv().unwrap();
+            Ok(())
+        }));
+        poll_pending(blocker.as_mut());
+        running.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(
+            worker
+                .stop(Instant::now() + Duration::from_millis(20))
+                .unwrap_err()
+                .code,
+            ErrorCode::ShuttingDown
+        );
+        assert_eq!(
+            worker
+                .stop(Instant::now() + Duration::from_millis(20))
+                .unwrap_err()
+                .code,
+            ErrorCode::ShuttingDown
+        );
+        assert!(!worker.shutdown_progress.lock().unwrap().complete);
+        let recovering = worker.clone();
+        let recovery = thread::spawn(move || recovering.recover());
+        assert!(!recovery.is_finished());
+        release.send(()).unwrap();
+        tauri::async_runtime::block_on(blocker).unwrap();
+        let reopened = recovery.join().unwrap().unwrap();
+        tauri::async_runtime::block_on(reopened.call(|_| Ok(()))).unwrap();
+        tauri::async_runtime::block_on(reopened.shutdown()).unwrap();
+    }
+
+    #[test]
+    fn full_queue_stop_deadline_restores_admission_without_losing_accepted_work() {
+        let directory = TempDir::new().unwrap();
+        let worker =
+            DbWorker::open(directory.path(), "full-queue".into(), Arc::new(|_| {})).unwrap();
+        let (started, running) = mpsc::channel();
+        let (release, blocked) = mpsc::channel();
+        let mut blocker = Box::pin(worker.call(move |_| {
+            started.send(()).unwrap();
+            blocked.recv().unwrap();
+            Ok(())
+        }));
+        poll_pending(blocker.as_mut());
+        running.recv_timeout(Duration::from_secs(2)).unwrap();
+        let mut accepted = Vec::new();
+        for index in 0..64 {
+            let mut operation = Box::pin(worker.call(move |_| Ok(index)));
+            poll_pending(operation.as_mut());
+            accepted.push(operation);
+        }
+        assert!(
+            worker
+                .stop(Instant::now() + Duration::from_millis(20))
+                .is_err()
+        );
+        assert!(!worker.closed.load(Ordering::Acquire));
+        assert_eq!(
+            tauri::async_runtime::block_on(worker.call(|_| Ok(())))
+                .unwrap_err()
+                .code,
+            ErrorCode::Backpressure
+        );
+        release.send(()).unwrap();
+        tauri::async_runtime::block_on(blocker).unwrap();
+        for (index, operation) in accepted.into_iter().enumerate() {
+            assert_eq!(tauri::async_runtime::block_on(operation).unwrap(), index);
+        }
+        tauri::async_runtime::block_on(worker.call(|_| Ok(()))).unwrap();
+        tauri::async_runtime::block_on(worker.shutdown()).unwrap();
+    }
+
+    #[test]
+    fn concurrent_shutdown_waits_for_real_completion_instead_of_closed_flag() {
+        let directory = TempDir::new().unwrap();
+        let worker =
+            DbWorker::open(directory.path(), "concurrent-stop".into(), Arc::new(|_| {})).unwrap();
+        let (started, running) = mpsc::channel();
+        let (release, blocked) = mpsc::channel();
+        let mut blocker = Box::pin(worker.call(move |_| {
+            started.send(()).unwrap();
+            blocked.recv().unwrap();
+            Ok(())
+        }));
+        poll_pending(blocker.as_mut());
+        running.recv_timeout(Duration::from_secs(2)).unwrap();
+        let first_worker = worker.clone();
+        let first =
+            thread::spawn(move || first_worker.stop(Instant::now() + Duration::from_secs(2)));
+        wait_closed(&worker);
+        let (result, received) = mpsc::channel();
+        let second_worker = worker.clone();
+        let second = thread::spawn(move || {
+            result
+                .send(second_worker.stop(Instant::now() + Duration::from_secs(2)))
+                .unwrap();
+        });
+        assert!(matches!(
+            received.recv_timeout(Duration::from_millis(30)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        release.send(()).unwrap();
+        tauri::async_runtime::block_on(blocker).unwrap();
+        first.join().unwrap().unwrap();
+        received
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap()
+            .unwrap();
+        second.join().unwrap();
+    }
+
+    #[test]
+    fn racing_admission_and_stop_never_cancel_an_accepted_operation() {
+        for _ in 0..24 {
+            let directory = TempDir::new().unwrap();
+            let worker = DbWorker::open(directory.path(), "race".into(), Arc::new(|_| {})).unwrap();
+            let barrier = Arc::new(std::sync::Barrier::new(2));
+            let writer = worker.clone();
+            let writer_barrier = barrier.clone();
+            let write = thread::spawn(move || {
+                writer_barrier.wait();
+                tauri::async_runtime::block_on(writer.call(|database| {
+                    database
+                        .conn
+                        .execute("UPDATE app_settings SET reduce_motion=1", [])?;
+                    Ok(())
+                }))
+            });
+            barrier.wait();
+            tauri::async_runtime::block_on(worker.clone().shutdown()).unwrap();
+            let result = write.join().unwrap();
+            let reader = open_reader(&directory.path().join("chat.sqlite3")).unwrap();
+            let committed: bool = reader
+                .query_row("SELECT reduce_motion FROM app_settings", [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            match result {
+                Ok(()) => assert!(committed),
+                Err(error) => {
+                    assert_eq!(error.code, ErrorCode::ShuttingDown);
+                    assert!(!committed);
+                }
+            }
+            tauri::async_runtime::block_on(worker.shutdown()).unwrap();
+        }
     }
 }

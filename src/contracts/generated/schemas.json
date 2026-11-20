@@ -231,12 +231,10 @@
           },
           "base_url": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 2048
           },
           "model_name": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 200
           },
           "parameters": {
@@ -625,12 +623,10 @@
           },
           "base_url": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 2048
           },
           "model_name": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 200
           },
           "parameters": {
@@ -942,12 +938,10 @@
           },
           "base_url": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 2048
           },
           "model_name": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 200
           },
           "parameters": {
@@ -1056,6 +1050,144 @@
         "required": [
           "schema_version",
           "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
+  },
+  "AppLifecycleEvent": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "AppLifecycleEvent",
+    "type": "object",
+    "properties": {
+      "schema_version": {
+        "$ref": "#/$defs/SchemaVersion"
+      },
+      "data_generation_id": {
+        "type": "string"
+      },
+      "payload": {
+        "$ref": "#/$defs/AppLifecyclePayload"
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "schema_version",
+      "data_generation_id",
+      "payload"
+    ],
+    "$defs": {
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "AppLifecyclePayload": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "exit_prepare"
+              },
+              "request_id": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "request_id"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "exit_cancelled"
+              },
+              "request_id": {
+                "type": "string"
+              },
+              "error": {
+                "$ref": "#/$defs/AppError"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "request_id",
+              "error"
+            ]
+          }
         ]
       },
       "AppError": {
@@ -3793,6 +3925,158 @@
       }
     }
   },
+  "ExitReadyRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ExitReadyRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      },
+      "request_id": {
+        "type": "string"
+      },
+      "ready": {
+        "type": "boolean"
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "data_generation_id",
+      "request_id",
+      "ready"
+    ]
+  },
+  "ExitReadyResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "$ref": "#/$defs/ExitResult"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "ExitResult": {
+        "type": "object",
+        "properties": {
+          "shutting_down": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "shutting_down"
+        ]
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
+  },
   "ExitRequest": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": "ExitRequest",
@@ -4380,12 +4664,10 @@
           },
           "base_url": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 2048
           },
           "model_name": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 200
           },
           "parameters": {

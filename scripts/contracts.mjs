@@ -21,6 +21,7 @@ const responseTypes = {
   CancelSearch: "CancelSearchResult",
   AppearanceSave: "Appearance",
   Exit: "ExitResult",
+  ExitReady: "ExitResult",
   GlobalConfigurationGet: "GlobalConfiguration",
   GlobalConfigurationSave: "GlobalConfiguration",
   AgentList: "AgentConfiguration[]",

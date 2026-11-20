@@ -1,5 +1,9 @@
-import { vi } from "vitest"
-import type { AgentConfiguration, GlobalConfiguration, UserProfile } from "@/contracts/generated"
+import { createElement, type ReactNode } from "react"
+import { afterAll, beforeAll, vi } from "vitest"
+import type { AgentConfiguration, AppSnapshot, GlobalConfiguration, UserProfile } from "@/contracts/generated"
+import { ConfigurationProvider } from "@/app/ConfigurationProvider"
+import { ipc } from "@/app/ipc"
+import * as ipcModule from "@/app/ipc"
 import type { ApplicationPageProps } from "@/app/navigation"
 import { snapshot } from "@/features/chat/chat.test-fixtures"
 import { defaultDimensions, defaultParameters, defaultPreferences } from "./configurationDefaults"
@@ -20,4 +24,76 @@ export function pageProps(active = true): ApplicationPageProps {
     snapshot: pageSnapshot, page: null, loading: false, loadingMore: false, error: null, hasNewMessages: false, atBottom: true,
     firstItemIndex: 0, windowRevision: 0, targetMessageId: null, reload: vi.fn().mockResolvedValue(undefined), send: vi.fn(), goToLatest: vi.fn(), jumpTo: vi.fn(), updateAtBottom: vi.fn(), updateRenderedAnchor: vi.fn(), applyAppearance: vi.fn(), loadOlder: vi.fn(), loadNewer: vi.fn(),
   } }
+}
+
+export function ConfigurationTestProvider({ children, snapshot: value }: { children: ReactNode; snapshot: AppSnapshot | null }) {
+  return createElement(ConfigurationProvider, { snapshot: value, children })
+}
+
+const missingMethods = ["scrollIntoView", "hasPointerCapture", "setPointerCapture", "releasePointerCapture"] as const
+const addedMethods: string[] = []
+beforeAll(() => {
+  for (const method of missingMethods) if (!(method in HTMLElement.prototype)) {
+    Object.defineProperty(HTMLElement.prototype, method, { configurable: true, value: method === "hasPointerCapture" ? () => false : () => {} })
+    addedMethods.push(method)
+  }
+  if (!globalThis.ResizeObserver) vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} })
+})
+afterAll(() => {
+  for (const method of addedMethods) Reflect.deleteProperty(HTMLElement.prototype, method)
+  vi.unstubAllGlobals()
+})
+
+/** In-memory RPC boundary for UI tests; never invokes Tauri or model services. */
+export function mockConfigurationIpc() {
+  vi.restoreAllMocks()
+  const data = { global: globalConfiguration(), agents: [agentConfiguration(), agentConfiguration("second", "第二位")], user: userProfile(), appearance: pageProps().session.snapshot!.appearance }
+  const nextRevision = (revision: string) => String(BigInt(revision) + 1n)
+  vi.spyOn(ipcModule, "isDesktopEnvironment").mockReturnValue(false)
+  vi.spyOn(ipc, "getGlobalConfiguration").mockImplementation(async () => structuredClone(data.global))
+  vi.spyOn(ipc, "listAgents").mockImplementation(async () => structuredClone(data.agents))
+  vi.spyOn(ipc, "getUserProfile").mockImplementation(async () => structuredClone(data.user))
+  vi.spyOn(ipc, "snapshot").mockImplementation(async () => ({ ...pageProps().session.snapshot!, appearance: structuredClone(data.appearance) }))
+  vi.spyOn(ipc, "saveGlobalConfiguration").mockImplementation(async (request) => {
+    data.global = {
+      revision: nextRevision(data.global.revision), runtime_defaults: request.runtime_defaults,
+      model_profiles: request.model_profiles.map((profile) => ({ ...profile, revision: nextRevision(data.global.model_profiles.find((item) => item.id === profile.id)?.revision ?? "0"), credential_configured: data.global.model_profiles.find((item) => item.id === profile.id)?.credential_configured ?? false })),
+      persona_presets: request.persona_presets.map((persona) => ({ ...persona, revision: nextRevision(data.global.persona_presets.find((item) => item.id === persona.id)?.revision ?? "0") })),
+    }
+    return structuredClone(data.global)
+  })
+  vi.spyOn(ipc, "saveAgent").mockImplementation(async (request) => {
+    const agent = { ...request.configuration, revision: nextRevision(request.expected_revision ?? "0") }
+    data.agents = [...data.agents.filter((item) => item.agent_id !== agent.agent_id), agent]
+    return structuredClone(agent)
+  })
+  vi.spyOn(ipc, "saveUserProfile").mockImplementation(async (request) => {
+    data.user = { participant_id: data.user.participant_id, display_name: request.display_name, introduction: request.introduction, avatar_id: request.avatar_id, revision: nextRevision(request.expected_revision) }
+    return structuredClone(data.user)
+  })
+  vi.spyOn(ipc, "saveAppearance").mockImplementation(async (request) => {
+    data.appearance = { theme: request.theme, reduce_motion: request.reduce_motion, revision: nextRevision(request.expected_revision) }
+    return structuredClone(data.appearance)
+  })
+  vi.spyOn(ipc, "importAvatar").mockResolvedValue(null)
+  vi.spyOn(ipc, "readAvatar").mockImplementation(async (request) => ({ avatar_id: request.avatar_id, mime_type: "image/png", data_base64: "YWJj" }))
+  vi.spyOn(ipc, "secretStatus").mockResolvedValue({ profile_id: "model-a", configured: false })
+  vi.spyOn(ipc, "setSecret").mockImplementation(async (request) => {
+    const profile = data.global.model_profiles.find((item) => item.id === request.profile_id)!
+    profile.credential_configured = true
+    profile.revision = nextRevision(profile.revision)
+    data.global.revision = nextRevision(data.global.revision)
+    return { profile_id: profile.id, configured: true }
+  })
+  vi.spyOn(ipc, "deleteSecret").mockImplementation(async (request) => {
+    const profile = data.global.model_profiles.find((item) => item.id === request.profile_id)!
+    profile.credential_configured = false
+    profile.revision = nextRevision(profile.revision)
+    data.global.revision = nextRevision(data.global.revision)
+    return { profile_id: profile.id, configured: false }
+  })
+  vi.spyOn(ipc, "testModel").mockResolvedValue({ profile_id: "model-a", revision: "1", protocol: "openai_chat_completions", available: true, usage_input_tokens: 12, usage_output_tokens: 1, elapsed_ms: 80 })
+  vi.spyOn(ipc, "importDevelopmentModel").mockImplementation(async () => structuredClone(data.global))
+  vi.spyOn(ipc, "exit").mockResolvedValue({ shutting_down: true })
+  return data
 }

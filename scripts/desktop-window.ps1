@@ -79,6 +79,7 @@ public static class SageroomWindowTest {
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr handle);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr handle, out Rect rectangle);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr handle, int command);
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr handle, IntPtr dc, uint flags);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr handle, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
@@ -116,16 +117,16 @@ if ($Action -eq 'hit-test') { $hit = [SageroomWindowTest]::HitTest($window, $X, 
 if ($Action -eq 'capture') {
     if ([string]::IsNullOrWhiteSpace($ImageFile)) { throw '窗口取证需要指定图片文件。' }
     if (-not [SageroomWindowTest]::IsWindowVisible($window)) { throw '不能截取隐藏的测试窗口。' }
-    $null = [SageroomWindowTest]::SetForegroundWindow($window)
     Add-Type -AssemblyName System.Drawing
     $bounds = New-Object SageroomWindowTest+Rect
-    $origin = New-Object SageroomWindowTest+Point
     $null = [SageroomWindowTest]::GetClientRect($window, [ref]$bounds)
-    $null = [SageroomWindowTest]::ClientToScreen($window, [ref]$origin)
     $bitmap = New-Object System.Drawing.Bitmap ($bounds.Right - $bounds.Left), ($bounds.Bottom - $bounds.Top)
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
     try {
-        $graphics.CopyFromScreen($origin.X, $origin.Y, 0, 0, $bitmap.Size)
+        $dc = $graphics.GetHdc()
+        try {
+            if (-not [SageroomWindowTest]::PrintWindow($window, $dc, 3)) { throw '测试窗口未能提供自己的画面，未截取其他屏幕内容。' }
+        } finally { $graphics.ReleaseHdc($dc) }
         $bitmap.Save($ImageFile, [System.Drawing.Imaging.ImageFormat]::Png)
     } finally { $graphics.Dispose(); $bitmap.Dispose() }
 }

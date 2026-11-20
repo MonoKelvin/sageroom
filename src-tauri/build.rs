@@ -21,6 +21,7 @@ fn main() {
             "avatar_import",
             "avatar_read",
             "app_request_exit",
+            "app_exit_ready",
         ]),
     ))
     .expect("无法构建 Tauri 应用权限清单");

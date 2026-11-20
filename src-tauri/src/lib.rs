@@ -46,6 +46,7 @@ pub fn run() {
             app::commands::avatar_import,
             app::commands::avatar_read,
             app::commands::app_request_exit,
+            app::commands::app_exit_ready,
         ])
         .on_window_event(|window, event| {
             if window.label() == "main"
@@ -53,7 +54,7 @@ pub fn run() {
                 && window
                     .app_handle()
                     .try_state::<app::state::AppState>()
-                    .is_some_and(|state| !state.is_shutting_down())
+                    .is_some_and(|state| !state.exit_completed())
             {
                 api.prevent_close();
                 let _ = window.hide();
@@ -64,7 +65,7 @@ pub fn run() {
 
     app.run(|handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event
-            && !handle.state::<app::state::AppState>().is_shutting_down()
+            && !handle.state::<app::state::AppState>().exit_completed()
         {
             api.prevent_exit();
             app::lifecycle::request_exit(handle.clone());

@@ -124,12 +124,28 @@ fn validate_parameters(value: &ModelParameters) -> AppResult<()> {
 fn validate_profile(value: &ModelProfileInput) -> AppResult<()> {
     validate_id(&value.id, "profile_id")?;
     bounded(&value.name, "name", 80, true)?;
-    bounded(&value.model_name, "model_name", 200, true)?;
-    bounded(&value.base_url, "base_url", 2048, true)?;
+    bounded(&value.model_name, "model_name", 200, false)?;
+    bounded(&value.base_url, "base_url", 2048, false)?;
+    validate_parameters(&value.parameters)?;
+    if value.base_url.is_empty() {
+        return Ok(());
+    }
+    if value.base_url.chars().any(char::is_control) || value.base_url.trim() != value.base_url {
+        return Err(AppError::invalid(
+            "base_url",
+            "模型地址不能包含控制字符或首尾空白。",
+        ));
+    }
     let url = url::Url::parse(&value.base_url)
         .map_err(|_| AppError::invalid("base_url", "模型地址格式无效。"))?;
+    let has_userinfo = value.base_url.split_once("://").is_some_and(|(_, rest)| {
+        rest.split(['/', '?', '#'])
+            .next()
+            .is_some_and(|authority| authority.contains('@'))
+    });
     if !matches!(url.scheme(), "https" | "http")
         || url.host_str().is_none()
+        || has_userinfo
         || !url.username().is_empty()
         || url.password().is_some()
         || url.query().is_some()
@@ -148,7 +164,15 @@ fn validate_profile(value: &ModelProfileInput) -> AppResult<()> {
             "非本机模型地址必须使用 HTTPS。",
         ));
     }
-    validate_parameters(&value.parameters)
+    Ok(())
+}
+
+pub(crate) fn require_configured_profile(value: &ModelProfileInput) -> AppResult<()> {
+    validate_profile(value)?;
+    if value.model_name.trim().is_empty() || value.base_url.trim().is_empty() {
+        return Err(AppError::invalid("model", "请先填写模型名称和模型地址。"));
+    }
+    Ok(())
 }
 
 fn validate_dimensions(value: &PersonaDimensions) -> AppResult<()> {
@@ -353,6 +377,7 @@ impl Database {
             })?;
         let profile: ModelProfileInput = serde_json::from_str(&profile)?;
         if let Some(reference) = &reference {
+            require_configured_profile(&profile)?;
             transaction.execute(
                 "INSERT INTO credential_bindings VALUES (?1,?2,?3,?4)",
                 params![
@@ -497,7 +522,10 @@ impl Database {
             )?;
             if let Some((old, _)) = previous {
                 let old: ModelProfileInput = serde_json::from_str(&old)?;
-                if old.base_url != profile.base_url || old.protocol != profile.protocol {
+                if old.base_url != profile.base_url
+                    || old.protocol != profile.protocol
+                    || profile.model_name.trim().is_empty()
+                {
                     transaction.execute("UPDATE model_profiles SET credential_ref=NULL, credential_endpoint=NULL WHERE id=?1", [&profile.id])?;
                 }
             }
@@ -562,7 +590,7 @@ impl Database {
         validate_dimensions(&config.dimensions)?;
         validate_preferences(&config.preferences)?;
         if let Some(model) = &config.model {
-            validate_profile(&model.profile)?;
+            require_configured_profile(&model.profile)?;
         }
         let hash = fingerprint(&serde_json::to_vec(&(&request.expected_revision, &config))?);
         let generation = self.generation_id.clone();
@@ -592,6 +620,7 @@ impl Database {
             }
             let source: String = transaction.query_row("SELECT profile_json FROM model_profile_versions WHERE profile_id=?1 AND revision=?2", params![model.source_profile_id, parse_counter(&model.source_profile_revision,"source_profile_revision")?], |row| row.get(0)).optional()?.ok_or_else(|| AppError::invalid("model", "来源模型版本不存在，请重新选择预设。"))?;
             let source: ModelProfileInput = serde_json::from_str(&source)?;
+            require_configured_profile(&source)?;
             if model.profile.id != model.source_profile_id
                 || source.base_url != model.profile.base_url
                 || source.protocol != model.profile.protocol

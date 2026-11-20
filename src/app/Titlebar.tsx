@@ -16,7 +16,7 @@ export function Titlebar({ maximized, onAction }: { maximized: boolean; onAction
       <div className="titlebar-identity">
         <svg className="titlebar-mark" viewBox="0 0 28 28" aria-hidden="true">
           <rect x="1" y="1" width="26" height="26" rx="8" fill="currentColor" />
-          <path d="M8 9h12v8a3 3 0 0 1-3 3h-5l-3 2v-2H8V9Z" fill="white" />
+          <path d="M8 9h12v8a3 3 0 0 1-3 3h-5l-3 2v-2H8V9Z" fill="var(--primary-foreground)" />
           <path d="M11 12h6M11 15h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
         </svg>
         <span className="titlebar-wordmark">Sageroom</span>

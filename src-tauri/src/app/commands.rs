@@ -372,10 +372,25 @@ pub fn app_request_exit(
                 "应用运行世代已改变，请重新确认退出。",
             ));
         }
-        lifecycle::request_exit(window.app_handle().clone());
-        Ok(ExitResult {
-            shutting_down: true,
-        })
+        lifecycle::prepare_exit(window.app_handle().clone())
     })();
     result.into()
+}
+
+#[tauri::command]
+pub async fn app_exit_ready(
+    window: WebviewWindow,
+    request: Value,
+) -> Result<ApiResponse<ExitResult>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        lifecycle::exit_ready(
+            window.app_handle().clone(),
+            window.label(),
+            decode(request)?,
+        )
+        .await
+    }
+    .await;
+    Ok(result.into())
 }

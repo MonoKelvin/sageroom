@@ -407,6 +407,147 @@ fn commit_v2(directory: &TempDir) {
 }
 
 #[test]
+fn unconfigured_presets_save_replay_reopen_but_cannot_bind_or_be_adopted() {
+    let (directory, mut database) = database();
+    let initial = database.get_global_configuration(GENERATION).unwrap();
+    let mut request = global_request(&database, "save-unconfigured", &initial);
+    for (index, base_url, model_name) in [
+        (0, "", ""),
+        (1, "https://model.example.invalid/v1", ""),
+        (2, "", "fixture-model"),
+    ] {
+        let mut profile = model_profile();
+        profile.id = format!("unconfigured-{index}");
+        profile.base_url = base_url.into();
+        profile.model_name = model_name.into();
+        request.model_profiles.push(profile);
+    }
+    let (saved, event) = database.save_global_configuration(request.clone()).unwrap();
+    assert!(event.is_some());
+    let (replay, event) = database.save_global_configuration(request).unwrap();
+    assert_eq!(value(&saved), value(&replay));
+    assert!(event.is_none());
+    for profile in &saved.model_profiles {
+        assert!(!profile.credential_configured);
+        assert_code(
+            database.replace_credential_reference(
+                &profile.id,
+                &profile.revision,
+                Some(Uuid::now_v7().to_string()),
+            ),
+            ErrorCode::InvalidInput,
+        );
+        let mut agent = database.list_agents(GENERATION).unwrap().remove(0);
+        agent.model = Some(AgentModelSnapshot {
+            source_profile_id: profile.id.clone(),
+            source_profile_revision: profile.revision.clone(),
+            profile: profile.input(),
+        });
+        assert_code(
+            database.save_agent(AgentSaveRequest {
+                data_generation_id: GENERATION.into(),
+                client_request_id: format!("adopt-{}", profile.id),
+                expected_revision: Some(agent.revision.clone()),
+                configuration: agent.clone(),
+            }),
+            ErrorCode::InvalidInput,
+        );
+        // 在快照里补字段也不能采用未配置的来源历史版本。
+        let snapshot = agent.model.as_mut().unwrap();
+        if snapshot.profile.model_name.is_empty() {
+            snapshot.profile.model_name = "forged-complete".into();
+        }
+        if !snapshot.profile.base_url.is_empty() {
+            assert_code(
+                database.save_agent(AgentSaveRequest {
+                    data_generation_id: GENERATION.into(),
+                    client_request_id: format!("forged-{}", profile.id),
+                    expected_revision: Some(agent.revision.clone()),
+                    configuration: agent,
+                }),
+                ErrorCode::InvalidInput,
+            );
+        }
+    }
+    assert_eq!(count(&database.conn, "credential_bindings"), 0);
+    assert_eq!(count(&database.conn, "domain_events"), 1);
+    drop(database);
+    let reopened = Database::open(directory.path(), "reopened-empty".into()).unwrap();
+    assert_eq!(
+        value(&reopened.get_global_configuration("reopened-empty").unwrap()),
+        value(&saved)
+    );
+}
+
+#[test]
+fn incomplete_presets_still_reject_invalid_nonempty_urls_and_strict_values() {
+    let (_directory, mut database) = database();
+    let current = database.get_global_configuration(GENERATION).unwrap();
+    for (index, url) in [
+        "http://model.example.invalid/v1",
+        "https://user@model.example.invalid",
+        "https://@model.example.invalid",
+        "https://user:password@model.example.invalid",
+        " https://model.example.invalid",
+        "https://model.example.invalid/?key=x",
+        "https://model.example.invalid/#x",
+        "https://model.example.invalid/\npath",
+        "ftp://model.example.invalid",
+        " ",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut request =
+            global_request(&database, &format!("invalid-empty-url-{index}"), &current);
+        let mut profile = model_profile();
+        profile.model_name.clear();
+        profile.base_url = url.into();
+        request.model_profiles.push(profile);
+        assert_code(
+            database.save_global_configuration(request),
+            ErrorCode::InvalidInput,
+        );
+    }
+    for case in 0..3 {
+        let mut request =
+            global_request(&database, &format!("invalid-empty-values-{case}"), &current);
+        let mut profile = model_profile();
+        profile.base_url.clear();
+        profile.model_name.clear();
+        match case {
+            0 => profile.name.clear(),
+            1 => profile.parameters.top_p = 0.0,
+            _ => request.persona_presets[0].dimensions.humor = 101,
+        }
+        request.model_profiles.push(profile);
+        assert_code(
+            database.save_global_configuration(request),
+            ErrorCode::InvalidInput,
+        );
+    }
+    for (index, url) in [
+        "http://127.0.0.1:8080/v1",
+        "http://localhost:8080/v1",
+        "http://[::1]:8080/v1",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut request = global_request(
+            &database,
+            &format!("valid-loopback-{index}"),
+            &database.get_global_configuration(GENERATION).unwrap(),
+        );
+        let mut profile = model_profile();
+        profile.base_url = url.into();
+        profile.model_name.clear();
+        request.model_profiles = vec![profile];
+        database.save_global_configuration(request).unwrap();
+    }
+}
+
+#[test]
 fn global_save_replay_does_not_repeat_events_or_overwrite_later_configuration() {
     let (_directory, mut database) = database();
     let initial = database.get_global_configuration(GENERATION).unwrap();

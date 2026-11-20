@@ -1,7 +1,7 @@
 use std::{
     path::PathBuf,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -20,10 +20,15 @@ use crate::{
 
 pub struct AppState {
     pub generation: String,
-    storage: AppResult<Arc<DbWorker>>,
+    storage: Mutex<AppResult<Arc<DbWorker>>>,
+    storage_initialized: bool,
     secrets: AppResult<Arc<SecretStore>>,
     models: AppResult<Arc<ModelGateway>>,
-    model_shutdown: CancellationToken,
+    model_shutdown: Mutex<CancellationToken>,
+    pub exits: super::lifecycle::ExitCoordinator,
+    recovering: AtomicBool,
+    recovery_worker: Mutex<Option<Arc<DbWorker>>>,
+    exit_completed: AtomicBool,
     pub avatar_gate: Semaphore,
     shutting_down: AtomicBool,
 }
@@ -51,23 +56,28 @@ impl AppState {
             });
         Self {
             generation,
-            storage,
+            storage_initialized: storage.is_ok(),
+            storage: Mutex::new(storage),
             secrets,
             models,
-            model_shutdown: CancellationToken::new(),
+            model_shutdown: Mutex::new(CancellationToken::new()),
+            exits: super::lifecycle::ExitCoordinator::default(),
+            recovering: AtomicBool::new(false),
+            recovery_worker: Mutex::new(None),
+            exit_completed: AtomicBool::new(false),
             avatar_gate: Semaphore::new(1),
             shutting_down: AtomicBool::new(false),
         }
     }
 
     pub fn worker(&self) -> AppResult<Arc<DbWorker>> {
-        if self.is_shutting_down() {
+        if self.is_shutting_down() || self.recovering.load(Ordering::Acquire) {
             return Err(AppError::new(
                 ErrorCode::ShuttingDown,
                 "应用正在退出，未启动新的操作。",
             ));
         }
-        self.storage.clone()
+        self.storage.lock().expect("存储锁被污染").clone()
     }
 
     pub async fn global_configuration(
@@ -165,6 +175,7 @@ impl AppState {
                 request.expected_revision.clone(),
             )
             .await?;
+        crate::storage::configuration::require_configured_profile(&profile.input())?;
         let secrets = self.secrets.clone()?;
         let worker = self.worker()?;
         let creator = secrets.clone();
@@ -229,6 +240,7 @@ impl AppState {
                 request.expected_revision,
             )
             .await?;
+        crate::storage::configuration::require_configured_profile(&profile.input())?;
         let reference = reference.ok_or_else(|| {
             AppError::new(
                 ErrorCode::CapabilityUnsupported,
@@ -243,10 +255,8 @@ impl AppState {
         })
         .await
         .map_err(|_| AppError::new(ErrorCode::InternalError, "读取模型凭据未完成。"))??;
-        self.models
-            .clone()?
-            .test(profile, key, self.model_shutdown.clone())
-            .await
+        let cancellation = self.model_shutdown.lock().expect("模型锁被污染").clone();
+        self.models.clone()?.test(profile, key, cancellation).await
     }
 
     pub async fn import_development_model(
@@ -320,12 +330,197 @@ impl AppState {
         self.shutting_down.load(Ordering::Acquire)
     }
 
-    pub fn begin_shutdown(&self) -> Option<AppResult<Arc<DbWorker>>> {
-        if self.shutting_down.swap(true, Ordering::AcqRel) {
-            None
-        } else {
-            self.model_shutdown.cancel();
-            Some(self.storage.clone())
+    pub fn has_initialized_storage(&self) -> bool {
+        self.storage_initialized
+    }
+
+    pub fn is_recovering(&self) -> bool {
+        self.recovering.load(Ordering::Acquire)
+    }
+
+    pub fn exit_completed(&self) -> bool {
+        self.exit_completed.load(Ordering::Acquire)
+    }
+
+    pub fn complete_exit(&self) {
+        self.exit_completed.store(true, Ordering::Release);
+    }
+
+    pub fn begin_shutdown(&self) -> AppResult<Option<Arc<DbWorker>>> {
+        if self.recovering.load(Ordering::Acquire) {
+            return Err(AppError::new(
+                ErrorCode::ShuttingDown,
+                "数据正在恢复，请稍后重新退出。",
+            ));
         }
+        let storage = self.storage.lock().expect("存储锁被污染").clone();
+        if self.storage_initialized && storage.is_err() {
+            return Err(storage.err().expect("存储错误"));
+        }
+        if self.shutting_down.swap(true, Ordering::AcqRel) {
+            return Err(AppError::new(ErrorCode::ShuttingDown, "退出已经开始。"));
+        }
+        self.model_shutdown.lock().expect("模型锁被污染").cancel();
+        Ok(self
+            .storage
+            .lock()
+            .expect("存储锁被污染")
+            .as_ref()
+            .ok()
+            .cloned())
+    }
+
+    pub fn start_recovery(&self) {
+        self.recovering.store(true, Ordering::Release);
+        *self.recovery_worker.lock().expect("恢复锁被污染") = self
+            .storage
+            .lock()
+            .expect("存储锁被污染")
+            .as_ref()
+            .ok()
+            .cloned();
+        self.shutting_down.store(false, Ordering::Release);
+    }
+
+    pub fn retry_recovery(&self) -> Option<Arc<DbWorker>> {
+        let worker = self.recovery_worker.lock().expect("恢复锁被污染").clone()?;
+        if self.recovering.swap(true, Ordering::AcqRel) {
+            return None;
+        }
+        Some(worker)
+    }
+
+    pub fn finish_recovery(&self, storage: AppResult<Arc<DbWorker>>) {
+        if storage.is_ok() {
+            *self.recovery_worker.lock().expect("恢复锁被污染") = None;
+        }
+        *self.storage.lock().expect("存储锁被污染") = storage;
+        *self.model_shutdown.lock().expect("模型锁被污染") = CancellationToken::new();
+        self.recovering.store(false, Ordering::Release);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn fixture(worker: AppResult<Arc<DbWorker>>) -> AppState {
+        AppState {
+            generation: "state-tests".into(),
+            storage_initialized: worker.is_ok(),
+            storage: Mutex::new(worker),
+            secrets: Err(AppError::new(
+                ErrorCode::CapabilityUnsupported,
+                "测试禁止访问系统凭据。",
+            )),
+            models: Err(AppError::new(
+                ErrorCode::CapabilityUnsupported,
+                "测试禁止访问网络。",
+            )),
+            model_shutdown: Mutex::new(CancellationToken::new()),
+            exits: super::super::lifecycle::ExitCoordinator::default(),
+            recovering: AtomicBool::new(false),
+            recovery_worker: Mutex::new(None),
+            exit_completed: AtomicBool::new(false),
+            avatar_gate: Semaphore::new(1),
+            shutting_down: AtomicBool::new(false),
+        }
+    }
+
+    #[test]
+    fn incomplete_profile_secret_and_test_preflight_never_reach_credentials_or_network() {
+        for (url, model) in [
+            ("", ""),
+            ("https://example.invalid/v1", ""),
+            ("", "fixture-model"),
+        ] {
+            let directory = TempDir::new().unwrap();
+            let worker =
+                DbWorker::open(directory.path(), "state-tests".into(), Arc::new(|_| {})).unwrap();
+            let state = fixture(Ok(worker.clone()));
+            let current = tauri::async_runtime::block_on(worker.get_global_configuration(
+                GlobalConfigurationGetRequest {
+                    data_generation_id: state.generation.clone(),
+                },
+            ))
+            .unwrap();
+            let saved = tauri::async_runtime::block_on(worker.save_global_configuration(
+                GlobalConfigurationSaveRequest {
+                    data_generation_id: state.generation.clone(),
+                    client_request_id: "incomplete-state-profile".into(),
+                    expected_revision: current.revision,
+                    model_profiles: vec![ModelProfileInput {
+                        id: "incomplete".into(),
+                        name: "未配置预设".into(),
+                        protocol: ModelProtocol::OpenaiChatCompletions,
+                        base_url: url.into(),
+                        model_name: model.into(),
+                        parameters: ModelParameters {
+                            temperature: 0.5,
+                            top_p: 1.0,
+                            max_output_tokens: 1024,
+                            input_budget: 4096,
+                            reasoning: ReasoningMode::Off,
+                        },
+                    }],
+                    persona_presets: current.persona_presets,
+                    runtime_defaults: current.runtime_defaults,
+                },
+            ))
+            .unwrap();
+            let revision = saved.model_profiles[0].revision.clone();
+            let error = tauri::async_runtime::block_on(state.set_secret(SecretSetRequest {
+                data_generation_id: state.generation.clone(),
+                profile_id: "incomplete".into(),
+                expected_revision: revision.clone(),
+                api_key: "test-only-never-used".into(),
+            }))
+            .unwrap_err();
+            assert_eq!(error.code, ErrorCode::InvalidInput);
+            let error = tauri::async_runtime::block_on(state.test_model(ModelProfileTestRequest {
+                data_generation_id: state.generation.clone(),
+                profile_id: "incomplete".into(),
+                expected_revision: revision,
+            }))
+            .unwrap_err();
+            assert_eq!(error.code, ErrorCode::InvalidInput);
+            tauri::async_runtime::block_on(worker.shutdown()).unwrap();
+        }
+    }
+
+    #[test]
+    fn failed_shutdown_state_recovers_and_initialization_failure_does_not_require_snapshot() {
+        let directory = TempDir::new().unwrap();
+        let worker =
+            DbWorker::open(directory.path(), "state-tests".into(), Arc::new(|_| {})).unwrap();
+        let state = fixture(Ok(worker.clone()));
+        assert!(state.begin_shutdown().unwrap().is_some());
+        assert!(state.is_shutting_down());
+        assert!(!state.exit_completed());
+        state.start_recovery();
+        assert!(!state.is_shutting_down());
+        assert_eq!(state.worker().err().unwrap().code, ErrorCode::ShuttingDown);
+        assert!(state.begin_shutdown().is_err());
+        state.finish_recovery(Err(AppError::new(ErrorCode::IoError, "临时恢复故障。")));
+        assert!(state.has_initialized_storage()); // 不是初始化失败，不能直接退出。
+        assert!(state.begin_shutdown().is_err());
+        let retry = state
+            .retry_recovery()
+            .expect("恢复失败保留真实工作线程以供重试");
+        assert!(state.is_recovering());
+        assert!(state.retry_recovery().is_none());
+        tauri::async_runtime::block_on(worker.clone().shutdown()).unwrap();
+        let reopened = retry.recover().unwrap();
+        state.finish_recovery(Ok(reopened));
+        assert!(state.worker().is_ok());
+        assert!(!state.model_shutdown.lock().unwrap().is_cancelled());
+        let worker = state.begin_shutdown().unwrap().unwrap();
+        tauri::async_runtime::block_on(worker.shutdown()).unwrap();
+        state.complete_exit();
+        assert!(state.exit_completed());
+        let unavailable = fixture(Err(AppError::new(ErrorCode::IoError, "初始化失败。")));
+        assert!(!unavailable.has_initialized_storage());
+        assert!(unavailable.begin_shutdown().unwrap().is_none());
     }
 }

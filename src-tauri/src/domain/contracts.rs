@@ -397,6 +397,29 @@ pub struct ExitRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(deny_unknown_fields)]
+pub struct ExitReadyRequest {
+    pub data_generation_id: String,
+    pub request_id: String,
+    pub ready: bool,
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema, TS)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AppLifecyclePayload {
+    ExitPrepare { request_id: String },
+    ExitCancelled { request_id: String, error: AppError },
+}
+
+#[derive(Clone, Debug, Serialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AppLifecycleEvent {
+    pub schema_version: SchemaVersion,
+    pub data_generation_id: String,
+    pub payload: AppLifecyclePayload,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
 pub struct ExitResult {
     pub shutting_down: bool,
 }
@@ -437,9 +460,9 @@ pub struct ModelProfileInput {
     #[schemars(length(min = 1, max = 80))]
     pub name: String,
     pub protocol: ModelProtocol,
-    #[schemars(length(min = 1, max = 2048))]
+    #[schemars(length(max = 2048))]
     pub base_url: String,
-    #[schemars(length(min = 1, max = 200))]
+    #[schemars(length(max = 200))]
     pub model_name: String,
     pub parameters: ModelParameters,
 }
