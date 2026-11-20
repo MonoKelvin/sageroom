@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { AppSnapshot, Appearance, ChatSendResult, DomainEvent, MessagePage } from "@/contracts/generated"
+import type { AppSnapshot, Appearance, ChatSendResult, DomainEvent, MessagePage, Room } from "@/contracts/generated"
 import { errorMessage, ipc, IpcError } from "@/app/ipc"
 import { compareSequence, INITIAL_ITEM_INDEX, mergePage, PAGE_SIZE } from "./timeline"
 
@@ -172,7 +172,10 @@ export function useChatSession() {
     }
     eventCursor.current = sequence
     const next: AppSnapshot = { ...current, latest_event_seq: event.event_seq }
-    if (event.payload.kind === "appearance_changed") {
+    if (event.payload.kind === "room_changed") {
+      next.room = event.payload.room
+      assignSnapshot(next)
+    } else if (event.payload.kind === "appearance_changed") {
       next.appearance = event.payload.appearance
       assignSnapshot(next)
     } else if (event.payload.kind === "participant_profile_changed") {
@@ -320,6 +323,13 @@ export function useChatSession() {
     return result
   }, [assignSnapshot, enqueue, report, synchronizeMessages])
 
+  const applyRoom = useCallback((room: Room, generation: string) => {
+    const current = snapshotRef.current
+    if (current?.data_generation_id === generation && current.room.id === room.id && compareSequence(room.version, current.room.version) >= 0) {
+      assignSnapshot({ ...current, room })
+    }
+  }, [assignSnapshot])
+
   const applyAppearance = useCallback((appearance: Appearance, generation: string) => {
     const current = snapshotRef.current
     if (current?.data_generation_id === generation && compareSequence(appearance.revision, current.appearance.revision) >= 0) {
@@ -357,7 +367,7 @@ export function useChatSession() {
   return {
     snapshot, page, loading, loadingMore, error, hasNewMessages, atBottom,
     firstItemIndex, windowRevision, targetMessageId,
-    reload, send, goToLatest, jumpTo, updateAtBottom, updateRenderedAnchor, applyAppearance,
+    reload, send, goToLatest, jumpTo, updateAtBottom, updateRenderedAnchor, applyRoom, applyAppearance,
     loadOlder: () => loadPage("before"),
     loadNewer: () => loadPage("after"),
   }

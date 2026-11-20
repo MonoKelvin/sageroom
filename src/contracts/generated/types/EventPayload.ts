@@ -2,5 +2,6 @@
 import type { Appearance } from "./Appearance";
 import type { DecimalString } from "./DecimalString";
 import type { Participant } from "./Participant";
+import type { Room } from "./Room";
 
-export type EventPayload = { "kind": "message_committed", message_id: string, message_seq: DecimalString, sender_id: string, } | { "kind": "appearance_changed", appearance: Appearance, } | { "kind": "participant_profile_changed", participant: Participant, } | { "kind": "agent_configuration_changed", agent_id: string, revision: DecimalString, } | { "kind": "global_configuration_changed", revision: DecimalString, };
+export type EventPayload = { "kind": "message_committed", message_id: string, message_seq: DecimalString, sender_id: string, } | { "kind": "appearance_changed", appearance: Appearance, } | { "kind": "room_changed", room: Room, } | { "kind": "participant_profile_changed", participant: Participant, } | { "kind": "agent_configuration_changed", agent_id: string, revision: DecimalString, } | { "kind": "global_configuration_changed", revision: DecimalString, };

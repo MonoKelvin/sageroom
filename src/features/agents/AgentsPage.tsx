@@ -7,6 +7,7 @@ import { modelIsComplete } from "@/app/configurationStore"
 import { useAgentResources, useAppliedResource, useConfiguration, useConfigurationRuntime } from "@/app/configurationContext"
 import { errorMessage, ipc } from "@/app/ipc"
 import { Avatar } from "@/components/Avatar"
+import { WorkspaceList } from "@/components/WorkspaceList"
 import { Button } from "@/components/ui/button"
 import { EditableInput } from "@/components/ui/editable-input"
 import { EditableTextarea } from "@/components/ui/editable-textarea"
@@ -130,7 +131,7 @@ function AgentsWorkspace({ active }: ApplicationPageProps) {
     } catch (cause) { if (alive.current && (!createdId || store.agent(createdId).getSnapshot().status !== "error")) setCreationError(errorMessage(cause)) }
   }
   return <div className="workspace-layout config-page">
-    <aside className="workspace-list" aria-label="智能体列表">
+    <WorkspaceList aria-label="智能体列表">
       <div className="panel-heading"><h1 className="panel-title">智能体</h1><Button variant="ghost" size="icon-sm" disabled={!globalState.value || runtime.exiting} aria-label="新建智能体" onClick={() => void create()}><IconPlus size={20} aria-hidden="true" /></Button></div>
       <div className="config-list-scroll">
         <button type="button" className="list-entry" aria-label="全局配置" data-active={selected === null} aria-current={selected === null ? "page" : undefined} onClick={() => setSelected(null)}><IconAdjustments size={22} aria-hidden="true" /><span className="config-entry-text"><strong>全局配置</strong><span>模型、人格与运行偏好</span></span></button>
@@ -140,7 +141,7 @@ function AgentsWorkspace({ active }: ApplicationPageProps) {
       {list.error && <div className="config-notice" role="alert"><p>{list.error}</p><Button variant="ghost" size="sm" onClick={() => void store.loadAgents()}>重试读取智能体</Button></div>}
       {creationError && <p className="form-caption p-3" role="alert">{creationError}</p>}
       <p className="form-caption p-3">只管理本地配置。群主和普通成员聊天平等，不因身份获得话题优先权。</p>
-    </aside>
+    </WorkspaceList>
     <div className="workspace-detail">
       <div className="workspace-detail" hidden={selected !== null} inert={selected !== null}><GlobalConfigurationPanel active={active && selected === null} /></div>
       {globalState.value && list.resources.map((resource) => { const id = resource.getSnapshot().value!.agent_id; return <div key={id} className="workspace-detail" hidden={selected !== id} inert={selected !== id}><AgentPane resource={resource} global={globalState.value!} active={active && selected === id} onCopy={(agent) => void create(agent)} onOpenGlobal={() => setSelected(null)} /></div> })}

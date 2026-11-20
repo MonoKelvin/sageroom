@@ -29,7 +29,7 @@ function ApplicationShell({ session }: { session: ReturnType<typeof useChatSessi
   }, [])
   // WebView 缩放改变 CSS px，窗口轮廓仍与原生 DIP 命中区域对齐。
   const zoom = pixelRatio / windowState.nativeScale
-  const frameStyle = { "--window-gutter": `${16 / zoom}px`, "--window-radius": `${20 / zoom}px`, "--frame-shadow-y": `${5 / zoom}px`, "--frame-shadow-blur": `${16 / zoom}px` } as CSSProperties
+  const frameStyle = { "--window-gutter": `${16 / zoom}px`, "--window-radius": `${16 / zoom}px`, "--frame-shadow-y": `${5 / zoom}px`, "--frame-shadow-blur": `${16 / zoom}px` } as CSSProperties
   useAppearance(previewAppearance ?? session.snapshot?.appearance)
   const navigate = useCallback((page: PageId) => setCurrentPage(page), [])
 

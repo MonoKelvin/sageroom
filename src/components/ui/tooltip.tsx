@@ -4,10 +4,11 @@ import { cn } from "@/lib/utils"
 import "./settings-controls.css"
 
 function TooltipProvider({
-  delayDuration = 300,
+  delayDuration = 600,
+  skipDelayDuration = 0,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
-  return <TooltipPrimitive.Provider delayDuration={delayDuration} {...props} />
+  return <TooltipPrimitive.Provider delayDuration={delayDuration} skipDelayDuration={skipDelayDuration} {...props} />
 }
 
 function Tooltip(props: React.ComponentProps<typeof TooltipPrimitive.Root>) {

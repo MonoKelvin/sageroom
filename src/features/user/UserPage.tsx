@@ -4,6 +4,7 @@ import type { ApplicationPageProps } from "@/app/navigation"
 import { useAppliedResource, useConfiguration, useConfigurationRuntime } from "@/app/configurationContext"
 import { errorMessage, ipc } from "@/app/ipc"
 import { Avatar } from "@/components/Avatar"
+import { WorkspaceList } from "@/components/WorkspaceList"
 import { Button } from "@/components/ui/button"
 import { EditableInput } from "@/components/ui/editable-input"
 import { EditableTextarea } from "@/components/ui/editable-textarea"
@@ -47,12 +48,12 @@ function UserEditor({ active, onNavigate }: ApplicationPageProps) {
   }
 
   return <div className="workspace-layout config-page">
-    <aside className="workspace-list" aria-label="用户资料导航">
+    <WorkspaceList aria-label="用户资料导航">
       <div className="panel-heading"><h1 className="panel-title">用户</h1></div>
       <div className="list-entry" data-active="true"><IconUserCircle size={22} aria-hidden="true" /><span className="config-entry-text"><strong>{profile?.display_name || "我的资料"}</strong><span>本机用户</span></span></div>
       <p className="form-caption p-3">昵称和头像用于之后发送的消息，历史消息保留发送时的资料。</p>
       <Button variant="ghost" size="sm" onClick={() => onNavigate("chat")}>返回聊天</Button>
-    </aside>
+    </WorkspaceList>
     <div className="workspace-detail"><section className="surface-card">
       <header className="panel-heading"><div><h2 className="panel-title">我的资料</h2><p className="panel-description">在这个聊天室中如何介绍自己。</p></div></header>
       <div className="panel-content panel-scroll">

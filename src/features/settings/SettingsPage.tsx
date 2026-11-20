@@ -3,6 +3,7 @@ import { IconBrush, IconInfoCircle, IconLogout } from "@tabler/icons-react"
 import type { ApplicationPageProps } from "@/app/navigation"
 import { useAppliedResource, useConfiguration, useConfigurationRuntime } from "@/app/configurationContext"
 import { Button } from "@/components/ui/button"
+import { WorkspaceList } from "@/components/WorkspaceList"
 import { SettingSection } from "@/components/ui/setting-row"
 import { SettingsSelect } from "@/components/ui/settings-select"
 import { Switch } from "@/components/ui/switch"
@@ -52,7 +53,7 @@ function SettingsEditor({ session, active, onNavigate }: ApplicationPageProps) {
   const reload = session.reload
   useEffect(() => { if (active && section === "about") void reload() }, [active, section, reload])
   return <div className="workspace-layout config-page">
-    <aside className="workspace-list" aria-label="设置分类"><div className="panel-heading"><h1 className="panel-title">设置</h1></div><nav className="config-list-scroll">{sections.map(({ id, title: label, icon: Icon }) => <button key={id} type="button" className="list-entry" data-active={section === id} aria-current={section === id ? "page" : undefined} onClick={() => setSection(id)}><Icon size={21} aria-hidden="true" /><span>{label}</span></button>)}</nav><Button variant="ghost" size="sm" onClick={() => onNavigate("agents")}>管理智能体</Button></aside>
+    <WorkspaceList aria-label="设置分类"><div className="panel-heading"><h1 className="panel-title">设置</h1></div><nav className="config-list-scroll">{sections.map(({ id, title: label, icon: Icon }) => <button key={id} type="button" className="list-entry" data-active={section === id} aria-current={section === id ? "page" : undefined} onClick={() => setSection(id)}><Icon size={21} aria-hidden="true" /><span>{label}</span></button>)}</nav><Button variant="ghost" size="sm" onClick={() => onNavigate("agents")}>管理智能体</Button></WorkspaceList>
     <div className="workspace-detail"><section className="surface-card"><header className="panel-heading"><div><h2 className="panel-title">{title}</h2><p className="panel-description">{section === "about" ? "版本、许可与本地数据。" : "选择后直接应用。"}</p></div></header>
       <div className="panel-content panel-scroll">
         <div hidden={section !== "appearance"} inert={section !== "appearance"}><AppearanceCard active={active && section === "appearance"} /></div>

@@ -1595,6 +1595,23 @@
             "properties": {
               "kind": {
                 "type": "string",
+                "const": "room_changed"
+              },
+              "room": {
+                "$ref": "#/$defs/Room"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "room"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
                 "const": "participant_profile_changed"
               },
               "participant": {
@@ -3784,6 +3801,23 @@
             "properties": {
               "kind": {
                 "type": "string",
+                "const": "room_changed"
+              },
+              "room": {
+                "$ref": "#/$defs/Room"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "room"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
                 "const": "participant_profile_changed"
               },
               "participant": {
@@ -3862,6 +3896,34 @@
           "system",
           "light",
           "dark"
+        ]
+      },
+      "Room": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner_participant_id": {
+            "type": "string"
+          },
+          "version": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "content_epoch": {
+            "$ref": "#/$defs/DecimalString"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "owner_participant_id",
+          "version",
+          "content_epoch"
         ]
       },
       "Participant": {
@@ -5350,6 +5412,190 @@
           "anthropic_messages",
           "openai_responses"
         ]
+      },
+      "ApiFailure": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/$defs/AppError"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "error"
+        ]
+      },
+      "AppError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "Retryability": {
+        "type": "string",
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ]
+      }
+    }
+  },
+  "RoomSaveRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "RoomSaveRequest",
+    "type": "object",
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      },
+      "client_request_id": {
+        "type": "string"
+      },
+      "expected_version": {
+        "$ref": "#/$defs/DecimalString"
+      },
+      "name": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "data_generation_id",
+      "client_request_id",
+      "expected_version",
+      "name"
+    ],
+    "$defs": {
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
+      }
+    }
+  },
+  "RoomSaveResponse": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "ApiResponse",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "$defs": {
+      "ApiSuccess": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          },
+          "data": {
+            "$ref": "#/$defs/Room"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "data"
+        ]
+      },
+      "SchemaVersion": {
+        "type": "string",
+        "enum": [
+          "0.3"
+        ]
+      },
+      "Room": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner_participant_id": {
+            "type": "string"
+          },
+          "version": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "content_epoch": {
+            "$ref": "#/$defs/DecimalString"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "owner_participant_id",
+          "version",
+          "content_epoch"
+        ]
+      },
+      "DecimalString": {
+        "type": "string",
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$"
       },
       "ApiFailure": {
         "type": "object",

@@ -31,6 +31,7 @@ pub fn run() {
             app::commands::chat_list,
             app::commands::chat_search,
             app::commands::cancel_search,
+            app::commands::room_save,
             app::commands::appearance_save,
             app::commands::global_configuration_get,
             app::commands::global_configuration_save,

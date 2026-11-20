@@ -44,6 +44,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     export::<ApiResponse<SearchPage>>("ChatSearchResponse", &config, &mut schemas)?;
     export::<CancelSearchRequest>("CancelSearchRequest", &config, &mut schemas)?;
     export::<ApiResponse<CancelSearchResult>>("CancelSearchResponse", &config, &mut schemas)?;
+    export::<RoomSaveRequest>("RoomSaveRequest", &config, &mut schemas)?;
+    export::<ApiResponse<Room>>("RoomSaveResponse", &config, &mut schemas)?;
     export::<AppearanceSaveRequest>("AppearanceSaveRequest", &config, &mut schemas)?;
     export::<ApiResponse<Appearance>>("AppearanceSaveResponse", &config, &mut schemas)?;
     export::<ExitRequest>("ExitRequest", &config, &mut schemas)?;

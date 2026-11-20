@@ -151,6 +151,18 @@ impl DbWorker {
             .await
     }
 
+    pub async fn save_room(&self, request: RoomSaveRequest) -> AppResult<Room> {
+        let sink = self.event_sink.clone();
+        self.call(move |database| {
+            let (room, event) = database.save_room(request)?;
+            if let Some(event) = event {
+                sink(&event);
+            }
+            Ok(room)
+        })
+        .await
+    }
+
     pub async fn save_appearance(&self, request: AppearanceSaveRequest) -> AppResult<Appearance> {
         let sink = self.event_sink.clone();
         self.call(move |database| {

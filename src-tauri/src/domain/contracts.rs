@@ -145,6 +145,15 @@ pub struct Room {
     pub content_epoch: DecimalString,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct RoomSaveRequest {
+    pub data_generation_id: String,
+    pub client_request_id: String,
+    pub expected_version: DecimalString,
+    pub name: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Theme {
@@ -213,6 +222,9 @@ pub enum EventPayload {
     },
     AppearanceChanged {
         appearance: Appearance,
+    },
+    RoomChanged {
+        room: Room,
     },
     ParticipantProfileChanged {
         participant: Participant,

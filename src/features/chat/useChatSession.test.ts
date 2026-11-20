@@ -34,6 +34,44 @@ describe("聊天室数据与事件", () => {
     expect(order).toEqual(["subscribe", "snapshot", "list"])
   })
 
+  it("群名事件更新资料但不重建聊天阅读窗口", async () => {
+    const original = snapshot({ latest_message_seq: "2", latest_event_seq: "2" })
+    vi.mocked(ipc.snapshot).mockResolvedValue(original)
+    vi.mocked(ipc.list).mockResolvedValue(page([1, 2]))
+    const { result } = renderHook(() => useChatSession())
+    await waitFor(() => expect(result.current.page?.items).toHaveLength(2))
+    act(() => result.current.updateAtBottom(false))
+    const items = result.current.page?.items
+    const windowRevision = result.current.windowRevision
+    const listCalls = vi.mocked(ipc.list).mock.calls.length
+    const changed = { ...original.room, name: "新的群名称", version: "2" }
+
+    act(() => receiveEvent({ ...event(3), payload: { kind: "room_changed", room: changed } }))
+    await waitFor(() => expect(result.current.snapshot?.room.name).toBe("新的群名称"))
+    expect(result.current.snapshot?.room.version).toBe("2")
+    expect(result.current.snapshot?.latest_event_seq).toBe("3")
+    expect(result.current.page?.items).toBe(items)
+    expect(result.current.windowRevision).toBe(windowRevision)
+    expect(result.current.atBottom).toBe(false)
+    expect(ipc.list).toHaveBeenCalledTimes(listCalls)
+  })
+
+  it("群名保存响应只应用当前世代与非过期版本", async () => {
+    vi.mocked(ipc.list).mockResolvedValue(page([1, 2]))
+    const { result } = renderHook(() => useChatSession())
+    await waitFor(() => expect(result.current.page?.items).toHaveLength(2))
+    const items = result.current.page?.items
+    const listCalls = vi.mocked(ipc.list).mock.calls.length
+    const room = snapshot().room
+    act(() => result.current.applyRoom({ ...room, name: "已应用名称", version: "3" }, GENERATION))
+    expect(result.current.snapshot?.room.name).toBe("已应用名称")
+    act(() => result.current.applyRoom({ ...room, name: "旧响应", version: "2" }, GENERATION))
+    act(() => result.current.applyRoom({ ...room, name: "旧世代", version: "4" }, "old-generation"))
+    expect(result.current.snapshot?.room.name).toBe("已应用名称")
+    expect(result.current.page?.items).toBe(items)
+    expect(ipc.list).toHaveBeenCalledTimes(listCalls)
+  })
+
   it("事件缺口查询高水位并恢复消息，迟到旧事件不重复处理", async () => {
     const { result } = renderHook(() => useChatSession())
     await waitFor(() => expect(result.current.page).not.toBeNull())

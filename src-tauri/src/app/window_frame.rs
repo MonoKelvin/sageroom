@@ -1,7 +1,7 @@
 use tauri::WebviewWindow;
 
 const SHADOW_GUTTER: f64 = 16.0;
-const CORNER_RADIUS: f64 = 20.0;
+const CORNER_RADIUS: f64 = 16.0;
 const RESIZE_BORDER: f64 = 5.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

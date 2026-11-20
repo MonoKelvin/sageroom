@@ -44,6 +44,15 @@ fn snapshot(database: &mut Database) -> AppSnapshot {
         .unwrap()
 }
 
+fn room_request(database: &Database, name: &str) -> RoomSaveRequest {
+    RoomSaveRequest {
+        data_generation_id: database.generation_id.clone(),
+        client_request_id: uuid::Uuid::now_v7().to_string(),
+        expected_version: 1.into(),
+        name: name.into(),
+    }
+}
+
 fn send_request(generation: &str, id: &str, text: &str) -> ChatSendRequest {
     ChatSendRequest {
         data_generation_id: generation.into(),
@@ -242,6 +251,142 @@ fn published_database_with_interrupted_manifest_write_recovers_verified_metadata
     assert_eq!(list(&mut recovered, 50).items[0].id, committed.message_id);
     let materialized: Value = serde_json::from_slice(&fs::read(manifest).unwrap()).unwrap();
     assert_eq!(materialized["root_id"], root_id);
+}
+
+#[test]
+fn room_owner_rename_persists_and_emits_snapshot_consistent_event() {
+    let (directory, mut database) = database();
+    let message = send(&mut database, "room-name-history", "修改群名前的消息");
+    let original = snapshot(&mut database);
+    let request = room_request(&database, "  新的聊天室  ");
+    let (room, event) = database.save_room(request).unwrap();
+    let event = event.unwrap();
+    assert_eq!(room.name, "新的聊天室");
+    assert_eq!(room.version.0, "2");
+    assert_eq!(room.owner_participant_id, original.local_user.id);
+    assert_eq!(room.content_epoch.0, original.room.content_epoch.0);
+    match &event.payload {
+        EventPayload::RoomChanged { room: changed } => {
+            assert_eq!(changed.id, room.id);
+            assert_eq!(changed.name, room.name);
+            assert_eq!(changed.version.0, room.version.0);
+        }
+        other => panic!("群名修改产生了错误事件：{other:?}"),
+    }
+    let updated = database
+        .snapshot(AppSnapshotRequest {
+            data_generation_id: Some(database.generation_id.clone()),
+            last_event_seq: Some(original.latest_event_seq),
+        })
+        .unwrap();
+    assert_eq!(updated.room.name, room.name);
+    assert_eq!(updated.room.version.0, "2");
+    assert_eq!(updated.events.len(), 1);
+    assert_eq!(updated.events[0].event_id, event.event_id);
+    assert_eq!(updated.latest_message_seq.0, "1");
+    assert_eq!(list(&mut database, 50).items[0].id, message.message_id);
+    drop(database);
+    let mut reopened = Database::open(directory.path(), "generation-reopened".into()).unwrap();
+    assert_eq!(snapshot(&mut reopened).room.name, "新的聊天室");
+    assert_eq!(snapshot(&mut reopened).room.version.0, "2");
+}
+
+#[test]
+fn room_non_owner_cannot_change_name_or_emit_event() {
+    let (_directory, mut database) = database();
+    let owner = snapshot(&mut database)
+        .participants
+        .into_iter()
+        .find(|participant| participant.kind == ParticipantKind::Agent)
+        .unwrap();
+    database
+        .conn
+        .execute(
+            "UPDATE room SET owner_participant_id = ?1 WHERE singleton = 1",
+            [&owner.id],
+        )
+        .unwrap();
+    let before = snapshot(&mut database).room;
+    let request = room_request(&database, "无权限修改");
+    assert_code(database.save_room(request), ErrorCode::PermissionDenied);
+    let after = snapshot(&mut database).room;
+    assert_eq!(after.name, before.name);
+    assert_eq!(after.version.0, before.version.0);
+    assert_eq!(after.owner_participant_id, before.owner_participant_id);
+    assert_eq!(count(&database.conn, "domain_events"), 0);
+    assert_eq!(count(&database.conn, "request_records"), 0);
+}
+
+#[test]
+fn room_stale_version_preserves_current_name() {
+    let (_directory, mut database) = database();
+    let first = room_request(&database, "已保存的群名");
+    database.save_room(first).unwrap();
+    let stale = room_request(&database, "过期修改");
+    assert_code(database.save_room(stale), ErrorCode::ConfigConflict);
+    assert_eq!(snapshot(&mut database).room.name, "已保存的群名");
+    assert_eq!(snapshot(&mut database).room.version.0, "2");
+    assert_eq!(count(&database.conn, "domain_events"), 1);
+    assert_eq!(count(&database.conn, "request_records"), 1);
+}
+
+#[test]
+fn room_name_rejects_blank_long_and_null_values_and_accepts_unicode_boundary() {
+    let (_directory, mut database) = database();
+    for name in [" \n\t".to_owned(), "群".repeat(81), "含\0字符".to_owned()] {
+        let request = room_request(&database, &name);
+        assert_code(database.save_room(request), ErrorCode::InvalidInput);
+    }
+    assert_eq!(snapshot(&mut database).room.version.0, "1");
+    assert_eq!(count(&database.conn, "domain_events"), 0);
+    let name = "群".repeat(80);
+    let request = room_request(&database, &name);
+    assert_eq!(database.save_room(request).unwrap().0.name, name);
+}
+
+#[test]
+fn room_generation_and_uuid_are_validated_before_mutation() {
+    let (_directory, mut database) = database();
+    let mut request = room_request(&database, "新群名");
+    request.data_generation_id = "old-generation".into();
+    assert_code(
+        database.save_room(request),
+        ErrorCode::DataGenerationChanged,
+    );
+    let mut request = room_request(&database, "新群名");
+    request.client_request_id = "not-a-uuid".into();
+    assert_code(database.save_room(request), ErrorCode::InvalidInput);
+    assert_eq!(snapshot(&mut database).room.version.0, "1");
+    assert_eq!(count(&database.conn, "domain_events"), 0);
+    assert_eq!(count(&database.conn, "request_records"), 0);
+}
+
+#[test]
+fn room_save_is_idempotent_and_reused_identifier_rejects_other_content() {
+    let (_directory, mut database) = database();
+    let request = room_request(&database, "幂等群名");
+    let (first, event) = database.save_room(request.clone()).unwrap();
+    assert!(event.is_some());
+    let (replayed, event) = database.save_room(request.clone()).unwrap();
+    assert_eq!(replayed.name, first.name);
+    assert_eq!(replayed.version.0, first.version.0);
+    assert!(event.is_none());
+    let changed = RoomSaveRequest {
+        name: "同标识不同内容".into(),
+        ..request
+    };
+    assert_code(database.save_room(changed), ErrorCode::IdempotencyConflict);
+    assert_eq!(snapshot(&mut database).room.version.0, "2");
+    assert_eq!(count(&database.conn, "domain_events"), 1);
+    assert_eq!(count(&database.conn, "request_records"), 1);
+}
+
+#[test]
+fn room_save_request_rejects_forged_actor_fields() {
+    let (_directory, database) = database();
+    let mut request = serde_json::to_value(room_request(&database, "新群名")).unwrap();
+    request["owner_participant_id"] = json!(database.local_user_id);
+    assert!(serde_json::from_value::<RoomSaveRequest>(request).is_err());
 }
 
 #[test]

@@ -5,11 +5,11 @@
 }
 .ui-button-primary { background: var(--primary); color: var(--primary-foreground); }
 .ui-button-destructive { background: var(--destructive); color: var(--destructive-foreground); }
-.ui-button-outline { border-color: var(--border); background: var(--surface-chrome); color: var(--text-primary); }
+.ui-button-outline { border: 0; background: var(--control-bg); color: var(--text-primary); }
 .ui-button-secondary { background: var(--control-bg); color: var(--text-primary); }
 .ui-button-ghost { background: transparent; color: var(--text-secondary); }
 .ui-button-link { background: transparent; color: var(--accent-primary); }
-.ui-button:focus-visible, .settings-control:focus-visible, .settings-checkbox:focus-visible, .settings-switch:focus-visible {
+.ui-button:focus-visible, .settings-checkbox:focus-visible, .settings-switch:focus-visible {
   outline: 2px solid var(--control-focus);
   outline-offset: 3px;
 }
@@ -22,7 +22,7 @@
 .settings-control {
   width: 100%;
   min-width: 0;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: 10px;
   background: var(--control-bg);
   color: var(--text-primary);
@@ -30,10 +30,12 @@
   font-size: 13px;
   line-height: 1.5;
   outline: none;
+  box-shadow: none;
+  transition: background-color var(--motion-duration) ease;
 }
 .settings-control::placeholder { color: var(--text-secondary); opacity: 0.75; }
 .settings-control[readonly] { cursor: default; }
-.settings-control[aria-invalid="true"] { border-color: var(--status-error, var(--text-secondary)); }
+.settings-control:focus, .settings-control[aria-invalid="true"], .settings-select-trigger[data-state="open"] { background: var(--control-active-bg); }
 .settings-input { height: 38px; padding: 8px 12px; }
 .settings-textarea-container { position: relative; min-width: 0; }
 .settings-textarea { display: block; min-height: 112px; padding: 10px 12px 47px; resize: vertical; }
@@ -45,7 +47,7 @@
   align-items: center;
   gap: 2px;
   padding: 2px;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: 10px;
   background: var(--surface-chrome);
   backdrop-filter: blur(12px);
@@ -53,7 +55,7 @@
 .settings-control-error { margin: 6px 0 0; font-size: 12px; line-height: 1.5; color: var(--status-error, var(--text-secondary)); overflow-wrap: anywhere; }
 
 .settings-glass-popover {
-  border: 1px solid var(--border);
+  border: 0;
   background: var(--surface-chrome);
   color: var(--text-primary);
   box-shadow: 0 8px 28px rgb(0 0 0 / 10%);
@@ -63,7 +65,7 @@
 .ui-dropdown-item[data-highlighted] { background: var(--control-bg); color: var(--text-primary); }
 .ui-dropdown-item[data-highlighted][data-variant="destructive"] { color: var(--destructive); }
 .ui-tooltip {
-  border: 1px solid var(--border);
+  border: 0;
   background: var(--primary);
   color: var(--primary-foreground);
   box-shadow: 0 4px 14px rgb(0 0 0 / 8%);
@@ -100,7 +102,7 @@
   align-items: center;
   justify-content: center;
   flex: none;
-  border: 1px solid var(--border);
+  border: 0;
   background: var(--control-bg);
   color: var(--primary-foreground);
   cursor: pointer;
@@ -108,23 +110,24 @@
   transition: transform 180ms cubic-bezier(0.23, 1, 0.32, 1), opacity 180ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 .settings-checkbox { width: 21px; height: 21px; border-radius: 6px; padding: 0; }
-.settings-checkbox[data-state="checked"], .settings-switch[data-state="checked"] { border-color: var(--primary); background: var(--primary); }
+.settings-checkbox[data-state="checked"], .settings-switch[data-state="checked"] { background: var(--primary); }
 .settings-checkbox-indicator { display: flex; align-items: center; justify-content: center; }
 .settings-switch { width: 39px; height: 23px; border-radius: 99px; padding: 2px; justify-content: flex-start; }
 .settings-switch-thumb { width: 17px; height: 17px; border-radius: 50%; background: var(--text-secondary); transform: translateX(0); }
-.settings-switch-thumb[data-state="checked"] { background: var(--primary-foreground); transform: translateX(16px); }
+.settings-switch-thumb[data-state="checked"] { background: var(--primary-foreground); transform: translateX(18px); }
 .settings-number-editor { max-width: 190px; }
-.settings-number-controls { display: flex; align-items: center; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--control-bg); }
+.settings-number-controls { display: flex; align-items: center; gap: 3px; min-height: 38px; padding: 3px; border: 0; border-radius: 10px; background: var(--control-bg); transition: background-color var(--motion-duration) ease; }
+.settings-number-controls:focus-within, .settings-number-controls:has([aria-invalid="true"]) { background: var(--control-active-bg); }
 .settings-number-input { width: 100%; border: 0; border-radius: 6px; padding: 5px 2px; text-align: center; font-variant-numeric: tabular-nums; }
+.settings-number-controls .settings-number-input { background: transparent; }
 .settings-number-controls > .ui-button { flex: none; }
 
-.setting-section { min-width: 0; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-chrome); backdrop-filter: blur(16px); overflow: clip; }
+.setting-section { min-width: 0; border: 0; border-radius: 16px; background: var(--section-bg); box-shadow: none; overflow: clip; }
 .setting-section-header { padding: 18px 22px 12px; }
 .setting-section-header h2 { margin: 0; font-size: 14px; line-height: 1.5; font-weight: 600; color: var(--text-primary); }
 .setting-section-header p { margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
 .setting-section-body { min-width: 0; }
 .setting-row { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(180px, 1.1fr); align-items: center; gap: 24px; padding: 17px 22px; }
-.setting-row + .setting-row { border-top: 1px solid var(--border); }
 .setting-row-copy, .setting-row-controls { min-width: 0; }
 .setting-row-title { display: block; font-size: 13px; font-weight: 500; line-height: 1.5; color: var(--text-primary); overflow-wrap: anywhere; }
 .setting-row-description { margin: 4px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
@@ -133,6 +136,7 @@
 .setting-row-controls > .settings-control-error { width: 100%; text-align: right; }
 
 @media (hover: hover) and (pointer: fine) {
+  .settings-control:where(:hover:not(:disabled)), .settings-number-controls:where(:hover:not(:focus-within)):not(:has(input:disabled)) { background: var(--control-hover-bg); }
   .ui-button:not(:disabled):hover { transform: translateY(-1px); }
   .ui-button-primary:not(:disabled):hover, .ui-button-destructive:not(:disabled):hover { opacity: 0.88; }
   .ui-button-ghost:not(:disabled):hover, .ui-button-secondary:not(:disabled):hover, .ui-button-outline:not(:disabled):hover { background: var(--control-bg); color: var(--text-primary); }

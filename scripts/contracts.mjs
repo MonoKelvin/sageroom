@@ -19,6 +19,7 @@ const responseTypes = {
   ChatList: "MessagePage",
   ChatSearch: "SearchPage",
   CancelSearch: "CancelSearchResult",
+  RoomSave: "Room",
   AppearanceSave: "Appearance",
   Exit: "ExitResult",
   ExitReady: "ExitResult",

@@ -116,6 +116,20 @@ pub fn cancel_search(
 }
 
 #[tauri::command]
+pub async fn room_save(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<Room>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.worker()?.save_room(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
 pub async fn appearance_save(
     window: WebviewWindow,
     state: State<'_, AppState>,

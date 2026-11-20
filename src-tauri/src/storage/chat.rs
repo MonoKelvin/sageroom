@@ -656,6 +656,86 @@ impl Database {
         })
     }
 
+    pub fn save_room(
+        &mut self,
+        request: RoomSaveRequest,
+    ) -> AppResult<(Room, Option<DomainEvent>)> {
+        self.check_generation(&request.data_generation_id)?;
+        validate_id(&request.client_request_id, "client_request_id")?;
+        Uuid::parse_str(&request.client_request_id)
+            .map_err(|_| AppError::invalid("client_request_id", "请求标识必须是有效的 UUID。"))?;
+        let name = request.name.trim().to_owned();
+        if name.is_empty() || name.chars().count() > 80 || name.contains('\0') {
+            return Err(AppError::invalid(
+                "name",
+                "群名称不能为空、超过 80 个字符或含无效字符。",
+            ));
+        }
+        let expected = parse_counter(&request.expected_version, "expected_version")?;
+        let hash = fingerprint(&serde_json::to_vec(&(&request.expected_version, &name))?);
+        let generation = self.generation_id.clone();
+        let user_id = self.local_user_id.clone();
+        let transaction = self
+            .conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let (id, owner, epoch) = transaction.query_row(
+            "SELECT id, owner_participant_id, content_epoch FROM room WHERE singleton = 1",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            },
+        )?;
+        if owner != user_id {
+            return Err(AppError::new(
+                ErrorCode::PermissionDenied,
+                "只有群主可以修改群名称。",
+            ));
+        }
+        if let Some(result) =
+            replay_request(&transaction, &request.client_request_id, "room_save", &hash)?
+        {
+            return Ok((serde_json::from_str(&result)?, None));
+        }
+        let next_version = expected
+            .checked_add(1)
+            .ok_or_else(|| AppError::invalid("expected_version", "群资料版本已达到数据库上限。"))?;
+        let changed = transaction.execute(
+            "UPDATE room SET name = ?1, version = ?2 WHERE singleton = 1 AND version = ?3 AND owner_participant_id = ?4",
+            params![name, next_version, expected, user_id],
+        )?;
+        if changed != 1 {
+            return Err(AppError::new(
+                ErrorCode::ConfigConflict,
+                "群资料已改变，编辑内容已保留，请重新读取。",
+            ));
+        }
+        let room = Room {
+            id,
+            name,
+            owner_participant_id: owner,
+            version: next_version.into(),
+            content_epoch: epoch.into(),
+        };
+        let event = record_event(
+            &transaction,
+            EventPayload::RoomChanged { room: room.clone() },
+            &generation,
+        )?;
+        record_request(
+            &transaction,
+            &request.client_request_id,
+            "room_save",
+            &hash,
+            &room,
+        )?;
+        transaction.commit()?;
+        Ok((room, Some(event)))
+    }
+
     pub fn save_appearance(
         &mut self,
         request: AppearanceSaveRequest,

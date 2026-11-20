@@ -5,6 +5,8 @@ import type {
   AppError,
   AppSnapshot,
   AppSnapshotRequest,
+  Room,
+  RoomSaveRequest,
   Appearance,
   AppearanceSaveRequest,
   CancelSearchRequest,
@@ -44,6 +46,8 @@ import type {
 import {
   validateAppSnapshotRequest,
   validateAppSnapshotResponse,
+  validateRoomSaveRequest,
+  validateRoomSaveResponse,
   validateAppearanceSaveRequest,
   validateAppearanceSaveResponse,
   validateCancelSearchRequest,
@@ -156,6 +160,8 @@ export const ipc = {
     request("chat_search", input, validateChatSearchRequest, validateChatSearchResponse),
   cancelSearch: (input: CancelSearchRequest): Promise<CancelSearchResult> =>
     request("cancel_search", input, validateCancelSearchRequest, validateCancelSearchResponse),
+  saveRoom: (input: RoomSaveRequest): Promise<Room> =>
+    request("room_save", input, validateRoomSaveRequest, validateRoomSaveResponse),
   saveAppearance: (input: AppearanceSaveRequest): Promise<Appearance> =>
     request("appearance_save", input, validateAppearanceSaveRequest, validateAppearanceSaveResponse),
   getGlobalConfiguration: (input: GlobalConfigurationGetRequest): Promise<GlobalConfiguration> =>

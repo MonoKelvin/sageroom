@@ -29,6 +29,61 @@ describe("聊天搜索", () => {
     expect(ipc.search).toHaveBeenCalledWith(expect.objectContaining({ data_generation_id: GENERATION, query: "测试", cursor: null, limit: 50 }))
   })
 
+  it("高亮所有字面匹配并展示发送者与时间", async () => {
+    const result = searchPage("测试")
+    result.items[0].snippet = "测试内容，再次测试 <img src=x>"
+    vi.mocked(ipc.search).mockResolvedValue(result)
+    render(<SearchPanel open onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索聊天文本" }), { target: { value: "测试" } })
+    fireEvent.click(screen.getByRole("button", { name: "开始搜索" }))
+    const hit = await screen.findByRole("button", { name: "定位我的消息" })
+    expect(hit.querySelectorAll("mark")).toHaveLength(2)
+    expect(hit.querySelector("time")).toHaveAttribute("dateTime", new Date(result.items[0].created_at).toISOString())
+    expect(hit).toHaveTextContent("我")
+    expect(hit.querySelector("img")).toBeNull()
+  })
+
+  it("正则特殊字符按字面匹配", async () => {
+    const result = searchPage(".*")
+    result.items[0].snippet = "文字 .* 文字 .*"
+    vi.mocked(ipc.search).mockResolvedValue(result)
+    render(<SearchPanel open onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索聊天文本" }), { target: { value: ".*" } })
+    fireEvent.click(screen.getByRole("button", { name: "开始搜索" }))
+    expect((await screen.findByRole("button", { name: "定位我的消息" })).querySelectorAll("mark")).toHaveLength(2)
+  })
+
+  it("输入法组合期间不检索，组合结束后按最终文本检索", async () => {
+    vi.useFakeTimers()
+    try {
+      vi.mocked(ipc.search).mockResolvedValue(searchPage("中文"))
+      render(<SearchPanel open onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
+      const input = screen.getByRole("searchbox", { name: "搜索聊天文本" })
+      fireEvent.compositionStart(input)
+      fireEvent.change(input, { target: { value: "中" } })
+      await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+      expect(ipc.search).not.toHaveBeenCalled()
+      fireEvent.change(input, { target: { value: "中文" } })
+      await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+      expect(ipc.search).not.toHaveBeenCalled()
+      fireEvent.compositionEnd(input)
+      await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+      expect(ipc.search).toHaveBeenCalledWith(expect.objectContaining({ query: "中文" }))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("组合未结束时不提交检索", async () => {
+    vi.mocked(ipc.search).mockResolvedValue(searchPage("中文"))
+    render(<SearchPanel open onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
+    const input = screen.getByRole("searchbox", { name: "搜索聊天文本" })
+    fireEvent.compositionStart(input)
+    fireEvent.change(input, { target: { value: "中文" } })
+    fireEvent.click(screen.getByRole("button", { name: "开始搜索" }))
+    expect(ipc.search).not.toHaveBeenCalled()
+  })
+
   it("取消后忽略迟到结果，不把取消当无匹配", async () => {
     let complete!: (value: ReturnType<typeof searchPage>) => void
     vi.mocked(ipc.search).mockReturnValue(new Promise((resolve) => { complete = resolve }))
