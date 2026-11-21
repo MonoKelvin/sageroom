@@ -1,0 +1,4 @@
+[target.x86_64-pc-windows-msvc]
+# 使用 Rust 内置链接器，避免本地化 MSVC 普通输出被误报为链接警告。
+linker = "rust-lld"
+rustflags = ["-C", "linker-flavor=lld-link"]

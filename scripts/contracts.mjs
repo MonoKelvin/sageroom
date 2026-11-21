@@ -47,7 +47,7 @@ function files(directory, prefix = "") {
 }
 
 try {
-  const result = spawnSync("cargo", ["run", "--locked", "--quiet", "--manifest-path", path.join(root, "src-tauri/Cargo.toml"), "--bin", "export_contracts", "--", temporary], { cwd: root, stdio: "inherit", shell: false })
+  const result = spawnSync("cargo", ["run", "--locked", "--quiet", "--manifest-path", path.join(root, "src-tauri/contracts/Cargo.toml"), "--target-dir", path.join(root, "src-tauri/target/contracts"), "--bin", "export_contracts", "--", temporary], { cwd: root, stdio: "inherit", shell: false })
   if (result.status !== 0) throw new Error("Rust 合同导出失败")
   const schemas = JSON.parse(readFileSync(path.join(temporary, "schemas.json"), "utf8"))
   const ajv = new Ajv2020({ strict: true, allErrors: false, code: { source: true, esm: true } })
@@ -57,21 +57,35 @@ try {
     ajv.addSchema(schema, name)
     exports[`validate${name}`] = name
   }
-  const standalone = path.join(temporary, "validators.raw.js")
-  writeFileSync(standalone, standaloneCode(ajv, exports))
+  const standalone = path.join(temporary, "raw-validators")
+  mkdirSync(standalone)
+  const entries = {}
+  for (const [name, schema] of Object.entries(exports)) {
+    const entry = path.join(standalone, `${name}.js`)
+    writeFileSync(entry, standaloneCode(ajv, { [name]: schema }))
+    entries[name] = entry
+  }
   const require = createRequire(import.meta.url)
   const bundled = await build({
     configFile: false,
     root,
     logLevel: "warn",
     resolve: { alias: { ajv: path.dirname(require.resolve("ajv/package.json")) } },
-    build: { write: false, minify: false, target: "chrome111", lib: { entry: standalone, formats: ["es"], fileName: "validators" } },
+    build: {
+      write: false, minify: false, target: "chrome111",
+      lib: { entry: entries, formats: ["es"], fileName: (_format, name) => `validators/${name}.js` },
+      rolldownOptions: { output: { chunkFileNames: "validators/[name].js" } },
+    },
   })
   const output = Array.isArray(bundled) ? bundled[0] : bundled
-  const module = output.output.find((entry) => entry.type === "chunk" && entry.isEntry)
-  if (!module) throw new Error("未生成浏览器合同校验器模块")
-  writeFileSync(path.join(temporary, "validators.js"), module.code.replaceAll(temporary.replaceAll("\\", "/"), "generated"))
-  rmSync(standalone)
+  for (const entry of output.output) {
+    if (entry.type !== "chunk") continue
+    const target = path.join(temporary, entry.fileName)
+    mkdirSync(path.dirname(target), { recursive: true })
+    writeFileSync(target, entry.code.replaceAll(temporary.replaceAll("\\", "/"), "generated"))
+  }
+  writeFileSync(path.join(temporary, "validators.js"), Object.keys(exports).map((name) => `export { ${name} } from "./validators/${name}.js"`).join("\n") + "\n")
+  rmSync(standalone, { recursive: true })
   const names = readdirSync(path.join(temporary, "types")).filter((file) => file.endsWith(".ts")).map((file) => file.slice(0, -3)).sort()
   writeFileSync(path.join(temporary, "index.ts"), names.map((name) => `export type { ${name} } from "./types/${name}"`).join("\n") + "\n")
   const declarations = [

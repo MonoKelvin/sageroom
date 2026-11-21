@@ -23,5 +23,15 @@ export default defineConfig({
     target: "chrome111",
     cssTarget: "chrome111",
     assetsInlineLimit: 0,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            { name: "vendor", test: /node_modules/ },
+            { name: "contracts", test: /contracts[\\/]generated/, maxSize: 300_000 },
+          ],
+        },
+      },
+    },
   },
 })

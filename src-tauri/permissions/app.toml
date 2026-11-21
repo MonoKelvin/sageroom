@@ -41,7 +41,7 @@ commands.allow = ["global_configuration_get", "agent_list", "user_profile_get"]
 [[permission]]
 identifier = "configuration-write"
 description = "保存绑定世代和版本的本地配置与资料"
-commands.allow = ["global_configuration_save", "agent_save", "user_profile_save"]
+commands.allow = ["global_configuration_save", "agent_save", "agent_runtime_control", "user_profile_save"]
 
 [[permission]]
 identifier = "credentials-manage"

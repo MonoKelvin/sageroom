@@ -24,7 +24,7 @@ use crate::domain::{
 use super::{
     backup::backup_database,
     chat::allocated_seq,
-    database::{Database, configure_connection, open_reader, verify_database},
+    database::{CURRENT_SCHEMA, Database, configure_connection, open_reader, verify_database},
     search::search_database,
     worker::DbWorker,
 };
@@ -1253,7 +1253,7 @@ fn future_schema_is_rejected_before_writing_database_bytes() {
     let (directory, database) = database();
     database
         .conn
-        .pragma_update(None, "user_version", 3)
+        .pragma_update(None, "user_version", CURRENT_SCHEMA + 1)
         .unwrap();
     drop(database);
     let path = directory.path().join("chat.sqlite3");

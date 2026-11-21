@@ -7,7 +7,11 @@ use schemars::{
 use serde_json::Value;
 use ts_rs::{Config, TS};
 
-use sageroom_lib::domain::contracts::*;
+#[allow(dead_code)]
+#[path = "../domain/contracts.rs"]
+mod contracts;
+
+use contracts::*;
 
 fn export<T: TS + JsonSchema + 'static>(
     name: &str,

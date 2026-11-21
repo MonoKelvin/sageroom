@@ -770,6 +770,7 @@ impl Database {
             is_builtin: false,
             avatar_id: profile.avatar_id.clone(),
             profile_revision: profile.revision.clone(),
+            runtime: None,
         };
         let event = record_event(
             &transaction,

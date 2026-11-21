@@ -11,6 +11,7 @@ fn main() {
             "global_configuration_save",
             "agent_list",
             "agent_save",
+            "agent_runtime_control",
             "user_profile_get",
             "user_profile_save",
             "secret_set",

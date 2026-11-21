@@ -9,7 +9,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::{database::Database, search::SearchService};
+use super::{
+    database::Database,
+    runtime::{RuntimeInput, RuntimeMessage},
+    search::SearchService,
+};
 use crate::domain::{contracts::*, error::AppResult};
 
 pub type EventSink = Arc<dyn Fn(&DomainEvent) + Send + Sync>;
@@ -210,6 +214,106 @@ impl DbWorker {
         let sink = self.event_sink.clone();
         self.call(move |database| {
             let (result, event) = database.save_agent(request)?;
+            if let Some(event) = event {
+                sink(&event);
+            }
+            Ok(result)
+        })
+        .await
+    }
+
+    pub async fn runtime_input(&self, agent_id: String) -> AppResult<RuntimeInput> {
+        self.call(move |database| database.runtime_input(&agent_id))
+            .await
+    }
+
+    pub async fn runtime_states(&self) -> AppResult<Vec<AgentRuntimeState>> {
+        self.call(|database| database.runtime_states()).await
+    }
+
+    pub async fn runtime_is_paused(&self, agent_id: String) -> AppResult<bool> {
+        self.call(move |database| database.runtime_is_paused(&agent_id))
+            .await
+    }
+
+    pub async fn runtime_plan(
+        &self,
+        agent_id: String,
+    ) -> AppResult<Option<(i64, String, DecimalString)>> {
+        self.call(move |database| database.runtime_plan(&agent_id))
+            .await
+    }
+
+    pub async fn runtime_chain(&self, message_seq: DecimalString) -> AppResult<String> {
+        self.call(move |database| database.runtime_chain(&message_seq))
+            .await
+    }
+
+    pub async fn reserve_runtime_request(
+        &self,
+        requester_id: String,
+        limit: u32,
+    ) -> AppResult<u32> {
+        self.call(move |database| database.reserve_runtime_request(&requester_id, limit))
+            .await
+    }
+
+    pub async fn reserve_runtime_wake(&self, agent_id: String) -> AppResult<Option<i64>> {
+        self.call(move |database| database.reserve_runtime_wake(&agent_id))
+            .await
+    }
+
+    pub async fn save_runtime_plan(
+        &self,
+        agent_id: String,
+        revision: DecimalString,
+        next_wake_at: Option<i64>,
+        chain_id: String,
+    ) -> AppResult<()> {
+        self.call(move |database| {
+            database.save_runtime_plan(&agent_id, &revision, next_wake_at, &chain_id)
+        })
+        .await
+    }
+
+    pub async fn set_runtime_state(
+        &self,
+        state: AgentRuntimeState,
+    ) -> AppResult<AgentRuntimeState> {
+        let sink = self.event_sink.clone();
+        self.call(move |database| {
+            let (result, event) = database.set_runtime_state(state)?;
+            if let Some(event) = event {
+                sink(&event);
+            }
+            Ok(result)
+        })
+        .await
+    }
+
+    pub async fn set_runtime_paused(
+        &self,
+        agent_id: String,
+        paused: bool,
+    ) -> AppResult<AgentRuntimeState> {
+        let sink = self.event_sink.clone();
+        self.call(move |database| {
+            let (result, event) = database.set_runtime_paused(&agent_id, paused)?;
+            if let Some(event) = event {
+                sink(&event);
+            }
+            Ok(result)
+        })
+        .await
+    }
+
+    pub async fn commit_runtime_message(
+        &self,
+        message: RuntimeMessage,
+    ) -> AppResult<ChatSendResult> {
+        let sink = self.event_sink.clone();
+        self.call(move |database| {
+            let (result, event) = database.commit_runtime_message(message)?;
             if let Some(event) = event {
                 sink(&event);
             }

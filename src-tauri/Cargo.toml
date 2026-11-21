@@ -22,7 +22,7 @@ rusqlite = { version = "=0.43.0", features = ["bundled", "backup", "hooks"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
 schemars = "=1.2.3"
-ts-rs = "=12.0.1"
+ts-rs = { version = "=12.0.1", features = ["no-serde-warnings"] }
 uuid = { version = "=1.29.3", features = ["v7", "serde"] }
 sha2 = "=0.11.1"
 base64 = "=0.23.1"

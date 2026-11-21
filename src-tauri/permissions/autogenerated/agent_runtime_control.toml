@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-agent-runtime-control"
+description = "Enables the agent_runtime_control command without any pre-configured scope."
+commands.allow = ["agent_runtime_control"]
+
+[[permission]]
+identifier = "deny-agent-runtime-control"
+description = "Denies the agent_runtime_control command without any pre-configured scope."
+commands.deny = ["agent_runtime_control"]

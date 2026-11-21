@@ -17,14 +17,24 @@ use crate::domain::{
 
 pub const MIGRATION: &str = include_str!("migrations/0001_initial.sql");
 pub const MIGRATION_V2: &str = include_str!("migrations/0002_configuration.sql");
-pub const CURRENT_SCHEMA: u32 = 2;
+pub const MIGRATION_V3: &str = include_str!("migrations/0003_runtime.sql");
+pub const CURRENT_SCHEMA: u32 = 3;
+
+fn migration(version: u32) -> &'static str {
+    match version {
+        1 => MIGRATION,
+        2 => MIGRATION_V2,
+        3 => MIGRATION_V3,
+        _ => unreachable!("内部迁移版本必须受支持"),
+    }
+}
 
 pub fn migration_hash(version: u32) -> String {
-    if version == 1 {
-        fingerprint(MIGRATION.as_bytes())
-    } else {
-        fingerprint(format!("{}\n{MIGRATION_V2}", fingerprint(MIGRATION.as_bytes())).as_bytes())
+    let mut hash = fingerprint(MIGRATION.as_bytes());
+    for next in 2..=version {
+        hash = fingerprint(format!("{hash}\n{}", migration(next)).as_bytes());
     }
+    hash
 }
 
 pub struct Database {
@@ -89,16 +99,15 @@ pub fn verify_database(conn: &Connection) -> AppResult<()> {
             "此数据库来自较新版本，请使用对应版本打开；原文件未改动。",
         ));
     }
-    if !matches!(version, 1 | 2) {
+    if !(1..=CURRENT_SCHEMA).contains(&version) {
         return Err(AppError::new(
             ErrorCode::DataRootInvalid,
             "该目录没有可识别的 Sageroom 数据库，原文件已保留。",
         ));
     }
     let expected = Connection::open_in_memory()?;
-    expected.execute_batch(MIGRATION)?;
-    if version == 2 {
-        expected.execute_batch(MIGRATION_V2)?;
+    for next in 1..=version {
+        expected.execute_batch(migration(next))?;
     }
     if schema_rows(conn)? != schema_rows(&expected)? {
         return Err(AppError::new(
@@ -191,11 +200,18 @@ fn write_manifest(root: &Path, root_id: &str, version: u32) -> AppResult<()> {
     )
 }
 
-fn verify_upgrade_record(root: &Path, record: &UpgradeRecord, root_id: &str) -> AppResult<()> {
+fn verify_upgrade_record(
+    root: &Path,
+    record: &UpgradeRecord,
+    root_id: &str,
+    database_version: u32,
+) -> AppResult<()> {
     if record.root_id != root_id
-        || record.from_version != 1
-        || record.to_version != 2
-        || record.migration_hash != migration_hash(2)
+        || record.from_version == 0
+        || record.to_version > CURRENT_SCHEMA
+        || record.from_version.checked_add(1) != Some(record.to_version)
+        || (database_version != record.from_version && database_version != record.to_version)
+        || record.migration_hash != migration_hash(record.to_version)
         || Uuid::parse_str(&record.snapshot_id).is_err()
     {
         return Err(AppError::new(
@@ -214,7 +230,7 @@ fn verify_upgrade_record(root: &Path, record: &UpgradeRecord, root_id: &str) -> 
         [],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
-    if snapshot_root != root_id || version != 1 {
+    if snapshot_root != root_id || version != record.from_version {
         return Err(AppError::new(
             ErrorCode::DataRootInvalid,
             "升级前快照不匹配，未覆盖或切换原数据库。",
@@ -227,17 +243,20 @@ fn upgrade_database(
     conn: &mut Connection,
     root: &Path,
     root_id: &str,
+    from_version: u32,
     existing: Option<UpgradeRecord>,
 ) -> AppResult<()> {
     let journal = root.join("schema-upgrade.json");
-    if existing.is_none() {
+    let record = if let Some(record) = existing {
+        record
+    } else {
         let backups = root.join("backups");
         fs::create_dir_all(&backups)?;
         let record = UpgradeRecord {
             root_id: root_id.into(),
-            from_version: 1,
-            to_version: 2,
-            migration_hash: migration_hash(2),
+            from_version,
+            to_version: from_version + 1,
+            migration_hash: migration_hash(from_version + 1),
             snapshot_id: Uuid::now_v7().to_string(),
         };
         super::backup::backup_database(
@@ -245,17 +264,20 @@ fn upgrade_database(
             &backups.join(format!("{}.sqlite3", record.snapshot_id)),
         )?;
         write_metadata(&journal, &record)?;
-    }
+        record
+    };
     let deadline = std::time::Instant::now() + Duration::from_secs(20);
     conn.progress_handler(1000, Some(move || std::time::Instant::now() >= deadline))?;
     let result: AppResult<()> = (|| {
         let transaction =
             conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        transaction.execute_batch(MIGRATION_V2)?;
-        super::configuration::seed_configuration(&transaction)?;
+        transaction.execute_batch(migration(record.to_version))?;
+        if record.to_version == 2 {
+            super::configuration::seed_configuration(&transaction)?;
+        }
         transaction.execute(
-            "UPDATE app_meta SET schema_version=2, migration_hash=?1 WHERE singleton=1",
-            [migration_hash(2)],
+            "UPDATE app_meta SET schema_version=?1, migration_hash=?2 WHERE singleton=1",
+            params![record.to_version, record.migration_hash],
         )?;
         verify_database(&transaction)?;
         transaction.commit()?;
@@ -263,7 +285,7 @@ fn upgrade_database(
     })();
     conn.progress_handler(0, None::<fn() -> bool>)?;
     result?;
-    write_manifest(root, root_id, 2)?;
+    write_manifest(root, root_id, record.to_version)?;
     fs::remove_file(journal)?;
     Ok(())
 }
@@ -309,11 +331,15 @@ fn initialize_new_database(root: &Path, destination: &Path) -> AppResult<()> {
             params![room_id, user_id],
         )?;
         transaction.execute("INSERT INTO app_settings VALUES (1, 'system', 0, 1)", [])?;
-        transaction.execute_batch(MIGRATION_V2)?;
-        super::configuration::seed_configuration(&transaction)?;
+        for next in 2..=CURRENT_SCHEMA {
+            transaction.execute_batch(migration(next))?;
+            if next == 2 {
+                super::configuration::seed_configuration(&transaction)?;
+            }
+        }
         transaction.execute(
-            "UPDATE app_meta SET schema_version=2, migration_hash=?1 WHERE singleton=1",
-            [migration_hash(2)],
+            "UPDATE app_meta SET schema_version=?1, migration_hash=?2 WHERE singleton=1",
+            params![CURRENT_SCHEMA, migration_hash(CURRENT_SCHEMA)],
         )?;
         transaction.commit()?;
         verify_database(&conn)?;
@@ -371,18 +397,18 @@ impl Database {
         }
         let candidate = open_reader(&path)?;
         verify_database(&candidate)?;
-        let (root_id, version): (String, u32) = candidate.query_row(
+        let (root_id, mut version): (String, u32) = candidate.query_row(
             "SELECT root_id, schema_version FROM app_meta WHERE singleton=1",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
-        let upgrade: Option<UpgradeRecord> = if journal_path.exists() {
+        let mut upgrade: Option<UpgradeRecord> = if journal_path.exists() {
             Some(read_metadata(&journal_path)?)
         } else {
             None
         };
         if let Some(record) = &upgrade {
-            verify_upgrade_record(root, record, &root_id)?;
+            verify_upgrade_record(root, record, &root_id, version)?;
         }
         let manifest: Option<DataManifest> = if manifest_path.exists() {
             Some(read_metadata(&manifest_path)?)
@@ -390,8 +416,9 @@ impl Database {
             None
         };
         if let Some(manifest) = &manifest {
-            let recoverable_commit =
-                version == 2 && manifest.schema_version == 1 && upgrade.is_some();
+            let recoverable_commit = upgrade.as_ref().is_some_and(|record| {
+                version == record.to_version && manifest.schema_version == record.from_version
+            });
             if manifest.format_version != 1
                 || manifest.root_id != root_id
                 || (manifest.schema_version != version && !recoverable_commit)
@@ -409,21 +436,23 @@ impl Database {
         )?;
         configure_connection(&conn)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
-        if version == 1 {
-            if manifest.is_none() {
-                write_manifest(root, &root_id, 1)?;
-            }
-            upgrade_database(&mut conn, root, &root_id, upgrade)?;
-        } else if manifest
+        if manifest
             .as_ref()
-            .is_none_or(|manifest| manifest.schema_version != CURRENT_SCHEMA)
-            || upgrade.is_some()
+            .is_none_or(|manifest| manifest.schema_version != version)
         {
             // SQLite 已提交、清单尚未发布时，只沿已验证的升级记录向前恢复。
-            write_manifest(root, &root_id, CURRENT_SCHEMA)?;
-            if upgrade.is_some() {
-                fs::remove_file(journal_path)?;
-            }
+            write_manifest(root, &root_id, version)?;
+        }
+        if upgrade
+            .as_ref()
+            .is_some_and(|record| version == record.to_version)
+        {
+            fs::remove_file(journal_path)?;
+            upgrade = None;
+        }
+        while version < CURRENT_SCHEMA {
+            upgrade_database(&mut conn, root, &root_id, version, upgrade.take())?;
+            version += 1;
         }
         verify_database(&conn)?;
         let local_user_id = conn.query_row(

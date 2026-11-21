@@ -15,8 +15,8 @@ use super::{
     backup::backup_database,
     configuration::seed_configuration,
     database::{
-        Database, MIGRATION, MIGRATION_V2, configure_connection, migration_hash, open_reader,
-        verify_database,
+        CURRENT_SCHEMA, Database, MIGRATION, MIGRATION_V2, MIGRATION_V3, configure_connection,
+        fingerprint, migration_hash, open_reader, verify_database,
     },
 };
 
@@ -370,8 +370,13 @@ fn backup_paths(root: &Path) -> Vec<PathBuf> {
 }
 
 fn prepare_upgrade_journal(directory: &TempDir) -> (String, PathBuf) {
+    prepare_versioned_upgrade_journal(directory, 1)
+}
+
+fn prepare_versioned_upgrade_journal(directory: &TempDir, from_version: u32) -> (String, PathBuf) {
     let conn = open_reader(&directory.path().join("chat.sqlite3")).unwrap();
     let identity = root_id(&conn);
+    assert_eq!(schema_version(&conn), from_version);
     let snapshot_id = Uuid::now_v7().to_string();
     fs::create_dir_all(directory.path().join("backups")).unwrap();
     let snapshot = directory
@@ -382,8 +387,8 @@ fn prepare_upgrade_journal(directory: &TempDir) -> (String, PathBuf) {
     write_json(
         &directory.path().join("schema-upgrade.json"),
         &json!({
-            "root_id": identity, "from_version": 1, "to_version": 2,
-            "migration_hash": migration_hash(2), "snapshot_id": snapshot_id,
+            "root_id": identity, "from_version": from_version, "to_version": from_version + 1,
+            "migration_hash": migration_hash(from_version + 1), "snapshot_id": snapshot_id,
         }),
     );
     (snapshot_id, snapshot)
@@ -993,6 +998,33 @@ fn stale_or_invalid_credential_updates_leave_active_binding_revision_and_events_
     assert_eq!(count(&database.conn, "credential_bindings"), 1);
 }
 
+fn commit_v3(directory: &TempDir) {
+    let mut conn = Connection::open(directory.path().join("chat.sqlite3")).unwrap();
+    configure_connection(&conn).unwrap();
+    let transaction = conn.transaction().unwrap();
+    transaction.execute_batch(MIGRATION_V3).unwrap();
+    transaction
+        .execute(
+            "UPDATE app_meta SET schema_version=3,migration_hash=?1 WHERE singleton=1",
+            [migration_hash(3)],
+        )
+        .unwrap();
+    verify_database(&transaction).unwrap();
+    transaction.commit().unwrap();
+    conn.close().unwrap();
+}
+
+fn schema_two_fixture() -> TempDir {
+    let directory = legacy_fixture();
+    commit_v2(&directory);
+    let conn = open_reader(&directory.path().join("chat.sqlite3")).unwrap();
+    write_json(
+        &directory.path().join("data-manifest.json"),
+        &json!({"format_version":1,"root_id":root_id(&conn),"schema_version":2}),
+    );
+    directory
+}
+
 #[test]
 fn schema_one_upgrade_preserves_ids_sender_json_sequences_and_verified_online_backup() {
     let directory = legacy_fixture();
@@ -1003,7 +1035,7 @@ fn schema_one_upgrade_preserves_ids_sender_json_sequences_and_verified_online_ba
     assert_eq!(sequence(&old, "domain_events"), EVENT_HIGH_WATER);
     drop(old);
     let mut database = Database::open(directory.path(), GENERATION.into()).unwrap();
-    assert_legacy(&database.conn, 2);
+    assert_legacy(&database.conn, CURRENT_SCHEMA);
     assert_eq!(root_id(&database.conn), identity);
     assert_eq!(database.local_user_id, LEGACY_USER);
     assert_eq!(database.room_id, LEGACY_ROOM);
@@ -1038,7 +1070,7 @@ fn schema_one_upgrade_preserves_ids_sender_json_sequences_and_verified_online_ba
         LEGACY_AGENT
     );
     let backups = backup_paths(directory.path());
-    assert_eq!(backups.len(), 1);
+    assert_eq!(backups.len(), 2);
     assert!(Uuid::parse_str(backups[0].file_stem().unwrap().to_str().unwrap()).is_ok());
     let backup_bytes = fs::read(&backups[0]).unwrap();
     let backup = open_reader(&backups[0]).unwrap();
@@ -1066,11 +1098,11 @@ fn schema_one_upgrade_preserves_ids_sender_json_sequences_and_verified_online_ba
     let manifest = read_json(&directory.path().join("data-manifest.json"));
     assert_eq!(
         manifest,
-        json!({"format_version":1,"root_id":identity,"schema_version":2})
+        json!({"format_version":1,"root_id":identity,"schema_version":CURRENT_SCHEMA})
     );
     drop(database);
     let restarted = Database::open(directory.path(), "upgraded-restarted".into()).unwrap();
-    assert_legacy(&restarted.conn, 2);
+    assert_legacy(&restarted.conn, CURRENT_SCHEMA);
     assert_eq!(count(&restarted.conn, "messages"), 2);
     assert_eq!(count(&restarted.conn, "agent_config_versions"), 1);
     assert_eq!(backup_paths(directory.path()), backups);
@@ -1134,7 +1166,7 @@ fn committed_schema_two_with_valid_schema_one_manifest_and_journal_recovers_with
     let identity = root_id(&conn);
     drop(conn);
     let mut recovered = Database::open(directory.path(), "committed-recovery".into()).unwrap();
-    assert_legacy(&recovered.conn, 2);
+    assert_legacy(&recovered.conn, CURRENT_SCHEMA);
     assert_eq!(root_id(&recovered.conn), identity);
     assert_eq!(
         recovered
@@ -1160,9 +1192,11 @@ fn committed_schema_two_with_valid_schema_one_manifest_and_journal_recovers_with
     assert!(!directory.path().join("schema-upgrade.json").exists());
     assert_eq!(
         read_json(&directory.path().join("data-manifest.json"))["schema_version"],
-        2
+        CURRENT_SCHEMA
     );
-    assert_eq!(backup_paths(directory.path()), vec![backup.clone()]);
+    let backups = backup_paths(directory.path());
+    assert_eq!(backups.len(), 2);
+    assert!(backups.contains(&backup));
     assert_eq!(fs::read(&backup).unwrap(), backup_bytes);
     drop(recovered);
     let restarted = Database::open(directory.path(), "recovery-restarted".into()).unwrap();
@@ -1170,7 +1204,7 @@ fn committed_schema_two_with_valid_schema_one_manifest_and_journal_recovers_with
         restarted.list_agents("recovery-restarted").unwrap(),
         vec![committed_agent]
     );
-    assert_eq!(backup_paths(directory.path()), vec![backup]);
+    assert_eq!(backup_paths(directory.path()), backups);
 }
 
 #[test]
@@ -1179,9 +1213,11 @@ fn schema_one_with_existing_valid_journal_reuses_snapshot_and_completes_upgrade(
     let (_snapshot_id, backup) = prepare_upgrade_journal(&directory);
     let bytes = fs::read(&backup).unwrap();
     let upgraded = Database::open(directory.path(), "precommit-recovery".into()).unwrap();
-    assert_legacy(&upgraded.conn, 2);
+    assert_legacy(&upgraded.conn, CURRENT_SCHEMA);
     assert_eq!(count(&upgraded.conn, "agent_config_versions"), 1);
-    assert_eq!(backup_paths(directory.path()), vec![backup.clone()]);
+    let backups = backup_paths(directory.path());
+    assert_eq!(backups.len(), 2);
+    assert!(backups.contains(&backup));
     assert_eq!(fs::read(&backup).unwrap(), bytes);
     assert!(!directory.path().join("schema-upgrade.json").exists());
 }
@@ -1297,6 +1333,238 @@ fn regular_file_blocking_backups_prevents_upgrade_and_preserves_schema_one_histo
     drop(reader);
     fs::remove_file(&obstacle).unwrap();
     let retried = Database::open(directory.path(), "unblocked-upgrade".into()).unwrap();
-    assert_legacy(&retried.conn, 2);
-    assert_eq!(backup_paths(directory.path()).len(), 1);
+    assert_legacy(&retried.conn, CURRENT_SCHEMA);
+    assert_eq!(backup_paths(directory.path()).len(), 2);
+}
+
+#[test]
+fn runtime_migration_preserves_previous_hashes_and_initializes_all_tables() {
+    assert_eq!(migration_hash(1), fingerprint(MIGRATION.as_bytes()));
+    assert_eq!(
+        migration_hash(2),
+        fingerprint(format!("{}\n{MIGRATION_V2}", fingerprint(MIGRATION.as_bytes())).as_bytes())
+    );
+    assert_eq!(
+        migration_hash(3),
+        fingerprint(format!("{}\n{MIGRATION_V3}", migration_hash(2)).as_bytes())
+    );
+    let (_directory, database) = database();
+    verify_database(&database.conn).unwrap();
+    assert_eq!(schema_version(&database.conn), CURRENT_SCHEMA);
+    for table in [
+        "agent_runtime",
+        "runtime_plans",
+        "runtime_requests",
+        "runtime_wakes",
+        "runtime_message_commits",
+    ] {
+        assert_eq!(count(&database.conn, table), 0);
+    }
+}
+
+#[test]
+fn schema_two_upgrade_preserves_configuration_history_and_verified_backup() {
+    let directory = schema_two_fixture();
+    let conn = Connection::open(directory.path().join("chat.sqlite3")).unwrap();
+    conn.execute("UPDATE global_configuration SET revision=9", [])
+        .unwrap();
+    let configuration: String = conn
+        .query_row(
+            "SELECT configuration_json FROM agent_config_versions WHERE agent_id=?1 AND revision=1",
+            [LEGACY_AGENT],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let identity = root_id(&conn);
+    drop(conn);
+    let database = Database::open(directory.path(), GENERATION.into()).unwrap();
+    assert_legacy(&database.conn, CURRENT_SCHEMA);
+    assert_eq!(root_id(&database.conn), identity);
+    assert_eq!(
+        database
+            .get_global_configuration(GENERATION)
+            .unwrap()
+            .revision
+            .0,
+        "9"
+    );
+    let preserved: String = database
+        .conn
+        .query_row(
+            "SELECT configuration_json FROM agent_config_versions WHERE agent_id=?1 AND revision=1",
+            [LEGACY_AGENT],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(preserved, configuration);
+    assert_eq!(sequence(&database.conn, "messages"), MESSAGE_HIGH_WATER);
+    assert_eq!(sequence(&database.conn, "domain_events"), EVENT_HIGH_WATER);
+    let backups = backup_paths(directory.path());
+    assert_eq!(backups.len(), 1);
+    let backup = open_reader(&backups[0]).unwrap();
+    assert_legacy(&backup, 2);
+    assert_eq!(root_id(&backup), identity);
+    assert_eq!(count(&backup, "agent_config_versions"), 1);
+    drop(backup);
+    assert!(!directory.path().join("schema-upgrade.json").exists());
+    drop(database);
+    let restarted = Database::open(directory.path(), "schema-three-restarted".into()).unwrap();
+    assert_legacy(&restarted.conn, CURRENT_SCHEMA);
+    assert_eq!(backup_paths(directory.path()), backups);
+}
+
+#[test]
+fn schema_two_with_existing_valid_journal_reuses_snapshot_and_completes_upgrade() {
+    let directory = schema_two_fixture();
+    let (_, backup) = prepare_versioned_upgrade_journal(&directory, 2);
+    let bytes = fs::read(&backup).unwrap();
+    let upgraded = Database::open(directory.path(), GENERATION.into()).unwrap();
+    assert_legacy(&upgraded.conn, CURRENT_SCHEMA);
+    assert_eq!(count(&upgraded.conn, "agent_config_versions"), 1);
+    assert_eq!(backup_paths(directory.path()), vec![backup.clone()]);
+    assert_eq!(fs::read(&backup).unwrap(), bytes);
+    assert!(!directory.path().join("schema-upgrade.json").exists());
+}
+
+#[test]
+fn committed_schema_three_recovers_manifest_without_reseeding_runtime_or_configuration() {
+    let directory = schema_two_fixture();
+    let (_, backup) = prepare_versioned_upgrade_journal(&directory, 2);
+    let backup_bytes = fs::read(&backup).unwrap();
+    commit_v3(&directory);
+    let conn = Connection::open(directory.path().join("chat.sqlite3")).unwrap();
+    configure_connection(&conn).unwrap();
+    conn.execute("UPDATE global_configuration SET revision=9", [])
+        .unwrap();
+    let runtime = AgentRuntimeState {
+        agent_id: LEGACY_AGENT.into(),
+        config_revision: 1.into(),
+        status: AgentRuntimeStatus::Paused,
+        detail: None,
+        next_wake_at: None,
+        requests_today: 1,
+    };
+    let state_json = serde_json::to_string(&runtime).unwrap();
+    conn.execute(
+        "INSERT INTO agent_runtime VALUES (?1,1,?2,1)",
+        params![LEGACY_AGENT, state_json],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO runtime_plans VALUES (?1,1,123456,'persisted-chain')",
+        [LEGACY_AGENT],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO runtime_requests(requester_id,occurred_at) VALUES (?1,1000)",
+        [LEGACY_AGENT],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO runtime_wakes(agent_id,occurred_at) VALUES (?1,1000)",
+        [LEGACY_AGENT],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO runtime_message_commits VALUES ('persisted-decision',0,?1,1,17,'persisted-chain','payload-hash',17,?2)",
+        params![LEGACY_AGENT, LEGACY_EVENT_SEQUENCE],
+    ).unwrap();
+    drop(conn);
+    let recovered = Database::open(directory.path(), GENERATION.into()).unwrap();
+    assert_legacy(&recovered.conn, CURRENT_SCHEMA);
+    assert_eq!(
+        recovered
+            .get_global_configuration(GENERATION)
+            .unwrap()
+            .revision
+            .0,
+        "9"
+    );
+    let persisted: (String, bool) = recovered
+        .conn
+        .query_row(
+            "SELECT state_json,paused FROM agent_runtime WHERE agent_id=?1",
+            [LEGACY_AGENT],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(persisted, (state_json, true));
+    for table in [
+        "runtime_plans",
+        "runtime_requests",
+        "runtime_wakes",
+        "runtime_message_commits",
+    ] {
+        assert_eq!(count(&recovered.conn, table), 1);
+    }
+    assert_eq!(count(&recovered.conn, "agent_config_versions"), 1);
+    assert_eq!(backup_paths(directory.path()), vec![backup.clone()]);
+    assert_eq!(fs::read(&backup).unwrap(), backup_bytes);
+    assert!(!directory.path().join("schema-upgrade.json").exists());
+    assert_eq!(
+        read_json(&directory.path().join("data-manifest.json"))["schema_version"],
+        CURRENT_SCHEMA,
+    );
+}
+
+#[test]
+fn invalid_runtime_upgrade_journals_preserve_schema_two_and_committed_schema_three() {
+    for committed in [false, true] {
+        for field in [
+            "root_id",
+            "migration_hash",
+            "from_version",
+            "to_version",
+            "snapshot_id",
+        ] {
+            let directory = schema_two_fixture();
+            let (_, backup) = prepare_versioned_upgrade_journal(&directory, 2);
+            if committed {
+                commit_v3(&directory);
+            }
+            let journal_path = directory.path().join("schema-upgrade.json");
+            let mut journal = read_json(&journal_path);
+            journal[field] = match field {
+                "root_id" => value(&Uuid::now_v7().to_string()),
+                "migration_hash" => json!("incorrect-migration-hash"),
+                "from_version" => json!(1),
+                "to_version" => json!(CURRENT_SCHEMA + 1),
+                _ => json!("invalid-snapshot-id"),
+            };
+            write_json(&journal_path, &journal);
+            let path = directory.path().join("chat.sqlite3");
+            let manifest = directory.path().join("data-manifest.json");
+            let bytes = fs::read(&path).unwrap();
+            let manifest_bytes = fs::read(&manifest).unwrap();
+            let journal_bytes = fs::read(&journal_path).unwrap();
+            let backup_bytes = fs::read(&backup).unwrap();
+            assert_code(
+                Database::open(directory.path(), GENERATION.into()),
+                ErrorCode::DataRootInvalid,
+            );
+            assert_eq!(fs::read(&path).unwrap(), bytes);
+            assert_eq!(fs::read(&manifest).unwrap(), manifest_bytes);
+            assert_eq!(fs::read(&journal_path).unwrap(), journal_bytes);
+            assert_eq!(fs::read(&backup).unwrap(), backup_bytes);
+            assert_legacy(&open_reader(&path).unwrap(), if committed { 3 } else { 2 });
+        }
+    }
+}
+
+#[test]
+fn schema_three_with_schema_two_manifest_without_journal_is_rejected_read_only() {
+    let directory = schema_two_fixture();
+    commit_v3(&directory);
+    let path = directory.path().join("chat.sqlite3");
+    let manifest = directory.path().join("data-manifest.json");
+    let bytes = fs::read(&path).unwrap();
+    let manifest_bytes = fs::read(&manifest).unwrap();
+    assert_code(
+        Database::open(directory.path(), GENERATION.into()),
+        ErrorCode::DataRootInvalid,
+    );
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+    assert_eq!(fs::read(&manifest).unwrap(), manifest_bytes);
+    assert!(!directory.path().join("backups").exists());
+    assert_legacy(&open_reader(&path).unwrap(), 3);
 }
