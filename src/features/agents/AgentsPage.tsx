@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { IconAdjustments, IconCopy, IconPhoto, IconPlus } from "@tabler/icons-react"
 import type { ApplicationPageProps } from "@/app/navigation"
-import type { AgentConfiguration, GlobalConfiguration } from "@/contracts/generated"
+import type { AgentConfiguration, AgentRuntimeStatus, GlobalConfiguration, Participant } from "@/contracts/generated"
 import type { AppliedResource } from "@/app/appliedResource"
 import { modelIsComplete } from "@/app/configurationStore"
 import { useAgentResources, useAppliedResource, useConfiguration, useConfigurationRuntime } from "@/app/configurationContext"
@@ -19,15 +19,39 @@ import { usePageActivation } from "@/features/settings/useLocalEditor"
 import { GlobalConfiguration as GlobalConfigurationPanel } from "./GlobalConfiguration"
 import "@/features/settings/configuration.css"
 
-function AgentEditor({ resource, global, active, onCopy, onOpenGlobal }: {
+const runtimeStatusLabels: Record<AgentRuntimeStatus, string> = {
+  needs_configuration: "待配置",
+  observing: "在线观察",
+  deciding: "正在思考",
+  waiting_to_send: "准备发送",
+  sleeping: "休息中",
+  paused: "已暂停",
+  protected: "达到保护上限",
+  offline: "离线",
+}
+
+function agentStatusLabel(agent: AgentConfiguration, participant?: Participant) {
+  if (!agent.model) return "待配置"
+  return participant?.runtime ? runtimeStatusLabels[participant.runtime.status] : "正在启动"
+}
+
+function AgentEditor({ resource, global, active, session, onCopy, onOpenGlobal }: {
   resource: AppliedResource<AgentConfiguration>; global: GlobalConfiguration; active: boolean
+  session: ApplicationPageProps["session"]
   onCopy: (agent: AgentConfiguration) => void; onOpenGlobal: () => void
 }) {
   const store = useConfiguration()
   const runtime = useConfigurationRuntime()
   const state = useAppliedResource(resource, active)
   const agent = state.value!
-  const generation = store.snapshot.data_generation_id
+  const generation = session.snapshot!.data_generation_id
+  const participant = session.snapshot!.participants.find((member) => member.kind === "agent" && member.id === agent.agent_id)
+  const agentRuntime = participant?.runtime
+  const statusLabel = agentStatusLabel(agent, participant)
+  const canResume = agentRuntime?.status === "paused" || agentRuntime?.status === "offline" || agentRuntime?.status === "protected"
+  const retryStart = agentRuntime?.status === "offline" || agentRuntime?.status === "protected"
+  const [runtimePending, setRuntimePending] = useState(false)
+  const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const [avatarPending, setAvatarPending] = useState(false)
   const [confirmRemoveAvatar, setConfirmRemoveAvatar] = useState(false)
   const [operationError, setOperationError] = useState<string | null>(null)
@@ -37,6 +61,16 @@ function AgentEditor({ resource, global, active, onCopy, onOpenGlobal }: {
   const alive = useRef(false)
   useEffect(() => { alive.current = true; return () => { alive.current = false; avatarEpoch.current += 1 } }, [])
   const update = (patch: Partial<AgentConfiguration>) => store.updateAgent(agent.agent_id, patch)
+
+  async function controlRuntime() {
+    if (runtimePending || runtime.exiting) return
+    setRuntimePending(true)
+    setRuntimeError(null)
+    try {
+      await ipc.controlAgentRuntime({ data_generation_id: generation, agent_id: agent.agent_id, paused: !canResume })
+    } catch (cause) { if (alive.current) setRuntimeError(errorMessage(cause)) }
+    finally { if (alive.current) setRuntimePending(false) }
+  }
 
   async function importAvatar() {
     if (avatarPending || runtime.exiting) return
@@ -70,8 +104,16 @@ function AgentEditor({ resource, global, active, onCopy, onOpenGlobal }: {
   }
 
   return <section className="surface-card">
-    <header className="panel-heading"><div><h2 className="panel-title">{agent.display_name}</h2><p className="panel-description">{agent.model ? "模型参数已配置" : "模型尚未配置"}，智能体未启动。</p></div><Button variant="ghost" size="sm" disabled={runtime.exiting} onClick={() => onCopy(agent)}><IconCopy size={17} aria-hidden="true" />复制</Button></header>
+    <header className="panel-heading"><div><h2 className="panel-title">{agent.display_name}</h2><p className="panel-description"><span role="status">{statusLabel}</span> · {agent.model ? "模型参数已配置" : "模型尚未配置"}</p></div><Button variant="ghost" size="sm" disabled={runtime.exiting} onClick={() => onCopy(agent)}><IconCopy size={17} aria-hidden="true" />复制</Button></header>
     <div className="panel-content panel-scroll">
+      <div className="config-stack">
+        {agentRuntime?.detail && <p className="form-caption">{agentRuntime.detail}</p>}
+        {agentRuntime && <p className="form-caption">今日请求：{agentRuntime.requests_today} 次 · 配置版本：{agentRuntime.config_revision}</p>}
+        {agentRuntime?.next_wake_at != null && <p className="form-caption">下次唤醒：{new Date(agentRuntime.next_wake_at).toLocaleString("zh-CN", { hour12: false })}</p>}
+        {agent.agent_type === "tool" && <p className="form-caption">工具任务尚未启用，不参与闲聊。</p>}
+        {agent.model && <div className="config-actions"><Button variant="secondary" size="sm" disabled={runtime.exiting || runtimePending} onClick={() => void controlRuntime()}>{runtimePending ? "正在处理…" : retryStart ? "重试启动" : canResume ? "恢复运行" : "暂停运行"}</Button></div>}
+        {runtimeError && <p role="alert">{runtimeError}</p>}
+      </div>
       <fieldset disabled={runtime.exiting} className="config-stack">
         <div className="config-avatar-row"><Avatar name={agent.display_name} avatarId={agent.avatar_id} generation={generation} size={64} retryable /><div><div className="config-actions"><Button variant="secondary" size="sm" disabled={avatarPending} onClick={() => void importAvatar()}><IconPhoto size={16} aria-hidden="true" />{avatarPending ? "正在选择…" : "选择头像"}</Button>{agent.avatar_id && <Button variant="ghost" size="sm" onClick={() => setConfirmRemoveAvatar(true)}>移除头像</Button>}</div><p className="form-caption mt-2">选择本地 PNG 或 JPEG，成功后直接应用。</p></div></div>
         {confirmRemoveAvatar && <div className="config-notice"><p>移除当前头像？历史消息中的头像不受影响。</p><div className="config-actions"><Button size="sm" onClick={() => void removeAvatar()}>确认移除头像</Button><Button variant="ghost" size="sm" onClick={() => setConfirmRemoveAvatar(false)}>保留头像</Button></div></div>}
@@ -110,10 +152,11 @@ function AgentPane(props: Parameters<typeof AgentEditor>[0]) {
   return initialized ? <AgentEditor {...props} /> : null
 }
 
-function AgentsWorkspace({ active }: ApplicationPageProps) {
+function AgentsWorkspace({ active, session }: ApplicationPageProps) {
   const store = useConfiguration()
   const runtime = useConfigurationRuntime()
-  const generation = store.snapshot.data_generation_id
+  const generation = session.snapshot!.data_generation_id
+  const participants = session.snapshot!.participants
   const list = useAgentResources(active)
   const globalState = useAppliedResource(store.global, active)
   const [selected, setSelected] = useState<string | null>(null)
@@ -135,16 +178,16 @@ function AgentsWorkspace({ active }: ApplicationPageProps) {
       <div className="panel-heading"><h1 className="panel-title">智能体</h1><Button variant="ghost" size="icon-sm" disabled={!globalState.value || runtime.exiting} aria-label="新建智能体" onClick={() => void create()}><IconPlus size={20} aria-hidden="true" /></Button></div>
       <div className="config-list-scroll">
         <button type="button" className="list-entry" aria-label="全局配置" data-active={selected === null} aria-current={selected === null ? "page" : undefined} onClick={() => setSelected(null)}><IconAdjustments size={22} aria-hidden="true" /><span className="config-entry-text"><strong>全局配置</strong><span>模型、人格与运行偏好</span></span></button>
-        {list.resources.map((resource) => { const agent = resource.getSnapshot().value!; return <button key={agent.agent_id} type="button" className="list-entry" data-active={selected === agent.agent_id} aria-current={selected === agent.agent_id ? "page" : undefined} onClick={() => setSelected(agent.agent_id)}><Avatar name={agent.display_name} avatarId={agent.avatar_id} generation={generation} /><span className="config-entry-text"><strong>{agent.display_name}</strong><span>{agent.model ? "已配置，未启动" : "待配置，未启动"}</span></span></button> })}
+        {list.resources.map((resource) => { const agent = resource.getSnapshot().value!; const participant = participants.find((member) => member.kind === "agent" && member.id === agent.agent_id); return <button key={agent.agent_id} type="button" className="list-entry" data-active={selected === agent.agent_id} aria-current={selected === agent.agent_id ? "page" : undefined} onClick={() => setSelected(agent.agent_id)}><Avatar name={agent.display_name} avatarId={agent.avatar_id} generation={generation} /><span className="config-entry-text"><strong>{agent.display_name}</strong><span>{agent.model ? `已配置，${agentStatusLabel(agent, participant)}` : "待配置"}</span></span></button> })}
       </div>
       {list.loading && <p className="form-caption p-3">正在读取智能体…</p>}
       {list.error && <div className="config-notice" role="alert"><p>{list.error}</p><Button variant="ghost" size="sm" onClick={() => void store.loadAgents()}>重试读取智能体</Button></div>}
       {creationError && <p className="form-caption p-3" role="alert">{creationError}</p>}
-      <p className="form-caption p-3">只管理本地配置。群主和普通成员聊天平等，不因身份获得话题优先权。</p>
+      <p className="form-caption p-3">群主和普通成员聊天平等，不因身份获得话题优先权。</p>
     </WorkspaceList>
     <div className="workspace-detail">
       <div className="workspace-detail" hidden={selected !== null} inert={selected !== null}><GlobalConfigurationPanel active={active && selected === null} /></div>
-      {globalState.value && list.resources.map((resource) => { const id = resource.getSnapshot().value!.agent_id; return <div key={id} className="workspace-detail" hidden={selected !== id} inert={selected !== id}><AgentPane resource={resource} global={globalState.value!} active={active && selected === id} onCopy={(agent) => void create(agent)} onOpenGlobal={() => setSelected(null)} /></div> })}
+      {globalState.value && list.resources.map((resource) => { const id = resource.getSnapshot().value!.agent_id; return <div key={id} className="workspace-detail" hidden={selected !== id} inert={selected !== id}><AgentPane resource={resource} global={globalState.value!} active={active && selected === id} session={session} onCopy={(agent) => void create(agent)} onOpenGlobal={() => setSelected(null)} /></div> })}
     </div>
   </div>
 }

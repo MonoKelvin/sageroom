@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
 import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import net from "node:net"
+import { createServer as createHttpServer } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -23,6 +24,8 @@ let server
 let current
 let builder
 let debugPort
+let modelServer
+let realProfile
 
 function passed(name, detail) {
   report.tests.push({ name, status: "Passed", ...(detail ? { detail } : {}) })
@@ -307,6 +310,7 @@ try {
     await expect(page.getByText(/连接可用/)).toBeVisible({ timeout: 20_000 })
     await screenshot(page, "global-model-connected")
     passed("后端安全导入临时模型、系统凭据保存与真实三方连接测试", { protocol: configuredGlobal.model_profiles[0].protocol })
+    realProfile = configuredGlobal.model_profiles[0]
     await page.getByRole("button", { name: "人格预设", exact: true }).click()
     await screenshot(page, "global-persona")
     await page.getByRole("button", { name: "聊天", exact: true }).click()
@@ -446,10 +450,243 @@ try {
   await expect(reopened.page.getByText("重复请求只能出现一次", { exact: true })).toBeVisible()
   await screenshot(reopened.page, "chat-restarted")
   passed("重启历史、身份、外观持久化与旧世代拒绝")
+
+  let running = reopened
+  const hits = []
+  const alphaId = randomUUID()
+  const betaId = randomUUID()
+  const syntheticKey = "synthetic-desktop-model-key-not-a-real-secret"
+  const emptyDecision = () => ({ participation: "observe", messages: [], recalls: [], tool_requests: [], group_patch: null, announcement: null, profile_patch: null, wake_plan: null, topic_hint: null, extra_data: { message_annotations: [], memory_candidates: [] } })
+  function fixtureDecision(model, context) {
+    const decision = emptyDecision()
+    if (context.opportunity === "initialized") {
+      if (model === "alpha") decision.wake_plan = { after_seconds: 300, reason_code: "check_later", review_message_ordinal: null }
+      return decision
+    }
+    const messages = context.recent_messages ?? []
+    const userIds = new Set(context.participants.filter((member) => member.kind === "user").map((member) => member.id))
+    const latestUser = messages.findLast((message) => userIds.has(message.sender_id))
+    const text = (message) => message?.parts.filter((part) => part.kind === "text").map((part) => part.text).join("") ?? ""
+    const ownId = model === "alpha" ? alphaId : betaId
+    const alreadySent = (body, since) => messages.some((message) => message.sender_id === ownId && BigInt(message.seq) > BigInt(since.seq) && text(message) === body)
+    let reply
+    let sendAfter = 0
+    if (model === "alpha" && text(latestUser) === "运行器互聊测试" && !alreadySent("本地成员甲收到了", latestUser)) reply = "本地成员甲收到了"
+    if (model === "beta" && text(latestUser) === "运行器互聊测试") {
+      const alphaReply = messages.findLast((message) => message.sender_id === alphaId && BigInt(message.seq) > BigInt(latestUser.seq) && text(message) === "本地成员甲收到了")
+      if (alphaReply && !alreadySent("本地成员乙接上了", alphaReply)) reply = "本地成员乙接上了"
+    }
+    if (model === "alpha" && text(latestUser) === "运行器延迟暂停测试") { reply = "暂停后不得发送"; sendAfter = 2000 }
+    if (model === "alpha" && text(latestUser) === "运行器后台测试" && !alreadySent("后台仍在处理", latestUser)) reply = "后台仍在处理"
+    if (model === "alpha" && context.opportunity === "planned_wake") reply = "持久计划到期回复"
+    if (reply) {
+      decision.participation = "speak"
+      decision.messages = [{ parts: [{ kind: "text", text: reply }], quote_message_id: null, mention_ids: [], mention_all: false, send_after_ms: sendAfter }]
+    }
+    return decision
+  }
+  modelServer = createHttpServer(async (request, response) => {
+    try {
+      assert.equal(request.method, "POST")
+      assert.equal(request.url, "/v1/chat/completions")
+      assert.equal(request.headers.authorization === `Bearer ${syntheticKey}`, true)
+      const chunks = []
+      let bytes = 0
+      for await (const chunk of request) {
+        bytes += chunk.length
+        assert.ok(bytes <= 128 * 1024, "本地模型请求超过测试上限")
+        chunks.push(chunk)
+      }
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8"))
+      assert.ok(["alpha", "beta"].includes(body.model))
+      const prompt = body.messages.findLast((message) => message.role === "user").content
+      const context = JSON.parse(prompt.split("\n")[0])
+      hits.push({ model: body.model, opportunity: context.opportunity })
+      const content = JSON.stringify(fixtureDecision(body.model, context))
+      response.writeHead(200, { "Content-Type": "application/json" })
+      response.end(JSON.stringify({ model: body.model, choices: [{ message: { role: "assistant", content }, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 } }))
+    } catch {
+      response.writeHead(500, { "Content-Type": "application/json" })
+      response.end(JSON.stringify({ error: { message: "本地确定性模型请求格式不符合验收协议。" } }))
+    }
+  })
+  await new Promise((resolve, reject) => { modelServer.once("error", reject); modelServer.listen(0, "127.0.0.1", resolve) })
+  const runtimeGeneration = () => running.snapshot.data_generation_id
+  async function runtimeSnapshot() { return data(await invoke(running.page, "app_get_snapshot", { data_generation_id: runtimeGeneration(), last_event_seq: null })) }
+  async function runtimeMessages() { return data(await invoke(running.page, "chat_list", { data_generation_id: runtimeGeneration(), before_seq: null, after_seq: null, around_seq: null, limit: 200 })).items }
+  async function runtimeControl(agentId, paused) { return data(await invoke(running.page, "agent_runtime_control", { data_generation_id: runtimeGeneration(), agent_id: agentId, paused })) }
+  async function waitRuntime(agentId, status, timeout = 20_000) {
+    let state
+    try {
+      await expect.poll(async () => {
+        state = (await runtimeSnapshot()).participants.find((member) => member.id === agentId)?.runtime
+        if (state?.status === "offline") throw new Error(state.detail ?? "智能体离线，未完成桌面验收。")
+        return state?.status
+      }, { timeout }).toBe(status)
+    } catch (error) {
+      if (state?.detail) throw new Error(`智能体状态 ${state.status}：${state.detail}`, { cause: error })
+      throw error
+    }
+  }
+  async function waitReply(body, agentId, timeout = 20_000) {
+    await expect.poll(async () => (await runtimeMessages()).filter((message) => message.sender_id === agentId && message.parts.some((part) => part.kind === "text" && part.text.includes(body))).length, { timeout }).toBe(1)
+    const message = (await runtimeMessages()).find((message) => message.sender_id === agentId && message.parts.some((part) => part.kind === "text" && part.text.includes(body)))
+    assert.equal(message.sender_snapshot.kind, "agent")
+    await expect(running.page.getByText(body, { exact: false }).first()).toBeVisible({ timeout })
+  }
+  const runtimeRequest = (text) => ({ data_generation_id: runtimeGeneration(), client_request_id: randomUUID(), parts: [{ kind: "text", text }], quote_message_id: null, mention_ids: [], mention_all: false })
+  const profileInput = ({ id, name, protocol, base_url, model_name, parameters }) => ({ id, name, protocol, base_url, model_name, parameters })
+  const existingAgents = data(await invoke(running.page, "agent_list", { data_generation_id: runtimeGeneration() }))
+  for (const agent of existingAgents) await runtimeControl(agent.agent_id, true)
+  const beforeLocal = data(await invoke(running.page, "global_configuration_get", { data_generation_id: runtimeGeneration() }))
+  const localId = randomUUID()
+  const localProfile = { id: localId, name: "本地确定性验收模型", protocol: "openai_chat_completions", base_url: `http://127.0.0.1:${modelServer.address().port}/v1`, model_name: "alpha", parameters: { temperature: 0.1, top_p: 1, max_output_tokens: 1024, input_budget: 8192, reasoning: "off" } }
+  const withLocal = data(await invoke(running.page, "global_configuration_save", { data_generation_id: runtimeGeneration(), client_request_id: randomUUID(), expected_revision: beforeLocal.revision, model_profiles: [...beforeLocal.model_profiles.map(profileInput), localProfile], persona_presets: beforeLocal.persona_presets, runtime_defaults: beforeLocal.runtime_defaults }))
+  const savedLocal = withLocal.model_profiles.find((profile) => profile.id === localId)
+  data(await invoke(running.page, "secret_set", { data_generation_id: runtimeGeneration(), profile_id: localId, expected_revision: savedLocal.revision, api_key: syntheticKey }))
+  const configuredLocal = data(await invoke(running.page, "global_configuration_get", { data_generation_id: runtimeGeneration() })).model_profiles.find((profile) => profile.id === localId)
+  async function createRuntimeAgent(id, name, profile, modelName, preferences, skill = "这是隔离的确定性运行器测试，遵循自主聊天输出协议。") {
+    return data(await invoke(running.page, "agent_save", { data_generation_id: runtimeGeneration(), client_request_id: randomUUID(), expected_revision: null, configuration: { ...existingAgents[0], agent_id: id, revision: "0", display_name: name, introduction: "隔离桌面验收成员", avatar_id: null, agent_type: "social", skill, model: { source_profile_id: profile.id, source_profile_revision: profile.revision, profile: { ...profileInput(profile), model_name: modelName } }, preferences } }))
+  }
+  await createRuntimeAgent(alphaId, "本地成员甲", configuredLocal, "alpha", { request_limit_daily: 30, persistent_memory: false, allow_autonomous_wake: true })
+  await createRuntimeAgent(betaId, "本地成员乙", configuredLocal, "beta", { request_limit_daily: 30, persistent_memory: false, allow_autonomous_wake: false })
+  await waitRuntime(alphaId, "observing")
+  await waitRuntime(betaId, "observing")
+  assert.ok(hits.some((hit) => hit.model === "alpha" && hit.opportunity === "initialized"))
+  assert.ok(hits.some((hit) => hit.model === "beta" && hit.opportunity === "initialized"))
+  await expect.poll(async () => (await runtimeSnapshot()).participants.find((member) => member.id === alphaId)?.runtime.next_wake_at).toBeGreaterThan(Date.now())
+  const startupCalls = hits.length
+  for (let index = 0; index < 3; index += 1) await runtimeSnapshot()
+  await delay(1500)
+  assert.equal(hits.length, startupCalls, "状态事件和快照查询不能触发模型调用")
+  passed("已配置社交成员真实启动，观察成功且模型自主计划持久化，无状态事件调用循环")
+
+  const mutualRequest = runtimeRequest("运行器互聊测试")
+  const mutualResult = data(await invoke(running.page, "chat_send", mutualRequest))
+  await waitReply("本地成员甲收到了", alphaId)
+  await waitReply("本地成员乙接上了", betaId)
+  await waitRuntime(alphaId, "observing")
+  await waitRuntime(betaId, "observing")
+  await delay(1500)
+  const mutualCalls = hits.length
+  assert.deepEqual(data(await invoke(running.page, "chat_send", mutualRequest)), mutualResult)
+  for (let index = 0; index < 3; index += 1) await runtimeSnapshot()
+  await delay(2000)
+  assert.equal(hits.length, mutualCalls, "幂等重放、自回复或状态事件不能增加模型调用")
+  await screenshot(running.page, "runtime-mutual-replies")
+  passed("双成员按真人消息与同伴回复自主接话，真实成员身份落库并显示，无自回复和幂等重复调用")
+
+  const runtimeInput = running.page.getByRole("textbox", { name: "消息输入" })
+  await runtimeInput.fill("运行器延迟暂停测试")
+  await runtimeInput.press("Enter")
+  await waitRuntime(alphaId, "waiting_to_send")
+  await runtimeControl(alphaId, true)
+  await waitRuntime(alphaId, "paused")
+  await delay(2500)
+  assert.ok(!(await runtimeMessages()).some((message) => message.parts.some((part) => part.kind === "text" && part.text === "暂停后不得发送")))
+  const pausedAlphaCalls = hits.filter((hit) => hit.model === "alpha").length
+  data(await invoke(running.page, "chat_send", runtimeRequest("暂停期间测试")))
+  await waitRuntime(betaId, "observing")
+  await delay(1500)
+  assert.equal(hits.filter((hit) => hit.model === "alpha").length, pausedAlphaCalls)
+  await runtimeControl(alphaId, false)
+  await waitRuntime(alphaId, "observing")
+  assert.equal(hits.filter((hit) => hit.model === "alpha").length, pausedAlphaCalls + 1)
+  passed("待发分条暂停即取消、暂停期间不调用模型，恢复提供一次初始化机会")
+
+  try {
+    native(running, "status")
+    await running.page.getByRole("button", { name: "关闭到托盘", exact: true }).click()
+    await expect.poll(() => native(running, "status").visible).toBe(false)
+    data(await invoke(running.page, "chat_send", runtimeRequest("运行器后台测试")))
+    await expect.poll(async () => (await runtimeMessages()).some((message) => message.sender_id === alphaId && message.parts.some((part) => part.kind === "text" && part.text === "后台仍在处理"))).toBe(true)
+    assert.equal(native(running, "status").visible, false)
+    native(running, "show")
+    await waitReply("后台仍在处理", alphaId)
+    passed("隐藏窗口时自主运行器继续处理真实 IPC 消息并提交成员回复")
+  } catch (error) {
+    if (!(error instanceof NativeAutomationUnavailable)) throw error
+    blocked("自主运行器隐藏窗口验证", error.message)
+    try { native(running, "show") } catch { /* WebView2 路径保留。 */ }
+  }
+  await runtimeControl(alphaId, true)
+  await runtimeControl(betaId, true)
+  await waitRuntime(alphaId, "paused")
+  await waitRuntime(betaId, "paused")
+  const pausedCalls = hits.length
+  await stop(running)
+  running = await launch(3)
+  await waitRuntime(alphaId, "paused")
+  await waitRuntime(betaId, "paused")
+  await delay(1500)
+  assert.equal(hits.length, pausedCalls, "暂停成员重启后不能调用模型")
+  passed("暂停持久化，退出及重启不补发旧候选或额外调用模型")
+
+  await runtimeControl(alphaId, false)
+  await waitRuntime(alphaId, "observing")
+  const savedWakeAt = (await runtimeSnapshot()).participants.find((member) => member.id === alphaId).runtime.next_wake_at
+  assert.ok(savedWakeAt > Date.now())
+  const plannedCalls = hits.length
+  await stop(running)
+  running = await launch(4)
+  await expect.poll(async () => (await runtimeSnapshot()).participants.find((member) => member.id === alphaId)?.runtime.next_wake_at).toBe(savedWakeAt)
+  await delay(1500)
+  assert.equal(hits.length, plannedCalls, "未到期的持久计划重启后不能增加初始化或轮询调用")
+  passed("自主唤醒计划跨重启保留，未到期不调用模型")
+
+  const wakeDatabaseFile = path.join(running.snapshot.data_directory, "chat.sqlite3")
+  assert.ok(running.snapshot.data_directory.toLowerCase().includes(identifier), "拒绝修改非隔离数据目录的唤醒计划")
+  assert.equal(path.resolve(wakeDatabaseFile), path.resolve(databaseFile))
+  await stop(running)
+  assert.ok(running.child.exitCode !== null || running.child.signalCode !== null, "必须等待测试应用完全退出后修改计划")
+  const wakeDatabase = new DatabaseSync(wakeDatabaseFile, { allowExtension: false })
+  try {
+    wakeDatabase.exec("BEGIN IMMEDIATE")
+    const due = Date.now() - 1000
+    assert.equal(wakeDatabase.prepare("UPDATE runtime_plans SET next_wake_at = ? WHERE agent_id = ?").run(due, alphaId).changes, 1)
+    assert.equal(wakeDatabase.prepare("UPDATE agent_runtime_states SET next_wake_at = ? WHERE agent_id = ?").run(due, alphaId).changes, 1)
+    wakeDatabase.exec("COMMIT")
+  } catch (error) {
+    wakeDatabase.exec("ROLLBACK")
+    throw error
+  } finally { wakeDatabase.close() }
+  running = await launch(5)
+  await waitReply("持久计划到期回复", alphaId)
+  await waitRuntime(alphaId, "observing")
+  await expect.poll(async () => (await runtimeSnapshot()).participants.find((member) => member.id === alphaId)?.runtime.next_wake_at).toBeNull()
+  await delay(1500)
+  assert.equal(hits.filter((hit) => hit.model === "alpha" && hit.opportunity === "planned_wake").length, 1)
+  assert.equal(hits.length, plannedCalls + 1, "到期计划只应触发一次 planned_wake，不能追加初始化或自回复调用")
+  await screenshot(running.page, "runtime-planned-wake")
+  await runtimeControl(alphaId, true)
+  await waitRuntime(alphaId, "paused")
+  passed("持久计划到期后重启触发一次 planned_wake，真实成员身份落库并显示，不生成新计划")
+
+  if (realProfile) {
+    const freshReal = data(await invoke(running.page, "global_configuration_get", { data_generation_id: runtimeGeneration() })).model_profiles.find((profile) => profile.id === realProfile.id)
+    assert.ok(freshReal?.credential_configured, "真实验收仅使用先前成功导入的系统凭据")
+    const realId = randomUUID()
+    const realSkill = "这是隔离协议验收，不是真实日常群聊。初始化时选择observe；只有最新真人消息是‘请验证真实模型链路’时选择speak，并用一条messages发出‘真实模型链路通过’，其余机会选择observe。不要提问、解释、调用工具或安排wake_plan。完整填写宿主要求的JSON字段。"
+    await createRuntimeAgent(realId, "真实模型验收成员", freshReal, freshReal.model_name, { request_limit_daily: 3, persistent_memory: false, allow_autonomous_wake: false }, realSkill)
+    await waitRuntime(realId, "observing", 90_000)
+    data(await invoke(running.page, "chat_send", runtimeRequest("请验证真实模型链路")))
+    await expect.poll(async () => {
+      const member = (await runtimeSnapshot()).participants.find((participant) => participant.id === realId)
+      if (["offline", "needs_configuration", "protected"].includes(member?.runtime?.status)) throw new Error(member.runtime.detail ?? "真实模型运行器未完成回复验收。")
+      return (await runtimeMessages()).some((message) => message.sender_id === realId && message.sender_snapshot.kind === "agent" && message.parts.some((part) => part.kind === "text" && part.text.includes("真实模型链路通过")))
+    }, { timeout: 90_000 }).toBe(true)
+    await waitReply("真实模型链路通过", realId, 90_000)
+    const realState = (await runtimeSnapshot()).participants.find((member) => member.id === realId).runtime
+    assert.ok(realState.requests_today <= 3, "真实验收请求上限必须由后端执行")
+    await runtimeControl(realId, true)
+    await waitRuntime(realId, "paused")
+    await screenshot(running.page, "runtime-real-reply")
+    passed("真实模型隔离成员按协议返回合法回复，以成员身份入库并在桌面显示", { requests: realState.requests_today, protocol: freshReal.protocol })
+  }
   assert.deepEqual(report.page_errors, [])
   assert.deepEqual(report.console_errors, [])
   passed("WebView2 无页面异常或 CSP 错误")
-  await stop(reopened)
+  await stop(running)
 } catch (error) {
   report.tests.push({ name: "桌面主路径", status: "Failed", detail: error.message })
   process.exitCode = 1
@@ -466,6 +703,9 @@ try {
       report.tests.push({ name: "测试进程清理", status: "Failed", detail: "正常退出失败，仅终止本脚本的隔离测试子进程" })
       process.exitCode = 1
     }
+  }
+  if (modelServer) {
+    await new Promise((resolve) => { modelServer.close(resolve); modelServer.closeAllConnections() })
   }
   await server?.close()
   writeFileSync(path.join(output, "report.json"), JSON.stringify(report, null, 2))

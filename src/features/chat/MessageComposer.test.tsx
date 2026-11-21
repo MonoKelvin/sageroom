@@ -23,12 +23,14 @@ describe("消息输入", () => {
     await waitFor(() => expect(onSend).toHaveBeenCalledOnce())
   })
 
-  it("纯空白和超限文本不能提交", () => {
+  it("纯空白和超限文本不能提交，空白不产生提示文案", () => {
     const onSend = vi.fn()
     render(<MessageComposer dataGenerationId="generation" disabled={false} onSend={onSend} />)
     const input = screen.getByRole("textbox", { name: "消息输入" })
+    expect(screen.queryByText("Shift+Enter 换行")).not.toBeInTheDocument()
     fireEvent.change(input, { target: { value: " \n" } })
     expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     fireEvent.change(input, { target: { value: "x".repeat(10_001) } })
     expect(screen.getByRole("alert")).toHaveTextContent("10000")
     expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled()

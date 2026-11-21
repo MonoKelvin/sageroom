@@ -27,6 +27,7 @@ const responseTypes = {
   GlobalConfigurationSave: "GlobalConfiguration",
   AgentList: "AgentConfiguration[]",
   AgentSave: "AgentConfiguration",
+  AgentRuntimeControl: "AgentRuntimeState",
   UserProfileGet: "UserProfile",
   UserProfileSave: "UserProfile",
   SecretSet: "SecretStatus",

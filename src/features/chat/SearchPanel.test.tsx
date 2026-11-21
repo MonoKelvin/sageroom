@@ -16,6 +16,19 @@ beforeEach(() => {
 })
 
 describe("聊天搜索", () => {
+  it("打开时不显示结果面板，输入内容后才出现，关闭后重新打开清空", () => {
+    vi.mocked(ipc.search).mockResolvedValue(searchPage())
+    const props = { onOpenChange: vi.fn(), generation: GENERATION, onLocate: vi.fn().mockResolvedValue(undefined) }
+    const { rerender } = render(<SearchPanel open {...props} />)
+    expect(screen.queryByRole("complementary", { name: "搜索结果面板" })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索聊天文本" }), { target: { value: "测试" } })
+    expect(screen.getByRole("complementary", { name: "搜索结果面板" })).toBeInTheDocument()
+    rerender(<SearchPanel open={false} {...props} />)
+    expect(screen.queryByRole("complementary", { name: "搜索结果面板" })).not.toBeInTheDocument()
+    rerender(<SearchPanel open {...props} />)
+    expect(screen.getByRole("searchbox", { name: "搜索聊天文本" })).toHaveValue("")
+  })
+
   it("提交 literal 查询并通过命中序号定位", async () => {
     const onLocate = vi.fn().mockResolvedValue(undefined)
     const onOpenChange = vi.fn()

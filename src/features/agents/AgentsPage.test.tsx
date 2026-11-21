@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { ipc } from "@/app/ipc"
+import { IpcError, ipc } from "@/app/ipc"
+import type { AgentRuntimeState, AgentRuntimeStatus } from "@/contracts/generated"
 import { ConfigurationTestProvider, mockConfigurationIpc, pageProps } from "@/features/settings/configuration.test-fixtures"
 import { AgentsPage } from "./AgentsPage"
 
@@ -13,6 +14,18 @@ function detail(name: string) { return within(screen.getByText(name, { selector:
 async function select(label: string, option: string) {
   await userEvent.click(screen.getByRole("combobox", { name: label }))
   await userEvent.click(await screen.findByRole("option", { name: option }))
+}
+function runtimeState(status: AgentRuntimeStatus, patch: Partial<AgentRuntimeState> = {}): AgentRuntimeState {
+  return { agent_id: "sage-test", config_revision: "1", status, detail: null, next_wake_at: null, requests_today: 0, ...patch }
+}
+function withRuntime(props: ReturnType<typeof pageProps>, runtime: AgentRuntimeState | undefined) {
+  return { ...props, session: { ...props.session, snapshot: { ...props.session.snapshot!, participants: props.session.snapshot!.participants.map((participant) => participant.id === "sage-test" ? { ...participant, runtime } : participant) } } }
+}
+function configuredProps(runtime?: AgentRuntimeState) {
+  const data = mockConfigurationIpc()
+  const { id, name, protocol, base_url, model_name, parameters, revision } = data.global.model_profiles[0]
+  data.agents[0].model = { source_profile_id: id, source_profile_revision: revision, profile: { id, name, protocol, base_url, model_name, parameters: { ...parameters } } }
+  return withRuntime(pageProps(), runtime)
 }
 
 describe("持久资源智能体页面", () => {
@@ -47,7 +60,9 @@ describe("持久资源智能体页面", () => {
     const request = vi.mocked(ipc.saveAgent).mock.calls[0][0]
     expect(request.expected_revision).toBeNull()
     expect(request.configuration).toMatchObject({ display_name: "新智能体", model: null, language_style: "自然、清晰" })
-    expect(detail("新智能体").getByText("模型尚未配置，智能体未启动。")).toBeInTheDocument()
+    expect(detail("新智能体").getByRole("status")).toHaveTextContent("待配置")
+    expect(detail("新智能体").getByText(/模型尚未配置/)).toBeInTheDocument()
+    expect(detail("新智能体").queryByRole("button", { name: /暂停运行|恢复运行|重试启动/ })).not.toBeInTheDocument()
     expect(sidebar().getByRole("button", { name: /新智能体.*待配置/ })).toBeInTheDocument()
   })
   it("晚创建结果不会切换当前选择，后续文本失焦独立应用并更新列表名称", async () => {
@@ -107,6 +122,7 @@ describe("持久资源智能体页面", () => {
   }, 10000)
   it("未配置模型 option 禁用，类型选择和头像成功即时应用", async () => {
     const data = mockConfigurationIpc()
+    const send = vi.spyOn(ipc, "send").mockRejectedValue(new Error("工具成员不得发起闲聊"))
     data.global.model_profiles[0].base_url = ""
     vi.mocked(ipc.importAvatar).mockResolvedValue({ id: "avatar-local", mime_type: "image/png", width: 64, height: 64, byte_size: 3 })
     render(page())
@@ -117,6 +133,121 @@ describe("持久资源智能体页面", () => {
     await select("智能体类型", "工具助手")
     await userEvent.click(detail("Sage").getByRole("button", { name: "选择头像" }))
     await waitFor(() => expect(vi.mocked(ipc.saveAgent).mock.lastCall?.[0].configuration).toMatchObject({ agent_type: "tool", avatar_id: "avatar-local" }))
+    expect(detail("Sage").getByText("工具任务尚未启用，不参与闲聊。")).toBeInTheDocument()
+    expect(ipc.controlAgentRuntime).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
     expect(ipc.testModel).not.toHaveBeenCalled()
+  })
+})
+
+describe("智能体实时运行状态", () => {
+  it("模型已配置但runtime未回报时只显示正在启动，不宣称在线", async () => {
+    render(page(configuredProps()))
+    await userEvent.click(await sidebar().findByRole("button", { name: /Sage.*已配置.*正在启动/ }))
+    expect(detail("Sage").getByRole("status")).toHaveTextContent("正在启动")
+    expect(detail("Sage").queryByText(/在线观察|今日请求|下次唤醒/)).not.toBeInTheDocument()
+    expect(detail("Sage").getByRole("button", { name: "暂停运行" })).toBeEnabled()
+  })
+
+  it("未配置模型时即使有旧runtime仍待配置，且没有虚假启动入口", async () => {
+    render(page(withRuntime(pageProps(), runtimeState("observing"))))
+    await openSage()
+    expect(detail("Sage").getByRole("status")).toHaveTextContent("待配置")
+    expect(detail("Sage").queryByRole("button", { name: /暂停运行|恢复运行|重试启动|开始/ })).not.toBeInTheDocument()
+    expect(ipc.controlAgentRuntime).not.toHaveBeenCalled()
+  })
+
+  it("session快照从deciding切换observing时更新列表和detail，保留局部draft与激活状态", async () => {
+    const nextWake = Date.UTC(2026, 10, 20, 10, 30)
+    const props = configuredProps(runtimeState("deciding", { detail: "正在判断是否接话", requests_today: 4 }))
+    const view = render(page(props))
+    await userEvent.click(await sidebar().findByRole("button", { name: /Sage.*已配置.*正在思考/ }))
+    expect(detail("Sage").getByRole("status")).toHaveTextContent("正在思考")
+    expect(detail("Sage").getByText("正在判断是否接话")).toBeInTheDocument()
+    const introduction = detail("Sage").getByLabelText("简介", { selector: "textarea" })
+    fireEvent.change(introduction, { target: { value: "尚未失焦的局部草稿" } })
+    const updated = withRuntime(props, runtimeState("observing", { detail: "等待新消息", config_revision: "2", next_wake_at: nextWake, requests_today: 5 }))
+    view.rerender(page({ ...updated, active: false }))
+    view.rerender(page(updated))
+    expect(sidebar().getByRole("button", { name: /Sage.*已配置.*在线观察/ })).toHaveAttribute("data-active", "true")
+    expect(detail("Sage").getByRole("status")).toHaveTextContent("在线观察")
+    expect(detail("Sage").queryByText("正在判断是否接话")).not.toBeInTheDocument()
+    expect(detail("Sage").getByText("等待新消息")).toBeInTheDocument()
+    expect(detail("Sage").getByText("今日请求：5 次 · 配置版本：2")).toBeInTheDocument()
+    expect(detail("Sage").getByText(`下次唤醒：${new Date(nextWake).toLocaleString("zh-CN", { hour12: false })}`)).toBeInTheDocument()
+    expect(detail("Sage").getByLabelText("简介", { selector: "textarea" })).toHaveValue("尚未失焦的局部草稿")
+    expect(ipc.listAgents).toHaveBeenCalledTimes(1)
+    expect(ipc.saveAgent).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["needs_configuration", "待配置"], ["observing", "在线观察"], ["deciding", "正在思考"],
+    ["waiting_to_send", "准备发送"], ["sleeping", "休息中"], ["paused", "已暂停"],
+    ["protected", "达到保护上限"], ["offline", "离线"],
+  ] satisfies [AgentRuntimeStatus, string][])("运行状态%s显示%s并保留已配置导航文案", async (status, label) => {
+    render(page(configuredProps(runtimeState(status))))
+    await userEvent.click(await sidebar().findByRole("button", { name: new RegExp(`Sage.*已配置.*${label}`) }))
+    expect(detail("Sage").getByRole("status")).toHaveTextContent(label)
+  })
+
+  it.each([null, "模型暂不可用 <img src=x onerror=alert(1)>"])("离线detail=%s安全展示且可重试启动", async (message) => {
+    render(page(configuredProps(runtimeState("offline", { detail: message }))))
+    await userEvent.click(await sidebar().findByRole("button", { name: /Sage.*已配置.*离线/ }))
+    const sage = detail("Sage")
+    expect(sage.getByRole("status")).toHaveTextContent("离线")
+    if (message) {
+      const caption = sage.getByText(message)
+      expect(caption).toBeInTheDocument()
+      expect(caption.querySelector("img")).toBeNull()
+    }
+    expect(sage.queryByText(/下次唤醒/)).not.toBeInTheDocument()
+    await userEvent.click(sage.getByRole("button", { name: "重试启动" }))
+    expect(ipc.controlAgentRuntime).toHaveBeenCalledWith({ data_generation_id: "generation-test", agent_id: "sage-test", paused: false })
+    expect(sage.getByRole("status")).toHaveTextContent("离线")
+  })
+
+  it("暂停传入generation和agentid，仅操作pending禁用，不用响应伪造快照", async () => {
+    const props = configuredProps(runtimeState("observing"))
+    let finish!: (value: AgentRuntimeState) => void
+    vi.mocked(ipc.controlAgentRuntime).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+    const view = render(page(props))
+    await userEvent.click(await sidebar().findByRole("button", { name: /Sage.*已配置.*在线观察/ }))
+    await userEvent.click(detail("Sage").getByRole("button", { name: "暂停运行" }))
+    expect(ipc.controlAgentRuntime).toHaveBeenCalledExactlyOnceWith({ data_generation_id: "generation-test", agent_id: "sage-test", paused: true })
+    expect(detail("Sage").getByRole("button", { name: "正在处理…" })).toBeDisabled()
+    await act(async () => finish(runtimeState("paused")))
+    expect(detail("Sage").getByRole("status")).toHaveTextContent("在线观察")
+    expect(detail("Sage").getByRole("button", { name: "暂停运行" })).toBeEnabled()
+    expect(props.session.snapshot!.participants.find((participant) => participant.id === "sage-test")!.runtime?.status).toBe("observing")
+    expect(props.session.reload).not.toHaveBeenCalled()
+    expect(ipc.saveAgent).not.toHaveBeenCalled()
+    view.rerender(page(withRuntime(props, runtimeState("paused"))))
+    expect(detail("Sage").getByRole("status")).toHaveTextContent("已暂停")
+    expect(detail("Sage").getByRole("button", { name: "恢复运行" })).toBeEnabled()
+  })
+
+  it("恢复运行传入paused=false，等待实时快照恢复观察", async () => {
+    const props = configuredProps(runtimeState("paused"))
+    const view = render(page(props))
+    await userEvent.click(await sidebar().findByRole("button", { name: /Sage.*已配置.*已暂停/ }))
+    await userEvent.click(detail("Sage").getByRole("button", { name: "恢复运行" }))
+    expect(ipc.controlAgentRuntime).toHaveBeenCalledExactlyOnceWith({ data_generation_id: "generation-test", agent_id: "sage-test", paused: false })
+    expect(detail("Sage").getByRole("status")).toHaveTextContent("已暂停")
+    view.rerender(page(withRuntime(props, runtimeState("observing"))))
+    expect(detail("Sage").getByRole("status")).toHaveTextContent("在线观察")
+    expect(detail("Sage").getByRole("button", { name: "暂停运行" })).toBeEnabled()
+    expect(ipc.saveAgent).not.toHaveBeenCalled()
+  })
+
+  it("保护上限可重试启动，失败显示errorMessage且不改变状态", async () => {
+    const props = configuredProps(runtimeState("protected", { detail: "已达到今日请求上限", requests_today: 12 }))
+    vi.mocked(ipc.controlAgentRuntime).mockRejectedValueOnce(new IpcError({ code: "INVALID_INPUT", message: "今日请求额度尚未恢复。", retryability: "after_user_action", field_path: null, trace_id: "runtime-test", may_have_been_charged: false }))
+    render(page(props))
+    await userEvent.click(await sidebar().findByRole("button", { name: /Sage.*已配置.*达到保护上限/ }))
+    await userEvent.click(detail("Sage").getByRole("button", { name: "重试启动" }))
+    expect(await detail("Sage").findByRole("alert")).toHaveTextContent("今日请求额度尚未恢复。")
+    expect(detail("Sage").getByRole("status")).toHaveTextContent("达到保护上限")
+    expect(detail("Sage").getByRole("button", { name: "重试启动" })).toBeEnabled()
+    expect(ipc.controlAgentRuntime).toHaveBeenCalledWith({ data_generation_id: "generation-test", agent_id: "sage-test", paused: false })
   })
 })

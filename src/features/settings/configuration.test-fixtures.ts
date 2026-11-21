@@ -67,6 +67,14 @@ export function mockConfigurationIpc() {
     data.agents = [...data.agents.filter((item) => item.agent_id !== agent.agent_id), agent]
     return structuredClone(agent)
   })
+  vi.spyOn(ipc, "controlAgentRuntime").mockImplementation(async (request) => ({
+    agent_id: request.agent_id,
+    config_revision: data.agents.find((agent) => agent.agent_id === request.agent_id)?.revision ?? "1",
+    status: request.paused ? "paused" : "observing",
+    detail: null,
+    next_wake_at: null,
+    requests_today: 0,
+  }))
   vi.spyOn(ipc, "saveUserProfile").mockImplementation(async (request) => {
     data.user = { participant_id: data.user.participant_id, display_name: request.display_name, introduction: request.introduction, avatar_id: request.avatar_id, revision: nextRevision(request.expected_revision) }
     return structuredClone(data.user)

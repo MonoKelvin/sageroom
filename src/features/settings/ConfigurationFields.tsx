@@ -32,9 +32,9 @@ export function DimensionsFields({ value, onChange }: { value: PersonaDimensions
 
 export function PreferencesFields({ value, onChange }: { value: AgentPreferences; onChange: (patch: Partial<AgentPreferences>) => Promise<void> }) {
   return <div className="config-stack">
-    <Field label="每日请求上限" caption="仅应用运行偏好，不启动任务。"><NumberInput label="每日请求上限" min={1} max={5000} step={1} value={value.request_limit_daily} onValueChange={(next) => applyInteger(next, (request_limit_daily) => onChange({ request_limit_daily }))} /></Field>
+    <Field label="每日请求上限" caption="失败与格式修复也计数；全局最多 500 次/UTC 日。"><NumberInput label="每日请求上限" min={1} max={5000} step={1} value={value.request_limit_daily} onValueChange={(next) => applyInteger(next, (request_limit_daily) => onChange({ request_limit_daily }))} /></Field>
     <Field label="允许持久记忆" caption="作为偏好保存在本机。"><Checkbox label="允许持久记忆" checked={value.persistent_memory} onCheckedChange={(persistent_memory) => onChange({ persistent_memory })} /></Field>
-    <Field label="允许自主唤醒" caption="修改偏好不会立即触发唤醒。"><Switch label="允许自主唤醒" checked={value.allow_autonomous_wake} onCheckedChange={(allow_autonomous_wake) => onChange({ allow_autonomous_wake })} /></Field>
+    <Field label="允许自主唤醒" caption="允许成员提出稍后检查计划，不使用固定轮询。"><Switch label="允许自主唤醒" checked={value.allow_autonomous_wake} onCheckedChange={(allow_autonomous_wake) => onChange({ allow_autonomous_wake })} /></Field>
   </div>
 }
 
@@ -58,7 +58,7 @@ export function ModelFields({ value, onChange, onParameterChange, sourceReadOnly
       <Field label="Top P" caption="大于 0，且不超过 1。"><NumberInput label="Top P" min={Number.MIN_VALUE} max={1} step={0.01} value={params.top_p} onValueChange={(next) => onParameterChange("top_p", next)} /></Field>
       <Field label="最大输出 tokens"><NumberInput label="最大输出 tokens" min={1} max={32768} step={1} value={params.max_output_tokens} onValueChange={(next) => applyInteger(next, (value) => onParameterChange("max_output_tokens", value))} /></Field>
       <Field label="输入预算 tokens"><NumberInput label="输入预算 tokens" min={256} max={128000} step={1} value={params.input_budget} onValueChange={(next) => applyInteger(next, (value) => onParameterChange("input_budget", value))} /></Field>
-      <Field label="推理模式" caption="本轮连接测试不接受 enabled。普通连通不保证关闭模型自身推理。"><SettingsSelect label="推理模式" value={params.reasoning} options={[{ value: "off", label: "不请求额外推理" }, { value: "enabled", label: "启用" }]} onValueChange={(next) => onParameterChange("reasoning", next as ModelParameters["reasoning"])} /></Field>
+      <Field label="推理模式" caption="聊天与连接测试均不支持 enabled；off 仅表示不请求额外推理。"><SettingsSelect label="推理模式" value={params.reasoning} options={[{ value: "off", label: "不请求额外推理" }, { value: "enabled", label: "启用" }]} onValueChange={(next) => onParameterChange("reasoning", next as ModelParameters["reasoning"])} /></Field>
     </div></details>
   </div>
 }

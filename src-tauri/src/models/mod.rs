@@ -1,4 +1,4 @@
 mod gateway;
 mod protocols;
 
-pub use gateway::ModelGateway;
+pub use gateway::{ChatReply, ModelGateway};

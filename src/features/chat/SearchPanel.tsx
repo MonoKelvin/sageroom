@@ -132,11 +132,12 @@ function SearchForm({ generation, enabled, onLocate, onClose }: FormProps) {
 
   function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!composing) void search() }
 
+  const hasSearchContent = Boolean(query.trim() || pending || error || notice || result)
+
   return <>
     <ChatSearchInput value={query} pending={pending && enabled} onValueChange={changeQuery} onSubmit={submit} onCancel={() => void cancel()} onCompositionStart={() => { stopPrevious(); setComposing(true); setPending(false) }} onCompositionEnd={(value) => { setComposing(false); changeQuery(value) }} />
-    <aside className="chat-search-results" aria-label="搜索结果面板">
+    {hasSearchContent && <aside className="chat-search-results" aria-label="搜索结果面板">
       <div className="chat-search-summary" aria-live="polite">{pending ? "正在搜索全部历史…" : notice || (result ? `当前 ${result.items.length} 条匹配` : "搜索聊天")}</div>
-      {!query.trim() && !pending && !error && !notice && <p className="chat-search-empty">输入文字即可搜索聊天记录。</p>}
       {error && <p role="alert" className="chat-search-feedback">{error}</p>}
       {result && !pending && !notice && result.items.length === 0 && <p className="chat-search-empty">没有匹配的消息。</p>}
       <ul aria-label="搜索结果" className="chat-search-list">
@@ -149,7 +150,7 @@ function SearchForm({ generation, enabled, onLocate, onClose }: FormProps) {
         </li>)}
       </ul>
       {result?.has_more && <Button className="chat-search-more" variant="ghost" size="sm" disabled={pending} onClick={() => void search(result.next_cursor)}>加载更早的匹配</Button>}
-    </aside>
+    </aside>}
   </>
 }
 
@@ -169,7 +170,7 @@ export function SearchPanel({ open, onOpenChange, generation, onLocate, onReturn
         onCloseAutoFocus={(event) => { if (onReturnFocus) { event.preventDefault(); onReturnFocus() } }}
       >
         <DialogPrimitive.Title className="sr-only">搜索聊天</DialogPrimitive.Title>
-        {generation ? <SearchForm key={generation} generation={generation} enabled={open} onLocate={onLocate} onClose={() => onOpenChange(false)} /> : <p className="chat-search-feedback">本地聊天数据尚未就绪。</p>}
+        {!generation ? <p className="chat-search-feedback">本地聊天数据尚未就绪。</p> : open && <SearchForm key={generation} generation={generation} enabled onLocate={onLocate} onClose={() => onOpenChange(false)} />}
       </DialogPrimitive.Content>
       <DialogPrimitive.Trigger asChild><Button type="button" variant="ghost" size="icon" className="chat-search-toggle" aria-label={open ? "关闭搜索" : "搜索聊天"}>{open ? <IconX size={20} stroke={1.5} aria-hidden="true" /> : <IconSearch size={20} stroke={1.5} aria-hidden="true" />}</Button></DialogPrimitive.Trigger>
     </div>

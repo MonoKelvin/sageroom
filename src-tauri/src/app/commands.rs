@@ -203,6 +203,20 @@ pub async fn agent_save(
 }
 
 #[tauri::command]
+pub async fn agent_runtime_control(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<AgentRuntimeState>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.control_agent_runtime(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
 pub async fn user_profile_get(
     window: WebviewWindow,
     state: State<'_, AppState>,

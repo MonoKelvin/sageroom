@@ -12,6 +12,7 @@ pub(super) const TEST_PROMPT: &str = "Reply only with OK.";
 const MAX_INPUT_BYTES: usize = 64;
 const INPUT_OVERHEAD: usize = 128;
 const MAX_OUTPUT_TOKENS: u32 = 64;
+const MAX_CHAT_OUTPUT_TOKENS: u32 = 4096;
 
 pub(super) fn adapter(protocol: &ModelProtocol) -> AdapterKind {
     match protocol {
@@ -22,6 +23,38 @@ pub(super) fn adapter(protocol: &ModelProtocol) -> AdapterKind {
 }
 
 pub(super) fn prepare(profile: &ModelProfile, api_key: &str) -> AppResult<(String, ChatOptions)> {
+    let endpoint = validate_common(profile, api_key)?;
+    if TEST_PROMPT.len() > MAX_INPUT_BYTES
+        || TEST_PROMPT.len() + INPUT_OVERHEAD > profile.parameters.input_budget.min(256) as usize
+    {
+        return Err(AppError::invalid("parameters", "连接测试预算无效。"));
+    }
+    Ok((endpoint, options(profile, MAX_OUTPUT_TOKENS)))
+}
+
+pub(super) fn prepare_chat(
+    profile: &ModelProfile,
+    api_key: &str,
+    system: &str,
+    context: &str,
+) -> AppResult<(String, ChatOptions)> {
+    let endpoint = validate_common(profile, api_key)?;
+    if system.trim().is_empty() || context.trim().is_empty() {
+        return Err(AppError::invalid(
+            "context",
+            "模型调用需要系统提示与上下文。",
+        ));
+    }
+    // The runtime owns context assembly. This UTF-8 byte estimate is deliberately
+    // conservative (at least bytes / 2), not a claim of exact model tokenization.
+    let bytes = system.len().checked_add(context.len());
+    if bytes.is_none_or(|bytes| bytes > profile.parameters.input_budget as usize * 2) {
+        return Err(AppError::invalid("context", "模型输入超过保守上下文预算。"));
+    }
+    Ok((endpoint, options(profile, MAX_CHAT_OUTPUT_TOKENS)))
+}
+
+fn validate_common(profile: &ModelProfile, api_key: &str) -> AppResult<String> {
     validate_id(&profile.id, "profile_id")?;
     parse_counter(&profile.revision, "revision")?;
     if profile.model_name.trim().is_empty()
@@ -38,7 +71,7 @@ pub(super) fn prepare(profile: &ModelProfile, api_key: &str) -> AppResult<(Strin
     {
         return Err(AppError::new(
             ErrorCode::CapabilityUnsupported,
-            "连接测试不接受 SDK 命名空间或隐式推理后缀，请使用服务端原始模型名称。",
+            "模型调用不接受 SDK 命名空间或隐式推理后缀，请使用服务端原始模型名称。",
         ));
     }
     if api_key.is_empty()
@@ -55,30 +88,28 @@ pub(super) fn prepare(profile: &ModelProfile, api_key: &str) -> AppResult<(Strin
         || p.top_p == 0.0
         || !(1..=32768).contains(&p.max_output_tokens)
         || !(256..=128000).contains(&p.input_budget)
-        || TEST_PROMPT.len() > MAX_INPUT_BYTES
-        || TEST_PROMPT.len() + INPUT_OVERHEAD > p.input_budget.min(256) as usize
     {
-        return Err(AppError::invalid(
-            "parameters",
-            "模型参数或连接测试预算无效。",
-        ));
+        return Err(AppError::invalid("parameters", "模型参数无效。"));
     }
     if p.reasoning != ReasoningMode::Off {
         return Err(AppError::new(
             ErrorCode::CapabilityUnsupported,
-            "连接测试尚未验证此协议的推理开关与预算，仅支持普通连通测试。",
+            "尚未验证此协议的推理开关与预算，仅支持关闭推理的纯文本调用。",
         ));
     }
-    let endpoint = endpoint(&profile.base_url)?;
-    let options = ChatOptions::default()
-        .with_max_tokens(p.max_output_tokens.min(MAX_OUTPUT_TOKENS))
+    endpoint(&profile.base_url)
+}
+
+fn options(profile: &ModelProfile, max_output_tokens: u32) -> ChatOptions {
+    let p = &profile.parameters;
+    ChatOptions::default()
+        .with_max_tokens(p.max_output_tokens.min(max_output_tokens))
         .with_capture_raw_body(false)
         .with_capture_reasoning_content(false)
         .with_extra_body(serde_json::json!({
             "temperature": p.temperature,
             "top_p": p.top_p,
-        }));
-    Ok((endpoint, options))
+        }))
 }
 
 fn endpoint(base_url: &str) -> AppResult<String> {

@@ -116,6 +116,39 @@ pub enum ParticipantStatus {
     NeedsConfiguration,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentRuntimeStatus {
+    NeedsConfiguration,
+    Observing,
+    Deciding,
+    WaitingToSend,
+    Sleeping,
+    Paused,
+    Protected,
+    Offline,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AgentRuntimeState {
+    pub agent_id: String,
+    pub config_revision: DecimalString,
+    pub status: AgentRuntimeStatus,
+    pub detail: Option<String>,
+    #[ts(type = "number | null")]
+    pub next_wake_at: Option<i64>,
+    pub requests_today: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AgentRuntimeControlRequest {
+    pub data_generation_id: String,
+    pub agent_id: String,
+    pub paused: bool,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(deny_unknown_fields)]
 pub struct Participant {
@@ -129,6 +162,9 @@ pub struct Participant {
     pub avatar_id: Option<String>,
     #[serde(default = "default_profile_revision")]
     pub profile_revision: DecimalString,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub runtime: Option<AgentRuntimeState>,
 }
 
 fn default_profile_revision() -> DecimalString {

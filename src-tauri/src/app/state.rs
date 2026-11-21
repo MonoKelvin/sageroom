@@ -14,6 +14,7 @@ use uuid::Uuid;
 use crate::{
     domain::{contracts::*, error::AppResult},
     models::ModelGateway,
+    runtime::RuntimeSupervisor,
     secrets::store::SecretStore,
     storage::worker::DbWorker,
 };
@@ -25,6 +26,7 @@ pub struct AppState {
     secrets: AppResult<Arc<SecretStore>>,
     models: AppResult<Arc<ModelGateway>>,
     model_shutdown: Mutex<CancellationToken>,
+    runtime: Arc<RuntimeSupervisor>,
     pub exits: super::lifecycle::ExitCoordinator,
     recovering: AtomicBool,
     recovery_worker: Mutex<Option<Arc<DbWorker>>>,
@@ -38,6 +40,8 @@ impl AppState {
         let generation = Uuid::now_v7().to_string();
         let secrets = SecretStore::new(app.config().identifier.clone()).map(Arc::new);
         let models = ModelGateway::new().map(Arc::new);
+        let runtime = RuntimeSupervisor::new();
+        let event_runtime = runtime.clone();
         let storage = directory
             .map_err(|_| {
                 AppError::new(
@@ -50,10 +54,14 @@ impl AppState {
                     &directory.join("data"),
                     generation.clone(),
                     Arc::new(move |event| {
+                        event_runtime.publish(event);
                         let _ = app.emit("sageroom://domain", event);
                     }),
                 )
             });
+        if let Ok(worker) = &storage {
+            runtime.start(worker.clone(), models.clone(), secrets.clone());
+        }
         Self {
             generation,
             storage_initialized: storage.is_ok(),
@@ -61,6 +69,7 @@ impl AppState {
             secrets,
             models,
             model_shutdown: Mutex::new(CancellationToken::new()),
+            runtime,
             exits: super::lifecycle::ExitCoordinator::default(),
             recovering: AtomicBool::new(false),
             recovery_worker: Mutex::new(None),
@@ -256,6 +265,9 @@ impl AppState {
         .await
         .map_err(|_| AppError::new(ErrorCode::InternalError, "读取模型凭据未完成。"))??;
         let cancellation = self.model_shutdown.lock().expect("模型锁被污染").clone();
+        self.worker()?
+            .reserve_runtime_request(format!("test:{}", profile.id), 20)
+            .await?;
         self.models.clone()?.test(profile, key, cancellation).await
     }
 
@@ -326,6 +338,22 @@ impl AppState {
         .await
     }
 
+    pub async fn control_agent_runtime(
+        &self,
+        request: AgentRuntimeControlRequest,
+    ) -> AppResult<AgentRuntimeState> {
+        let worker = self.worker()?;
+        let generation = request.data_generation_id;
+        worker
+            .call(move |database| database.check_generation(&generation))
+            .await?;
+        let state = worker
+            .set_runtime_paused(request.agent_id.clone(), request.paused)
+            .await?;
+        self.runtime.restart_agent(request.agent_id);
+        Ok(state)
+    }
+
     pub fn is_shutting_down(&self) -> bool {
         self.shutting_down.load(Ordering::Acquire)
     }
@@ -360,6 +388,7 @@ impl AppState {
         if self.shutting_down.swap(true, Ordering::AcqRel) {
             return Err(AppError::new(ErrorCode::ShuttingDown, "退出已经开始。"));
         }
+        self.runtime.shutdown();
         self.model_shutdown.lock().expect("模型锁被污染").cancel();
         Ok(self
             .storage
@@ -391,6 +420,10 @@ impl AppState {
     }
 
     pub fn finish_recovery(&self, storage: AppResult<Arc<DbWorker>>) {
+        if let Ok(worker) = &storage {
+            self.runtime
+                .start(worker.clone(), self.models.clone(), self.secrets.clone());
+        }
         if storage.is_ok() {
             *self.recovery_worker.lock().expect("恢复锁被污染") = None;
         }
@@ -419,6 +452,7 @@ mod tests {
                 "测试禁止访问网络。",
             )),
             model_shutdown: Mutex::new(CancellationToken::new()),
+            runtime: RuntimeSupervisor::new(),
             exits: super::super::lifecycle::ExitCoordinator::default(),
             recovering: AtomicBool::new(false),
             recovery_worker: Mutex::new(None),

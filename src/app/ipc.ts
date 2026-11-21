@@ -28,6 +28,8 @@ import type {
   AgentConfiguration,
   AgentListRequest,
   AgentSaveRequest,
+  AgentRuntimeControlRequest,
+  AgentRuntimeState,
   UserProfile,
   UserProfileGetRequest,
   UserProfileSaveRequest,
@@ -72,6 +74,8 @@ import {
   validateAgentListResponse,
   validateAgentSaveRequest,
   validateAgentSaveResponse,
+  validateAgentRuntimeControlRequest,
+  validateAgentRuntimeControlResponse,
   validateUserProfileGetRequest,
   validateUserProfileGetResponse,
   validateUserProfileSaveRequest,
@@ -172,6 +176,8 @@ export const ipc = {
     request("agent_list", input, validateAgentListRequest, validateAgentListResponse),
   saveAgent: (input: AgentSaveRequest): Promise<AgentConfiguration> =>
     request("agent_save", input, validateAgentSaveRequest, validateAgentSaveResponse),
+  controlAgentRuntime: (input: AgentRuntimeControlRequest): Promise<AgentRuntimeState> =>
+    request("agent_runtime_control", input, validateAgentRuntimeControlRequest, validateAgentRuntimeControlResponse),
   getUserProfile: (input: UserProfileGetRequest): Promise<UserProfile> =>
     request("user_profile_get", input, validateUserProfileGetRequest, validateUserProfileGetResponse),
   saveUserProfile: (input: UserProfileSaveRequest): Promise<UserProfile> =>

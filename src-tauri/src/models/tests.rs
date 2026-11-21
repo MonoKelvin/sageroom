@@ -611,3 +611,598 @@ fn unknown_and_invalid_usage_are_nullable() {
     assert_eq!(usage_counter(Some(0)), Some(0));
     assert_eq!(usage_counter(Some(2)), Some(2));
 }
+
+const CHAT_SYSTEM: &str = "Return the internal decision as JSON, with at most three messages.";
+const CHAT_CONTEXT: &str = "Group context: this is assembled by the runtime, not the fixed connection-test OK prompt. 用户说：请开始讨论。";
+const CHAT_JSON: &str = r#"{"action":"send","messages":[{"text":"第一条内部消息"},{"text":"第二条内部消息"},{"text":"第三条内部消息"}]}"#;
+
+#[tokio::test]
+async fn chat_three_protocols_send_system_and_context_and_keep_internal_text() {
+    for protocol in protocols() {
+        let mut fixture = Fixture::new("200 OK", success(&protocol, CHAT_JSON), Duration::ZERO, "");
+        let gateway = test_gateway(DEADLINE);
+        let logs = Arc::new(Mutex::new(Vec::new()));
+        let dispatch = tracing::Dispatch::new(LogCapture(logs.clone()));
+        let mut call = pin!(gateway.chat(
+            profile(protocol.clone(), fixture.url.clone()),
+            KEY.into(),
+            CHAT_SYSTEM.into(),
+            CHAT_CONTEXT.into(),
+            CancellationToken::new(),
+        ));
+        let reply =
+            poll_fn(|cx| tracing::dispatcher::with_default(&dispatch, || call.as_mut().poll(cx)))
+                .await
+                .unwrap();
+        let request = fixture.received().await;
+        let (suffix, tokens_key) = match protocol {
+            ModelProtocol::OpenaiChatCompletions => ("chat/completions", "max_tokens"),
+            ModelProtocol::AnthropicMessages => ("messages", "max_tokens"),
+            ModelProtocol::OpenaiResponses => ("responses", "max_output_tokens"),
+        };
+        assert_eq!(request.path, format!("/proxy/v1/{suffix}"));
+        assert_eq!(request.body["model"], "unrecognized-test-model");
+        assert_eq!(request.body[tokens_key], 4096);
+        assert_eq!(request.body["temperature"], 0.4);
+        assert_eq!(request.body["top_p"], 0.8);
+        assert_eq!(request.body["stream"], false);
+        match protocol {
+            ModelProtocol::AnthropicMessages => {
+                assert_eq!(
+                    request.headers.get("x-api-key").map(String::as_str),
+                    Some(KEY)
+                );
+                assert_eq!(request.body["system"], CHAT_SYSTEM);
+                assert_eq!(request.body["messages"][0]["role"], "user");
+                assert_eq!(request.body["messages"][0]["content"], CHAT_CONTEXT);
+                assert_eq!(request.body["messages"].as_array().unwrap().len(), 1);
+            }
+            ModelProtocol::OpenaiChatCompletions | ModelProtocol::OpenaiResponses => {
+                assert_eq!(
+                    request.headers.get("authorization"),
+                    Some(&format!("Bearer {KEY}"))
+                );
+                let messages = if protocol == ModelProtocol::OpenaiResponses {
+                    assert_eq!(request.body["store"], false);
+                    &request.body["input"]
+                } else {
+                    &request.body["messages"]
+                };
+                assert_eq!(messages.as_array().unwrap().len(), 2);
+                assert_eq!(messages[0]["role"], "system");
+                assert_eq!(messages[0]["content"], CHAT_SYSTEM);
+                assert_eq!(messages[1]["role"], "user");
+                assert_eq!(messages[1]["content"], CHAT_CONTEXT);
+            }
+        }
+        for key in [
+            "tools",
+            "tool_choice",
+            "thinking",
+            "reasoning",
+            "reasoning_effort",
+            "previous_response_id",
+            "response_format",
+        ] {
+            assert!(request.body.get(key).is_none());
+        }
+        assert!(!request.body.to_string().contains(TEST_PROMPT));
+        assert!(!request.body.to_string().contains(KEY));
+        assert!(!request.body.to_string().contains("private profile name"));
+        assert_eq!(reply.text, CHAT_JSON);
+        assert_eq!(reply.usage_input_tokens, Some(10));
+        assert_eq!(reply.usage_output_tokens, Some(2));
+        assert!(!format!("{reply:?}").contains(CHAT_JSON));
+        assert!(logs.lock().unwrap().iter().all(|line| !line.contains(KEY)
+            && !line.contains(CHAT_CONTEXT)
+            && !line.contains(CHAT_JSON)));
+        assert_eq!(fixture.hits.load(Ordering::Relaxed), 1);
+        assert_eq!(gateway.limits.calls.load(Ordering::Relaxed), 0);
+        assert_eq!(
+            gateway.limits.chat_permits.available_permits(),
+            MAX_CHAT_CONCURRENT
+        );
+    }
+}
+
+#[tokio::test]
+async fn chat_output_limits_follow_configuration_without_the_test_64_token_cap() {
+    for protocol in protocols() {
+        for limit in [1, 96, 1024, 4096, 32768] {
+            let mut fixture =
+                Fixture::new("200 OK", success(&protocol, CHAT_JSON), Duration::ZERO, "");
+            let mut p = profile(protocol.clone(), fixture.url.clone());
+            p.parameters.max_output_tokens = limit;
+            test_gateway(DEADLINE)
+                .chat(
+                    p,
+                    KEY.into(),
+                    CHAT_SYSTEM.into(),
+                    CHAT_CONTEXT.into(),
+                    CancellationToken::new(),
+                )
+                .await
+                .unwrap();
+            let key = if protocol == ModelProtocol::OpenaiResponses {
+                "max_output_tokens"
+            } else {
+                "max_tokens"
+            };
+            assert_eq!(fixture.received().await.body[key], limit.min(4096));
+        }
+    }
+}
+
+#[tokio::test]
+async fn chat_rejects_unsupported_reasoning_and_out_of_budget_utf8_before_a_request() {
+    let gateway = test_gateway(DEADLINE);
+    for protocol in protocols() {
+        let mut fixture = Fixture::new("200 OK", success(&protocol, CHAT_JSON), Duration::ZERO, "");
+        let mut p = profile(protocol.clone(), fixture.url.clone());
+        p.parameters.reasoning = ReasoningMode::Enabled;
+        let error = gateway
+            .chat(
+                p,
+                KEY.into(),
+                CHAT_SYSTEM.into(),
+                CHAT_CONTEXT.into(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::CapabilityUnsupported);
+        assert!(!error.may_have_been_charged);
+        assert!(!error.message.contains("连接测试"));
+        assert_eq!(fixture.hits.load(Ordering::Relaxed), 0);
+        let mut p = profile(protocol, fixture.url.clone());
+        p.parameters.input_budget = 256;
+        // 171 Chinese characters are 513 UTF-8 bytes: byte budgeting, not chars.
+        let error = gateway
+            .chat(
+                p.clone(),
+                KEY.into(),
+                "s".into(),
+                "中".repeat(171),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.field_path.as_deref(), Some("context"));
+        assert!(!error.may_have_been_charged);
+        assert_eq!(fixture.hits.load(Ordering::Relaxed), 0);
+        let reply = gateway
+            .chat(
+                p,
+                KEY.into(),
+                "s".into(),
+                "x".repeat(511),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(reply.text, CHAT_JSON);
+        fixture.received().await;
+    }
+    for (system, context) in [("", "context"), ("system", " \n")] {
+        let error = gateway
+            .chat(
+                profile(
+                    ModelProtocol::OpenaiChatCompletions,
+                    "http://127.0.0.1:1/v1".into(),
+                ),
+                KEY.into(),
+                system.into(),
+                context.into(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(!error.may_have_been_charged);
+    }
+    assert_eq!(gateway.limits.calls.load(Ordering::Relaxed), 0);
+    assert_eq!(
+        gateway.limits.chat_permits.available_permits(),
+        MAX_CHAT_CONCURRENT
+    );
+}
+
+#[tokio::test]
+async fn chat_cancellable_waiting_and_inflight_requests_release_separate_four_slot_limit() {
+    let shared = Arc::new(Limits::new());
+    let first = Arc::new(ModelGateway::build(DEADLINE, shared.clone()).unwrap());
+    let second = ModelGateway::build(DEADLINE, shared.clone()).unwrap();
+    let held = shared
+        .chat_permits
+        .acquire_many(MAX_CHAT_CONCURRENT as u32)
+        .await
+        .unwrap();
+    let protocol = ModelProtocol::OpenaiChatCompletions;
+    let fixture = Fixture::new("200 OK", success(&protocol, CHAT_JSON), Duration::ZERO, "");
+    let cancellation = CancellationToken::new();
+    let mut waiting = pin!(second.chat(
+        profile(protocol.clone(), fixture.url.clone()),
+        KEY.into(),
+        CHAT_SYSTEM.into(),
+        CHAT_CONTEXT.into(),
+        cancellation.clone()
+    ));
+    assert!(poll_fn(|cx| std::task::Poll::Ready(waiting.as_mut().poll(cx).is_pending())).await);
+    assert_eq!(shared.chat_permits.available_permits(), 0);
+    cancellation.cancel();
+    let error = waiting.await.unwrap_err();
+    assert_eq!(error.code, ErrorCode::ShuttingDown);
+    assert!(!error.may_have_been_charged);
+    assert_eq!(fixture.hits.load(Ordering::Relaxed), 0);
+    drop(held);
+    assert_eq!(shared.chat_permits.available_permits(), MAX_CHAT_CONCURRENT);
+
+    let mut fixture = Fixture::new(
+        "200 OK",
+        success(&protocol, CHAT_JSON),
+        Duration::from_millis(200),
+        "",
+    );
+    let cancellation = CancellationToken::new();
+    let worker_gateway = first.clone();
+    let worker_cancellation = cancellation.clone();
+    let p = profile(protocol.clone(), fixture.url.clone());
+    let worker = tokio::spawn(async move {
+        worker_gateway
+            .chat(
+                p,
+                KEY.into(),
+                CHAT_SYSTEM.into(),
+                CHAT_CONTEXT.into(),
+                worker_cancellation,
+            )
+            .await
+    });
+    fixture.received().await;
+    assert_eq!(
+        shared.chat_permits.available_permits(),
+        MAX_CHAT_CONCURRENT - 1
+    );
+    cancellation.cancel();
+    let error = worker.await.unwrap().unwrap_err();
+    assert_eq!(error.code, ErrorCode::ShuttingDown);
+    assert!(error.may_have_been_charged);
+    assert_eq!(shared.chat_permits.available_permits(), MAX_CHAT_CONCURRENT);
+    assert_eq!(fixture.hits.load(Ordering::Relaxed), 1);
+    assert_eq!(shared.calls.load(Ordering::Relaxed), 0);
+    let mut next = Fixture::new("200 OK", success(&protocol, CHAT_JSON), Duration::ZERO, "");
+    second
+        .chat(
+            profile(protocol, next.url.clone()),
+            KEY.into(),
+            CHAT_SYSTEM.into(),
+            CHAT_CONTEXT.into(),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    next.received().await;
+    let cancellation = CancellationToken::new();
+    cancellation.cancel();
+    let error = first
+        .chat(
+            profile(
+                ModelProtocol::OpenaiChatCompletions,
+                "http://127.0.0.1:1/v1".into(),
+            ),
+            KEY.into(),
+            CHAT_SYSTEM.into(),
+            CHAT_CONTEXT.into(),
+            cancellation,
+        )
+        .await
+        .unwrap_err();
+    assert!(!error.may_have_been_charged);
+    assert_eq!(shared.chat_permits.available_permits(), MAX_CHAT_CONCURRENT);
+}
+
+#[tokio::test]
+async fn chat_is_independent_of_test_process_budget_concurrency_and_short_deadline() {
+    let shared = Arc::new(Limits::new());
+    shared.calls.store(MAX_PROCESS_CALLS, Ordering::Relaxed);
+    let _test_permits = shared
+        .permits
+        .acquire_many(MAX_CONCURRENT as u32)
+        .await
+        .unwrap();
+    let protocol = ModelProtocol::OpenaiChatCompletions;
+    let mut fixture = Fixture::new(
+        "200 OK",
+        success(&protocol, CHAT_JSON),
+        Duration::from_millis(100),
+        "",
+    );
+    let gateway = ModelGateway::build(Duration::from_millis(20), shared.clone()).unwrap();
+    assert_eq!(gateway.chat_deadline, CHAT_DEADLINE);
+    let reply = gateway
+        .chat(
+            profile(protocol, fixture.url.clone()),
+            KEY.into(),
+            CHAT_SYSTEM.into(),
+            CHAT_CONTEXT.into(),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(reply.text, CHAT_JSON);
+    assert_eq!(fixture.received().await.body["max_tokens"], 4096);
+    assert_eq!(shared.calls.load(Ordering::Relaxed), MAX_PROCESS_CALLS);
+    assert_eq!(shared.permits.available_permits(), 0);
+    assert_eq!(shared.chat_permits.available_permits(), MAX_CHAT_CONCURRENT);
+}
+
+#[tokio::test]
+async fn chat_errors_are_redacted_unlogged_and_not_retried() {
+    for protocol in protocols() {
+        for (status, body, expected) in [
+            (
+                "401 Unauthorized",
+                json!({"error": {"message": KEY}}).to_string(),
+                ErrorCode::PermissionDenied,
+            ),
+            (
+                "429 Too Many Requests",
+                json!({"error": {"message": KEY}}).to_string(),
+                ErrorCode::Backpressure,
+            ),
+            (
+                "500 Internal Server Error",
+                json!({"error": {"message": KEY}}).to_string(),
+                ErrorCode::IoError,
+            ),
+            ("200 OK", format!("invalid json {KEY}"), ErrorCode::IoError),
+            (
+                "200 OK",
+                json!({"echo": KEY}).to_string(),
+                ErrorCode::IoError,
+            ),
+            ("200 OK", success(&protocol, KEY), ErrorCode::IoError),
+        ] {
+            let mut fixture = Fixture::new(status, body, Duration::ZERO, "");
+            let gateway = test_gateway(DEADLINE);
+            let logs = Arc::new(Mutex::new(Vec::new()));
+            let dispatch = tracing::Dispatch::new(LogCapture(logs.clone()));
+            tracing::dispatcher::with_default(&dispatch, || tracing::trace!("capture active"));
+            assert!(!logs.lock().unwrap().is_empty());
+            let mut call = pin!(gateway.chat(
+                profile(protocol.clone(), fixture.url.clone()),
+                KEY.into(),
+                CHAT_SYSTEM.into(),
+                CHAT_CONTEXT.into(),
+                CancellationToken::new()
+            ));
+            let error = poll_fn(|cx| {
+                tracing::dispatcher::with_default(&dispatch, || call.as_mut().poll(cx))
+            })
+            .await
+            .unwrap_err();
+            fixture.received().await;
+            let returned = serde_json::to_string(&error).unwrap();
+            assert_eq!(error.code, expected);
+            assert!(error.may_have_been_charged);
+            assert!(!error.trace_id.is_empty());
+            assert_eq!(error.retryability, Retryability::Never);
+            assert!(!returned.contains(KEY));
+            assert!(!returned.contains("request_payload"));
+            assert!(!returned.contains("proxy/v1"));
+            assert!(!returned.contains("连接测试"));
+            assert!(
+                logs.lock()
+                    .unwrap()
+                    .iter()
+                    .all(|line| !line.contains(KEY) && !line.contains(CHAT_CONTEXT))
+            );
+            assert_eq!(fixture.hits.load(Ordering::Relaxed), 1);
+            assert_eq!(
+                gateway.limits.chat_permits.available_permits(),
+                MAX_CHAT_CONCURRENT
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn chat_rejects_tools_empty_truncated_filtered_and_failed_responses() {
+    for protocol in protocols() {
+        let mut truncated: Value = serde_json::from_str(&success(&protocol, CHAT_JSON)).unwrap();
+        let mut filtered = truncated.clone();
+        let mut failed = truncated.clone();
+        let mut tools = truncated.clone();
+        let mut missing_completion = truncated.clone();
+        match protocol {
+            ModelProtocol::OpenaiChatCompletions => {
+                missing_completion["choices"][0]["finish_reason"] = Value::Null;
+                truncated["choices"][0]["finish_reason"] = json!("length");
+                filtered["choices"][0]["finish_reason"] = json!("content_filter");
+                failed["choices"][0]["finish_reason"] = json!("failed");
+                tools["choices"][0]["message"]["tool_calls"] = json!([{
+                    "id": "tool", "type": "function", "function": {"name": "never_execute", "arguments": "{}"},
+                }]);
+                tools["choices"][0]["finish_reason"] = json!("tool_calls");
+            }
+            ModelProtocol::AnthropicMessages => {
+                missing_completion["stop_reason"] = Value::Null;
+                truncated["stop_reason"] = json!("max_tokens");
+                filtered["stop_reason"] = json!("refusal");
+                failed["stop_reason"] = json!("failed");
+                tools["stop_reason"] = json!("tool_use");
+                tools["content"].as_array_mut().unwrap().push(json!({
+                    "type": "tool_use", "id": "tool", "name": "never_execute", "input": {},
+                }));
+            }
+            ModelProtocol::OpenaiResponses => {
+                missing_completion["status"] = Value::Null;
+                truncated["status"] = json!("incomplete");
+                truncated["incomplete_details"] = json!({"reason": "max_output_tokens"});
+                filtered["status"] = json!("incomplete");
+                filtered["incomplete_details"] = json!({"reason": "content_filter"});
+                failed["status"] = json!("failed");
+                tools["output"].as_array_mut().unwrap().push(json!({
+                    "type": "function_call", "id": "tool", "call_id": "call", "name": "never_execute", "arguments": "{}",
+                }));
+            }
+        }
+        for (body, expected) in [
+            (truncated.to_string(), ErrorCode::IoError),
+            (filtered.to_string(), ErrorCode::IoError),
+            (failed.to_string(), ErrorCode::IoError),
+            (missing_completion.to_string(), ErrorCode::IoError),
+            (tools.to_string(), ErrorCode::CapabilityUnsupported),
+            (success(&protocol, " \n "), ErrorCode::IoError),
+        ] {
+            let mut fixture = Fixture::new("200 OK", body, Duration::ZERO, "");
+            let gateway = test_gateway(DEADLINE);
+            let error = gateway
+                .chat(
+                    profile(protocol.clone(), fixture.url.clone()),
+                    KEY.into(),
+                    CHAT_SYSTEM.into(),
+                    CHAT_CONTEXT.into(),
+                    CancellationToken::new(),
+                )
+                .await
+                .unwrap_err();
+            fixture.received().await;
+            assert_eq!(error.code, expected);
+            assert!(error.may_have_been_charged);
+            assert!(!error.message.contains("连接测试"));
+            assert_eq!(error.retryability, Retryability::Never);
+            assert_eq!(fixture.hits.load(Ordering::Relaxed), 1);
+            assert_eq!(
+                gateway.limits.chat_permits.available_permits(),
+                MAX_CHAT_CONCURRENT
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn chat_missing_usage_is_nullable_redirect_is_not_followed_and_network_failure_is_safe() {
+    for protocol in protocols() {
+        let mut body: Value = serde_json::from_str(&success(&protocol, CHAT_JSON)).unwrap();
+        body.as_object_mut().unwrap().remove("usage");
+        let mut fixture = Fixture::new("200 OK", body.to_string(), Duration::ZERO, "");
+        let reply = test_gateway(DEADLINE)
+            .chat(
+                profile(protocol.clone(), fixture.url.clone()),
+                KEY.into(),
+                CHAT_SYSTEM.into(),
+                CHAT_CONTEXT.into(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+        fixture.received().await;
+        assert_eq!(reply.text, CHAT_JSON);
+        assert_eq!(reply.usage_input_tokens, None);
+        assert_eq!(reply.usage_output_tokens, None);
+        let target = Fixture::new("200 OK", success(&protocol, CHAT_JSON), Duration::ZERO, "");
+        let mut fixture = Fixture::new(
+            "307 Temporary Redirect",
+            "{}".into(),
+            Duration::ZERO,
+            &format!("Location: {}/chat/completions\r\n", target.url),
+        );
+        let error = test_gateway(DEADLINE)
+            .chat(
+                profile(protocol, fixture.url.clone()),
+                KEY.into(),
+                CHAT_SYSTEM.into(),
+                CHAT_CONTEXT.into(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap_err();
+        fixture.received().await;
+        assert!(error.may_have_been_charged);
+        assert!(!error.message.contains(KEY));
+        assert!(!error.message.contains("连接测试"));
+        assert_eq!(fixture.hits.load(Ordering::Relaxed), 1);
+        assert_eq!(target.hits.load(Ordering::Relaxed), 0);
+    }
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/v1", listener.local_addr().unwrap());
+    drop(listener);
+    let error = test_gateway(DEADLINE)
+        .chat(
+            profile(ModelProtocol::OpenaiChatCompletions, url.clone()),
+            KEY.into(),
+            CHAT_SYSTEM.into(),
+            CHAT_CONTEXT.into(),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::IoError);
+    assert!(error.may_have_been_charged);
+    assert_eq!(error.retryability, Retryability::Never);
+    assert!(!error.message.contains(KEY));
+    assert!(!error.message.contains(&url));
+    assert!(!error.message.contains("连接测试"));
+}
+
+#[tokio::test]
+async fn chat_deadline_begins_after_acquiring_capacity_and_timeout_never_retries() {
+    let protocol = ModelProtocol::OpenaiChatCompletions;
+    let mut fixture = Fixture::new("200 OK", success(&protocol, CHAT_JSON), Duration::ZERO, "");
+    let mut gateway = test_gateway(DEADLINE);
+    gateway.chat_deadline = Duration::from_millis(50);
+    let held = gateway
+        .limits
+        .chat_permits
+        .acquire_many(MAX_CHAT_CONCURRENT as u32)
+        .await
+        .unwrap();
+    let mut waiting = pin!(gateway.chat(
+        profile(protocol.clone(), fixture.url.clone()),
+        KEY.into(),
+        CHAT_SYSTEM.into(),
+        CHAT_CONTEXT.into(),
+        CancellationToken::new()
+    ));
+    assert!(poll_fn(|cx| std::task::Poll::Ready(waiting.as_mut().poll(cx).is_pending())).await);
+    tokio::time::sleep(Duration::from_millis(70)).await;
+    drop(held);
+    assert_eq!(waiting.await.unwrap().text, CHAT_JSON);
+    fixture.received().await;
+    assert_eq!(
+        gateway.limits.chat_permits.available_permits(),
+        MAX_CHAT_CONCURRENT
+    );
+
+    for protocol in protocols() {
+        let mut fixture = Fixture::new(
+            "200 OK",
+            success(&protocol, CHAT_JSON),
+            Duration::from_millis(200),
+            "",
+        );
+        let mut gateway = test_gateway(DEADLINE);
+        gateway.chat_deadline = Duration::from_millis(60);
+        let error = gateway
+            .chat(
+                profile(protocol, fixture.url.clone()),
+                KEY.into(),
+                CHAT_SYSTEM.into(),
+                CHAT_CONTEXT.into(),
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap_err();
+        fixture.received().await;
+        assert_eq!(error.code, ErrorCode::IoError);
+        assert!(error.may_have_been_charged);
+        assert_eq!(error.retryability, Retryability::Never);
+        assert!(!error.message.contains("连接测试"));
+        assert_eq!(
+            gateway.limits.chat_permits.available_permits(),
+            MAX_CHAT_CONCURRENT
+        );
+        assert_eq!(fixture.hits.load(Ordering::Relaxed), 1);
+    }
+}

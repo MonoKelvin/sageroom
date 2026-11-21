@@ -14,6 +14,7 @@ import "./chat.css"
 export function ChatView({ session, active, onNavigate }: ApplicationPageProps) {
   const [panel, setPanel] = useState<"search" | "members" | null>(null)
   const [chatCard, setChatCard] = useState<HTMLElement | null>(null)
+  const [scrollToBottomSignal, setScrollToBottomSignal] = useState(0)
   const snapshot = session.snapshot
   const scenes = snapshot ? availableScenes(snapshot) : []
   const scene = scenes[0]
@@ -27,6 +28,15 @@ export function ChatView({ session, active, onNavigate }: ApplicationPageProps) 
     setPanel((current) => current === next ? null : next)
   }, [])
   const closePanel = useCallback(() => { setPanel(null); restoreFocus() }, [restoreFocus])
+  async function handleSend(text: string, requestId: string) {
+    const adapter = sceneAdapters[scene?.kind ?? "group"]
+    if (!adapter) throw new Error("当前聊天对象不可用。")
+    const result = await adapter.send(session, text, requestId)
+    if (session.page?.has_more_after || !session.atBottom) await session.goToLatest()
+    else session.updateAtBottom(true)
+    setScrollToBottomSignal((value) => value + 1)
+    return result
+  }
 
   useEffect(() => {
     if (!active) return
@@ -48,9 +58,9 @@ export function ChatView({ session, active, onNavigate }: ApplicationPageProps) 
     <WorkspaceList className="chat-scene-list" aria-label="聊天对象">
       {scenes.map((item) => <button type="button" key={item.id} className="list-entry" data-active={item.id === scene?.id} onClick={closePanel}>
         <span className="chat-scene-avatar" aria-hidden="true"><IconUsers size={23} stroke={1.5} /></span>
-        <span className="min-w-0"><strong className="block truncate font-medium">{item.name}</strong><span className="form-caption">{item.kind === "group" ? "群聊" : "私聊"}</span></span>
+        <span className="min-w-0"><strong className="block truncate font-medium">{item.name}</strong><span className="chat-scene-meta">{item.kind === "group" ? "群聊" : "私聊"}</span></span>
       </button>)}
-      {!snapshot && <p className="form-caption p-3">{session.loading ? "正在读取聊天对象…" : "本地数据尚未就绪。"}</p>}
+      {!snapshot && <p className="chat-scene-meta p-3">{session.loading ? "正在读取聊天对象…" : "本地数据尚未就绪。"}</p>}
     </WorkspaceList>
     <section ref={setChatCard} className="surface-card workspace-detail chat-card" aria-label="当前聊天">
       <header className="panel-heading chat-heading" data-search-open={panel === "search" && active}>
@@ -66,8 +76,8 @@ export function ChatView({ session, active, onNavigate }: ApplicationPageProps) 
       {session.error && <div className="chat-error" role="alert"><p>{session.error}</p><Button size="sm" variant="ghost" onClick={() => void session.reload()}>重试连接</Button></div>}
       <div className="chat-body">
         <div className="chat-conversation">
-          {session.page && snapshot ? <MessageList key={session.windowRevision} active={active} page={session.page} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !session.page.has_more_after} hasNewMessages={session.hasNewMessages} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={session.goToLatest} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}
-          <MessageComposer active={active} dataGenerationId={snapshot?.data_generation_id ?? null} disabled={!snapshot} onSend={(text, requestId) => sceneAdapters[scene?.kind ?? "group"]!.send(session, text, requestId)} />
+          {session.page && snapshot ? <MessageList key={session.windowRevision} active={active} page={session.page} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !session.page.has_more_after} hasNewMessages={session.hasNewMessages} scrollToBottomSignal={scrollToBottomSignal} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={session.goToLatest} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}
+          <MessageComposer active={active} dataGenerationId={snapshot?.data_generation_id ?? null} disabled={!snapshot} onSend={handleSend} />
         </div>
       </div>
       {snapshot && <GroupInfoDrawer key={snapshot.data_generation_id} snapshot={snapshot} container={chatCard} open={panel === "members" && active} onOpenChange={(open) => { if (!open) closePanel() }} onRoomChange={session.applyRoom} onManageAgents={() => { closePanel(); onNavigate("agents") }} onReturnFocus={restoreFocus} />}

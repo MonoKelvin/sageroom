@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import Lenis from "lenis"
+import "lenis/dist/lenis.css"
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso"
 import { IconArrowDown } from "@tabler/icons-react"
 import type { ChatMessage, MessagePage } from "@/contracts/generated"
@@ -9,11 +11,11 @@ import { cn } from "@/lib/utils"
 type ListContext = { loadingMore: boolean; hasMoreBefore: boolean }
 
 function ListHeader({ context }: { context: ListContext }) {
-  return <div className="px-3 pb-2 pt-3 text-center text-xs text-text-secondary">{context.loadingMore ? "正在读取历史…" : context.hasMoreBefore ? "向上浏览更早消息" : "已到最早的消息"}</div>
+  return <div className="chat-list-notice">{context.loadingMore ? "正在读取历史…" : context.hasMoreBefore ? "向上浏览更早消息" : "已到最早的消息"}</div>
 }
 
 function ListFooter() {
-  return <div className="h-3" />
+  return <div className="chat-list-footer" />
 }
 
 const listComponents = { Header: ListHeader, Footer: ListFooter }
@@ -30,20 +32,18 @@ function MessageRow({ message, self, highlighted, generation }: { message: ChatM
     <article
       data-message-id={message.id}
       data-message-seq={message.seq}
-      className={cn("px-3 py-1.5 transition-colors duration-[var(--motion-duration)]", highlighted && "bg-primary/10")}
+      className={cn("chat-message", highlighted && "chat-message-highlight")}
       aria-label={`${message.sender_snapshot.display_name}的消息`}
     >
-      <div className={cn("flex min-w-0 items-start gap-2", self && "flex-row-reverse")}>
-        <div className="mt-5"><Avatar name={message.sender_snapshot.display_name} avatarId={message.sender_snapshot.avatar_id} generation={generation} size={32} /></div>
-        <div className={cn("flex min-w-0 max-w-[min(82%,640px)] flex-col", self ? "items-end" : "items-start")}>
-          <div className={cn("mb-1 flex max-w-full items-center gap-2 text-xs text-text-secondary", self && "flex-row-reverse")}>
-            <span className="truncate">{message.sender_snapshot.display_name}</span>
-            <time className="shrink-0 text-[11px]" dateTime={new Date(message.created_at).toISOString()}>{timeFormatter.format(message.created_at)}</time>
-          </div>
-          <div className={cn("max-w-full rounded-lg px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]", self ? "bg-self" : "bg-content")}>
+      <div className="chat-message-row" data-self={self}>
+        <div className="chat-message-avatar"><Avatar name={message.sender_snapshot.display_name} avatarId={message.sender_snapshot.avatar_id} generation={generation} size={40} radius={10} /></div>
+        <div className="chat-message-stack">
+          {!self && <span className="chat-message-name">{message.sender_snapshot.display_name}</span>}
+          <div className={cn("chat-message-bubble", self ? "chat-message-bubble-self" : "chat-message-bubble-other")}>
             {message.state === "visible" ? messageText(message) : message.state === "recalled" ? "消息已撤回" : "消息已删除"}
           </div>
         </div>
+        <time className="chat-message-time" dateTime={new Date(message.created_at).toISOString()}>{timeFormatter.format(message.created_at)}</time>
       </div>
     </article>
   )
@@ -58,6 +58,7 @@ type Props = {
   targetMessageId: string | null
   followLatest: boolean
   hasNewMessages: boolean
+  scrollToBottomSignal?: number
   loadingMore: boolean
   onLoadOlder: () => Promise<void>
   onLoadNewer: () => Promise<void>
@@ -68,26 +69,64 @@ type Props = {
 
 export function MessageList({
   active = true, generation, page, localUserId, firstItemIndex, targetMessageId, followLatest, hasNewMessages,
-  loadingMore, onLoadOlder, onLoadNewer, onAtBottomChange, onRenderedAnchorChange, onGoToLatest,
+  scrollToBottomSignal = 0, loadingMore, onLoadOlder, onLoadNewer, onAtBottomChange, onRenderedAnchorChange, onGoToLatest,
 }: Props) {
   const list = useRef<VirtuosoHandle>(null)
+  const userScrolling = useRef(false)
+  const lenis = useRef<Lenis | null>(null)
+  const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null)
   const [initialIndex] = useState<number | "LAST">(() => targetMessageId
     ? Math.max(0, page.items.findIndex((message) => message.id === targetMessageId))
     : "LAST")
 
+  const handleScrollerRef = useCallback((node: HTMLElement | null | Window) => {
+    setScrollElement(node instanceof HTMLElement ? node : null)
+  }, [])
+
   useEffect(() => {
-    if (!active || !followLatest || targetMessageId || !page.last_seq) return
-    // followOutput 在等长窗口替换时不触发，需显式保持底部。
-    const frame = requestAnimationFrame(() => list.current?.scrollToIndex({ index: "LAST", behavior: "auto" }))
+    if (!scrollElement) return
+    const content = scrollElement.firstElementChild
+    if (!(content instanceof HTMLElement)) return
+    const instance = new Lenis({
+      wrapper: scrollElement,
+      content,
+      eventsTarget: scrollElement,
+      smoothWheel: true,
+      syncTouch: true,
+      lerp: 0.085,
+      wheelMultiplier: 1.1,
+      overscroll: true,
+      autoRaf: true,
+      respectReducedMotion: true,
+    })
+    lenis.current = instance
+    return () => {
+      instance.destroy()
+      lenis.current = null
+    }
+  }, [scrollElement])
+
+  useEffect(() => {
+    lenis.current?.resize()
+  }, [page.items])
+
+  useEffect(() => {
+    if (!scrollToBottomSignal) return
+    const frame = requestAnimationFrame(() => {
+      userScrolling.current = false
+      list.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" })
+      const instance = lenis.current
+      if (instance && scrollElement) instance.scrollTo(scrollElement.scrollHeight, { immediate: true, force: true })
+    })
     return () => cancelAnimationFrame(frame)
-  }, [active, followLatest, page.last_seq, targetMessageId])
+  }, [scrollElement, scrollToBottomSignal])
 
   if (page.items.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center px-8 pb-10 text-center">
-        <div aria-hidden="true" className="mb-5 flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-lg font-medium text-primary">S</div>
-        <p className="font-medium">这里还很安静</p>
-        <p className="mt-2 max-w-60 text-sm leading-relaxed text-text-secondary">先说点什么。消息保存在本机，智能体的运行任务尚未启用。</p>
+      <div className="chat-empty-state">
+        <div aria-hidden="true" className="chat-empty-mark">S</div>
+        <p className="chat-empty-title">这里还很安静</p>
+        <p className="chat-empty-description">先说点什么。消息保存在本机，智能体的运行任务尚未启用。</p>
       </div>
     )
   }
@@ -96,20 +135,25 @@ export function MessageList({
     <section aria-label="聊天记录" className="relative min-h-0 flex-1">
       <Virtuoso<ChatMessage, ListContext>
         ref={list}
+        scrollerRef={handleScrollerRef}
+        className="chat-list-scroller"
         context={{ loadingMore, hasMoreBefore: page.has_more_before }}
         style={{ height: "100%" }}
         data={page.items}
         firstItemIndex={firstItemIndex}
         initialTopMostItemIndex={{ index: initialIndex }}
         computeItemKey={(_, message) => message.id}
-        increaseViewportBy={{ top: 150, bottom: 150 }}
-        atBottomThreshold={36}
+        defaultItemHeight={88}
+        increaseViewportBy={{ top: 300, bottom: 300 }}
+        minOverscanItemCount={{ top: 2, bottom: 2 }}
+        atBottomThreshold={24}
         atBottomStateChange={(value) => { if (active) onAtBottomChange(value) }}
+        isScrolling={(value) => { userScrolling.current = value }}
         rangeChanged={({ startIndex }) => {
           const anchor = page.items[startIndex - firstItemIndex]
           if (active && anchor) onRenderedAnchorChange({ id: anchor.id, seq: anchor.seq })
         }}
-        followOutput={(atBottom) => !targetMessageId && followLatest && atBottom ? "auto" : false}
+        followOutput={(atBottom) => !targetMessageId && followLatest && atBottom && !userScrolling.current ? "smooth" : false}
         startReached={() => { if (active && page.has_more_before) void onLoadOlder() }}
         endReached={() => { if (active && page.has_more_after) void onLoadNewer() }}
         components={listComponents}
@@ -119,16 +163,16 @@ export function MessageList({
           const newDay = !previous || new Date(previous.created_at).toDateString() !== new Date(message.created_at).toDateString()
           return (
             <>
-              {newDay && <p className="py-3 text-center text-xs text-text-secondary">{dateFormatter.format(message.created_at)}</p>}
+              {newDay && <p className="chat-day-divider">{dateFormatter.format(message.created_at)}</p>}
               <MessageRow message={message} self={message.sender_id === localUserId} highlighted={message.id === targetMessageId} generation={generation} />
             </>
           )
         }}
       />
       {(hasNewMessages || page.has_more_after) && (
-        <Button size="sm" variant="secondary" className="absolute right-3 bottom-3 shadow-sm" onClick={() => void onGoToLatest()}>
+        <Button size="sm" variant="secondary" className="chat-latest-button" onClick={() => void onGoToLatest()}>
           <IconArrowDown size={16} aria-hidden="true" />
-          {hasNewMessages ? "有新消息，回到最新" : "回到最新"}
+          {hasNewMessages ? "有新消息" : "回到最新"}
         </Button>
       )}
     </section>

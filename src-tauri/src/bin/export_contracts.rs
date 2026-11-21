@@ -77,6 +77,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     export::<AgentListRequest>("AgentListRequest", &config, &mut schemas)?;
     export::<ApiResponse<Vec<AgentConfiguration>>>("AgentListResponse", &config, &mut schemas)?;
     export::<AgentSaveRequest>("AgentSaveRequest", &config, &mut schemas)?;
+    export::<AgentRuntimeControlRequest>("AgentRuntimeControlRequest", &config, &mut schemas)?;
+    export::<ApiResponse<AgentRuntimeState>>("AgentRuntimeControlResponse", &config, &mut schemas)?;
     export::<ApiResponse<AgentConfiguration>>("AgentSaveResponse", &config, &mut schemas)?;
     export::<UserProfileGetRequest>("UserProfileGetRequest", &config, &mut schemas)?;
     export::<ApiResponse<UserProfile>>("UserProfileGetResponse", &config, &mut schemas)?;
