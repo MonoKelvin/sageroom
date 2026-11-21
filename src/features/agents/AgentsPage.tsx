@@ -48,8 +48,8 @@ function AgentEditor({ resource, global, active, session, onCopy, onOpenGlobal }
   const participant = session.snapshot!.participants.find((member) => member.kind === "agent" && member.id === agent.agent_id)
   const agentRuntime = participant?.runtime
   const statusLabel = agentStatusLabel(agent, participant)
-  const canResume = agentRuntime?.status === "paused" || agentRuntime?.status === "offline" || agentRuntime?.status === "protected"
-  const retryStart = agentRuntime?.status === "offline" || agentRuntime?.status === "protected"
+  const canPause = agentRuntime?.status === "observing" || agentRuntime?.status === "deciding" || agentRuntime?.status === "waiting_to_send"
+  const runtimeAction = canPause ? "暂停运行" : !agentRuntime ? "开始运行" : agentRuntime.status === "paused" || agentRuntime.status === "sleeping" ? "恢复运行" : "重试启动"
   const [runtimePending, setRuntimePending] = useState(false)
   const [runtimeError, setRuntimeError] = useState<string | null>(null)
   const [avatarPending, setAvatarPending] = useState(false)
@@ -67,7 +67,7 @@ function AgentEditor({ resource, global, active, session, onCopy, onOpenGlobal }
     setRuntimePending(true)
     setRuntimeError(null)
     try {
-      await ipc.controlAgentRuntime({ data_generation_id: generation, agent_id: agent.agent_id, paused: !canResume })
+      await ipc.controlAgentRuntime({ data_generation_id: generation, agent_id: agent.agent_id, paused: canPause })
     } catch (cause) { if (alive.current) setRuntimeError(errorMessage(cause)) }
     finally { if (alive.current) setRuntimePending(false) }
   }
@@ -111,7 +111,7 @@ function AgentEditor({ resource, global, active, session, onCopy, onOpenGlobal }
         {agentRuntime && <p className="form-caption">今日请求：{agentRuntime.requests_today} 次 · 配置版本：{agentRuntime.config_revision}</p>}
         {agentRuntime?.next_wake_at != null && <p className="form-caption">下次唤醒：{new Date(agentRuntime.next_wake_at).toLocaleString("zh-CN", { hour12: false })}</p>}
         {agent.agent_type === "tool" && <p className="form-caption">工具任务尚未启用，不参与闲聊。</p>}
-        {agent.model && <div className="config-actions"><Button variant="secondary" size="sm" disabled={runtime.exiting || runtimePending} onClick={() => void controlRuntime()}>{runtimePending ? "正在处理…" : retryStart ? "重试启动" : canResume ? "恢复运行" : "暂停运行"}</Button></div>}
+        {agent.model && <div className="config-actions"><Button variant="secondary" size="sm" disabled={runtime.exiting || runtimePending} onClick={() => void controlRuntime()}>{runtimePending ? "正在处理…" : runtimeAction}</Button></div>}
         {runtimeError && <p role="alert">{runtimeError}</p>}
       </div>
       <fieldset disabled={runtime.exiting} className="config-stack">
@@ -130,7 +130,7 @@ function AgentEditor({ resource, global, active, session, onCopy, onOpenGlobal }
           <Field label="采用人格预设" caption="复制普通参数，之后与全局预设独立。"><SettingsSelect label="采用人格预设" value={personaId} options={[{ value: "", label: "独立编辑" }, ...global.persona_presets.map((persona) => ({ value: persona.id, label: persona.name }))]} onValueChange={(id) => selectTemplate("persona", id)} /></Field>
           <Field label="语言风格"><EditableTextarea label="语言风格" active={active} rows={2} maxLength={2000} value={agent.language_style} validate={(next) => validateText(next, 2000)} onApply={(language_style) => update({ language_style })} /></Field>
           <Field label="角色指令（SKILL）"><EditableTextarea label="角色指令（SKILL）" className="settings-textarea-long" active={active} rows={7} maxLength={4000} value={agent.skill} validate={(next) => validateText(next, 4000)} onApply={(skill) => update({ skill })} /></Field>
-          <details className="config-disclosure"><summary>七个人格维度（0–100）</summary><DimensionsFields value={agent.dimensions} onChange={(key, next) => resource.change((current) => ({ ...current, dimensions: { ...current.dimensions, [key]: next } }))} /></details>
+          <details className="config-disclosure"><summary>八个人格维度（0–100）</summary><DimensionsFields value={agent.dimensions} onChange={(key, next) => resource.change((current) => ({ ...current, dimensions: { ...current.dimensions, [key]: next } }))} /></details>
         </SettingSection>
         <SettingSection title="模型配置">
           <Field label="采用模型预设" caption="密钥不复制，来源 ID 与版本保留；普通参数独立。"><SettingsSelect label="采用模型预设" value={agent.model?.source_profile_id ?? ""} options={[{ value: "", label: "不配置模型" }, ...global.model_profiles.map((profile) => ({ value: profile.id, label: `${profile.name}${modelIsComplete(profile) ? "" : "（未配置）"}`, disabled: !modelIsComplete(profile) }))]} onValueChange={(id) => selectTemplate("model", id)} /></Field>

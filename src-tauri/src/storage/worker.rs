@@ -222,106 +222,6 @@ impl DbWorker {
         .await
     }
 
-    pub async fn runtime_input(&self, agent_id: String) -> AppResult<RuntimeInput> {
-        self.call(move |database| database.runtime_input(&agent_id))
-            .await
-    }
-
-    pub async fn runtime_states(&self) -> AppResult<Vec<AgentRuntimeState>> {
-        self.call(|database| database.runtime_states()).await
-    }
-
-    pub async fn runtime_is_paused(&self, agent_id: String) -> AppResult<bool> {
-        self.call(move |database| database.runtime_is_paused(&agent_id))
-            .await
-    }
-
-    pub async fn runtime_plan(
-        &self,
-        agent_id: String,
-    ) -> AppResult<Option<(i64, String, DecimalString)>> {
-        self.call(move |database| database.runtime_plan(&agent_id))
-            .await
-    }
-
-    pub async fn runtime_chain(&self, message_seq: DecimalString) -> AppResult<String> {
-        self.call(move |database| database.runtime_chain(&message_seq))
-            .await
-    }
-
-    pub async fn reserve_runtime_request(
-        &self,
-        requester_id: String,
-        limit: u32,
-    ) -> AppResult<u32> {
-        self.call(move |database| database.reserve_runtime_request(&requester_id, limit))
-            .await
-    }
-
-    pub async fn reserve_runtime_wake(&self, agent_id: String) -> AppResult<Option<i64>> {
-        self.call(move |database| database.reserve_runtime_wake(&agent_id))
-            .await
-    }
-
-    pub async fn save_runtime_plan(
-        &self,
-        agent_id: String,
-        revision: DecimalString,
-        next_wake_at: Option<i64>,
-        chain_id: String,
-    ) -> AppResult<()> {
-        self.call(move |database| {
-            database.save_runtime_plan(&agent_id, &revision, next_wake_at, &chain_id)
-        })
-        .await
-    }
-
-    pub async fn set_runtime_state(
-        &self,
-        state: AgentRuntimeState,
-    ) -> AppResult<AgentRuntimeState> {
-        let sink = self.event_sink.clone();
-        self.call(move |database| {
-            let (result, event) = database.set_runtime_state(state)?;
-            if let Some(event) = event {
-                sink(&event);
-            }
-            Ok(result)
-        })
-        .await
-    }
-
-    pub async fn set_runtime_paused(
-        &self,
-        agent_id: String,
-        paused: bool,
-    ) -> AppResult<AgentRuntimeState> {
-        let sink = self.event_sink.clone();
-        self.call(move |database| {
-            let (result, event) = database.set_runtime_paused(&agent_id, paused)?;
-            if let Some(event) = event {
-                sink(&event);
-            }
-            Ok(result)
-        })
-        .await
-    }
-
-    pub async fn commit_runtime_message(
-        &self,
-        message: RuntimeMessage,
-    ) -> AppResult<ChatSendResult> {
-        let sink = self.event_sink.clone();
-        self.call(move |database| {
-            let (result, event) = database.commit_runtime_message(message)?;
-            if let Some(event) = event {
-                sink(&event);
-            }
-            Ok(result)
-        })
-        .await
-    }
-
     pub async fn get_user_profile(&self, request: UserProfileGetRequest) -> AppResult<UserProfile> {
         self.call(move |database| database.get_user_profile(&request.data_generation_id))
             .await
@@ -355,6 +255,103 @@ impl DbWorker {
             let event = database.replace_credential_reference(&id, &revision, reference)?;
             sink(&event);
             Ok(())
+        })
+        .await
+    }
+
+    pub async fn runtime_input(&self, id: String) -> AppResult<RuntimeInput> {
+        self.call(move |database| database.runtime_input(&id)).await
+    }
+
+    pub async fn runtime_states(&self) -> AppResult<Vec<AgentRuntimeState>> {
+        self.call(|database| database.runtime_states()).await
+    }
+
+    pub async fn runtime_mention_seq(
+        &self,
+        id: String,
+        after_seq: DecimalString,
+    ) -> AppResult<DecimalString> {
+        self.call(move |database| database.runtime_mention_seq(&id, after_seq))
+            .await
+    }
+
+    pub async fn runtime_is_paused(&self, id: String) -> AppResult<bool> {
+        self.call(move |database| database.runtime_is_paused(&id))
+            .await
+    }
+
+    pub async fn set_runtime_state(&self, state: AgentRuntimeState) -> AppResult<()> {
+        let sink = self.event_sink.clone();
+        self.call(move |database| {
+            if let Some(event) = database.set_runtime_state(state)? {
+                sink(&event);
+            }
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn set_runtime_paused(
+        &self,
+        id: String,
+        paused: bool,
+    ) -> AppResult<AgentRuntimeState> {
+        let sink = self.event_sink.clone();
+        self.call(move |database| {
+            let (state, event) = database.set_runtime_paused(&id, paused)?;
+            if let Some(event) = event {
+                sink(&event);
+            }
+            Ok(state)
+        })
+        .await
+    }
+
+    pub async fn reserve_runtime_request(&self, owner: String, daily_limit: u32) -> AppResult<u32> {
+        self.call(move |database| database.reserve_runtime_request(&owner, daily_limit))
+            .await
+    }
+
+    pub async fn save_runtime_plan(
+        &self,
+        id: String,
+        revision: DecimalString,
+        next: Option<i64>,
+        chain_id: String,
+    ) -> AppResult<()> {
+        self.call(move |database| database.save_runtime_plan(&id, revision, next, chain_id))
+            .await
+    }
+
+    pub async fn runtime_plan(
+        &self,
+        id: String,
+    ) -> AppResult<Option<(i64, String, DecimalString)>> {
+        self.call(move |database| database.runtime_plan(&id)).await
+    }
+
+    pub async fn reserve_runtime_wake(&self, id: String) -> AppResult<Option<i64>> {
+        self.call(move |database| database.reserve_runtime_wake(&id))
+            .await
+    }
+
+    pub async fn runtime_chain(&self, message_seq: DecimalString) -> AppResult<String> {
+        self.call(move |database| database.runtime_chain(message_seq))
+            .await
+    }
+
+    pub async fn commit_runtime_message(
+        &self,
+        message: RuntimeMessage,
+    ) -> AppResult<ChatSendResult> {
+        let sink = self.event_sink.clone();
+        self.call(move |database| {
+            let (result, event) = database.commit_runtime_message(message)?;
+            if let Some(event) = event {
+                sink(&event);
+            }
+            Ok(result)
         })
         .await
     }

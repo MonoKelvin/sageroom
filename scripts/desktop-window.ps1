@@ -19,6 +19,7 @@ public static class SageroomWindowTest {
     public delegate bool EnumCallback(IntPtr handle, IntPtr data);
     [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct Point { public int X, Y; }
+    [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr handle, out Rect rectangle);
     [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr handle, ref Point point);
     [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr handle);
@@ -86,6 +87,8 @@ public static class SageroomWindowTest {
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
 }
 '@
+# 使用物理像素，避免高 DPI 下 Win32 坐标虚拟化。
+if ([SageroomWindowTest]::SetThreadDpiAwarenessContext([IntPtr]::new(-4)) -eq [IntPtr]::Zero) { throw '无法启用测试线程的逐显示器 DPI 坐标模式。' }
 $script:Windows = New-Object 'System.Collections.Generic.List[System.IntPtr]'
 $callback = [SageroomWindowTest+EnumCallback]{
     param($handle, $data)

@@ -529,7 +529,7 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 					let data2 = data.dimensions;
 					if (data2 && typeof data2 == "object" && !Array.isArray(data2)) {
 						let missing1;
-						if (data2.professional === void 0 && (missing1 = "professional") || data2.formal === void 0 && (missing1 = "formal") || data2.casual === void 0 && (missing1 = "casual") || data2.humor === void 0 && (missing1 = "humor") || data2.direct === void 0 && (missing1 = "direct") || data2.empathy === void 0 && (missing1 = "empathy") || data2.social_energy === void 0 && (missing1 = "social_energy")) {
+						if (data2.professional === void 0 && (missing1 = "professional") || data2.formal === void 0 && (missing1 = "formal") || data2.casual === void 0 && (missing1 = "casual") || data2.humor === void 0 && (missing1 = "humor") || data2.direct === void 0 && (missing1 = "direct") || data2.empathy === void 0 && (missing1 = "empathy") || data2.social_energy === void 0 && (missing1 = "social_energy") || data2.activity === void 0 && (missing1 = "activity")) {
 							validate181.errors = [{
 								instancePath: instancePath + "/dimensions",
 								schemaPath: "#/$defs/PersonaDimensions/required",
@@ -539,7 +539,7 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 							}];
 							return false;
 						} else {
-							for (const key1 in data2) if (!(key1 === "casual" || key1 === "direct" || key1 === "empathy" || key1 === "formal" || key1 === "humor" || key1 === "professional" || key1 === "social_energy")) {
+							for (const key1 in data2) if (!(key1 === "activity" || key1 === "casual" || key1 === "direct" || key1 === "empathy" || key1 === "formal" || key1 === "humor" || key1 === "professional" || key1 === "social_energy")) {
 								validate181.errors = [{
 									instancePath: instancePath + "/dimensions",
 									schemaPath: "#/$defs/PersonaDimensions/additionalProperties",
@@ -549,12 +549,12 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 								}];
 								return false;
 							}
-							if (data2.casual !== void 0) {
-								let data3 = data2.casual;
+							if (data2.activity !== void 0) {
+								let data3 = data2.activity;
 								if (!(typeof data3 == "number" && !(data3 % 1) && !isNaN(data3) && isFinite(data3))) {
 									validate181.errors = [{
-										instancePath: instancePath + "/dimensions/casual",
-										schemaPath: "#/$defs/PersonaDimensions/properties/casual/type",
+										instancePath: instancePath + "/dimensions/activity",
+										schemaPath: "#/$defs/PersonaDimensions/properties/activity/type",
 										keyword: "type",
 										params: { type: "integer" },
 										message: "must be integer"
@@ -564,8 +564,8 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 								if (typeof data3 == "number" && isFinite(data3)) {
 									if (data3 > 100 || isNaN(data3)) {
 										validate181.errors = [{
-											instancePath: instancePath + "/dimensions/casual",
-											schemaPath: "#/$defs/PersonaDimensions/properties/casual/maximum",
+											instancePath: instancePath + "/dimensions/activity",
+											schemaPath: "#/$defs/PersonaDimensions/properties/activity/maximum",
 											keyword: "maximum",
 											params: {
 												comparison: "<=",
@@ -576,8 +576,8 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 										return false;
 									} else if (data3 < 0 || isNaN(data3)) {
 										validate181.errors = [{
-											instancePath: instancePath + "/dimensions/casual",
-											schemaPath: "#/$defs/PersonaDimensions/properties/casual/minimum",
+											instancePath: instancePath + "/dimensions/activity",
+											schemaPath: "#/$defs/PersonaDimensions/properties/activity/minimum",
 											keyword: "minimum",
 											params: {
 												comparison: ">=",
@@ -591,12 +591,12 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 								var valid3 = true;
 							} else var valid3 = true;
 							if (valid3) {
-								if (data2.direct !== void 0) {
-									let data4 = data2.direct;
+								if (data2.casual !== void 0) {
+									let data4 = data2.casual;
 									if (!(typeof data4 == "number" && !(data4 % 1) && !isNaN(data4) && isFinite(data4))) {
 										validate181.errors = [{
-											instancePath: instancePath + "/dimensions/direct",
-											schemaPath: "#/$defs/PersonaDimensions/properties/direct/type",
+											instancePath: instancePath + "/dimensions/casual",
+											schemaPath: "#/$defs/PersonaDimensions/properties/casual/type",
 											keyword: "type",
 											params: { type: "integer" },
 											message: "must be integer"
@@ -606,8 +606,8 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 									if (typeof data4 == "number" && isFinite(data4)) {
 										if (data4 > 100 || isNaN(data4)) {
 											validate181.errors = [{
-												instancePath: instancePath + "/dimensions/direct",
-												schemaPath: "#/$defs/PersonaDimensions/properties/direct/maximum",
+												instancePath: instancePath + "/dimensions/casual",
+												schemaPath: "#/$defs/PersonaDimensions/properties/casual/maximum",
 												keyword: "maximum",
 												params: {
 													comparison: "<=",
@@ -618,8 +618,8 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 											return false;
 										} else if (data4 < 0 || isNaN(data4)) {
 											validate181.errors = [{
-												instancePath: instancePath + "/dimensions/direct",
-												schemaPath: "#/$defs/PersonaDimensions/properties/direct/minimum",
+												instancePath: instancePath + "/dimensions/casual",
+												schemaPath: "#/$defs/PersonaDimensions/properties/casual/minimum",
 												keyword: "minimum",
 												params: {
 													comparison: ">=",
@@ -633,12 +633,12 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 									var valid3 = true;
 								} else var valid3 = true;
 								if (valid3) {
-									if (data2.empathy !== void 0) {
-										let data5 = data2.empathy;
+									if (data2.direct !== void 0) {
+										let data5 = data2.direct;
 										if (!(typeof data5 == "number" && !(data5 % 1) && !isNaN(data5) && isFinite(data5))) {
 											validate181.errors = [{
-												instancePath: instancePath + "/dimensions/empathy",
-												schemaPath: "#/$defs/PersonaDimensions/properties/empathy/type",
+												instancePath: instancePath + "/dimensions/direct",
+												schemaPath: "#/$defs/PersonaDimensions/properties/direct/type",
 												keyword: "type",
 												params: { type: "integer" },
 												message: "must be integer"
@@ -648,8 +648,8 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 										if (typeof data5 == "number" && isFinite(data5)) {
 											if (data5 > 100 || isNaN(data5)) {
 												validate181.errors = [{
-													instancePath: instancePath + "/dimensions/empathy",
-													schemaPath: "#/$defs/PersonaDimensions/properties/empathy/maximum",
+													instancePath: instancePath + "/dimensions/direct",
+													schemaPath: "#/$defs/PersonaDimensions/properties/direct/maximum",
 													keyword: "maximum",
 													params: {
 														comparison: "<=",
@@ -660,8 +660,8 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 												return false;
 											} else if (data5 < 0 || isNaN(data5)) {
 												validate181.errors = [{
-													instancePath: instancePath + "/dimensions/empathy",
-													schemaPath: "#/$defs/PersonaDimensions/properties/empathy/minimum",
+													instancePath: instancePath + "/dimensions/direct",
+													schemaPath: "#/$defs/PersonaDimensions/properties/direct/minimum",
 													keyword: "minimum",
 													params: {
 														comparison: ">=",
@@ -675,12 +675,12 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 										var valid3 = true;
 									} else var valid3 = true;
 									if (valid3) {
-										if (data2.formal !== void 0) {
-											let data6 = data2.formal;
+										if (data2.empathy !== void 0) {
+											let data6 = data2.empathy;
 											if (!(typeof data6 == "number" && !(data6 % 1) && !isNaN(data6) && isFinite(data6))) {
 												validate181.errors = [{
-													instancePath: instancePath + "/dimensions/formal",
-													schemaPath: "#/$defs/PersonaDimensions/properties/formal/type",
+													instancePath: instancePath + "/dimensions/empathy",
+													schemaPath: "#/$defs/PersonaDimensions/properties/empathy/type",
 													keyword: "type",
 													params: { type: "integer" },
 													message: "must be integer"
@@ -690,8 +690,8 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 											if (typeof data6 == "number" && isFinite(data6)) {
 												if (data6 > 100 || isNaN(data6)) {
 													validate181.errors = [{
-														instancePath: instancePath + "/dimensions/formal",
-														schemaPath: "#/$defs/PersonaDimensions/properties/formal/maximum",
+														instancePath: instancePath + "/dimensions/empathy",
+														schemaPath: "#/$defs/PersonaDimensions/properties/empathy/maximum",
 														keyword: "maximum",
 														params: {
 															comparison: "<=",
@@ -702,8 +702,8 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 													return false;
 												} else if (data6 < 0 || isNaN(data6)) {
 													validate181.errors = [{
-														instancePath: instancePath + "/dimensions/formal",
-														schemaPath: "#/$defs/PersonaDimensions/properties/formal/minimum",
+														instancePath: instancePath + "/dimensions/empathy",
+														schemaPath: "#/$defs/PersonaDimensions/properties/empathy/minimum",
 														keyword: "minimum",
 														params: {
 															comparison: ">=",
@@ -717,12 +717,12 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 											var valid3 = true;
 										} else var valid3 = true;
 										if (valid3) {
-											if (data2.humor !== void 0) {
-												let data7 = data2.humor;
+											if (data2.formal !== void 0) {
+												let data7 = data2.formal;
 												if (!(typeof data7 == "number" && !(data7 % 1) && !isNaN(data7) && isFinite(data7))) {
 													validate181.errors = [{
-														instancePath: instancePath + "/dimensions/humor",
-														schemaPath: "#/$defs/PersonaDimensions/properties/humor/type",
+														instancePath: instancePath + "/dimensions/formal",
+														schemaPath: "#/$defs/PersonaDimensions/properties/formal/type",
 														keyword: "type",
 														params: { type: "integer" },
 														message: "must be integer"
@@ -732,8 +732,8 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 												if (typeof data7 == "number" && isFinite(data7)) {
 													if (data7 > 100 || isNaN(data7)) {
 														validate181.errors = [{
-															instancePath: instancePath + "/dimensions/humor",
-															schemaPath: "#/$defs/PersonaDimensions/properties/humor/maximum",
+															instancePath: instancePath + "/dimensions/formal",
+															schemaPath: "#/$defs/PersonaDimensions/properties/formal/maximum",
 															keyword: "maximum",
 															params: {
 																comparison: "<=",
@@ -744,8 +744,8 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 														return false;
 													} else if (data7 < 0 || isNaN(data7)) {
 														validate181.errors = [{
-															instancePath: instancePath + "/dimensions/humor",
-															schemaPath: "#/$defs/PersonaDimensions/properties/humor/minimum",
+															instancePath: instancePath + "/dimensions/formal",
+															schemaPath: "#/$defs/PersonaDimensions/properties/formal/minimum",
 															keyword: "minimum",
 															params: {
 																comparison: ">=",
@@ -759,12 +759,12 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 												var valid3 = true;
 											} else var valid3 = true;
 											if (valid3) {
-												if (data2.professional !== void 0) {
-													let data8 = data2.professional;
+												if (data2.humor !== void 0) {
+													let data8 = data2.humor;
 													if (!(typeof data8 == "number" && !(data8 % 1) && !isNaN(data8) && isFinite(data8))) {
 														validate181.errors = [{
-															instancePath: instancePath + "/dimensions/professional",
-															schemaPath: "#/$defs/PersonaDimensions/properties/professional/type",
+															instancePath: instancePath + "/dimensions/humor",
+															schemaPath: "#/$defs/PersonaDimensions/properties/humor/type",
 															keyword: "type",
 															params: { type: "integer" },
 															message: "must be integer"
@@ -774,8 +774,8 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 													if (typeof data8 == "number" && isFinite(data8)) {
 														if (data8 > 100 || isNaN(data8)) {
 															validate181.errors = [{
-																instancePath: instancePath + "/dimensions/professional",
-																schemaPath: "#/$defs/PersonaDimensions/properties/professional/maximum",
+																instancePath: instancePath + "/dimensions/humor",
+																schemaPath: "#/$defs/PersonaDimensions/properties/humor/maximum",
 																keyword: "maximum",
 																params: {
 																	comparison: "<=",
@@ -786,8 +786,8 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 															return false;
 														} else if (data8 < 0 || isNaN(data8)) {
 															validate181.errors = [{
-																instancePath: instancePath + "/dimensions/professional",
-																schemaPath: "#/$defs/PersonaDimensions/properties/professional/minimum",
+																instancePath: instancePath + "/dimensions/humor",
+																schemaPath: "#/$defs/PersonaDimensions/properties/humor/minimum",
 																keyword: "minimum",
 																params: {
 																	comparison: ">=",
@@ -801,12 +801,12 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 													var valid3 = true;
 												} else var valid3 = true;
 												if (valid3) {
-													if (data2.social_energy !== void 0) {
-														let data9 = data2.social_energy;
+													if (data2.professional !== void 0) {
+														let data9 = data2.professional;
 														if (!(typeof data9 == "number" && !(data9 % 1) && !isNaN(data9) && isFinite(data9))) {
 															validate181.errors = [{
-																instancePath: instancePath + "/dimensions/social_energy",
-																schemaPath: "#/$defs/PersonaDimensions/properties/social_energy/type",
+																instancePath: instancePath + "/dimensions/professional",
+																schemaPath: "#/$defs/PersonaDimensions/properties/professional/type",
 																keyword: "type",
 																params: { type: "integer" },
 																message: "must be integer"
@@ -816,8 +816,8 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 														if (typeof data9 == "number" && isFinite(data9)) {
 															if (data9 > 100 || isNaN(data9)) {
 																validate181.errors = [{
-																	instancePath: instancePath + "/dimensions/social_energy",
-																	schemaPath: "#/$defs/PersonaDimensions/properties/social_energy/maximum",
+																	instancePath: instancePath + "/dimensions/professional",
+																	schemaPath: "#/$defs/PersonaDimensions/properties/professional/maximum",
 																	keyword: "maximum",
 																	params: {
 																		comparison: "<=",
@@ -828,8 +828,8 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 																return false;
 															} else if (data9 < 0 || isNaN(data9)) {
 																validate181.errors = [{
-																	instancePath: instancePath + "/dimensions/social_energy",
-																	schemaPath: "#/$defs/PersonaDimensions/properties/social_energy/minimum",
+																	instancePath: instancePath + "/dimensions/professional",
+																	schemaPath: "#/$defs/PersonaDimensions/properties/professional/minimum",
 																	keyword: "minimum",
 																	params: {
 																		comparison: ">=",
@@ -842,6 +842,49 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 														}
 														var valid3 = true;
 													} else var valid3 = true;
+													if (valid3) {
+														if (data2.social_energy !== void 0) {
+															let data10 = data2.social_energy;
+															if (!(typeof data10 == "number" && !(data10 % 1) && !isNaN(data10) && isFinite(data10))) {
+																validate181.errors = [{
+																	instancePath: instancePath + "/dimensions/social_energy",
+																	schemaPath: "#/$defs/PersonaDimensions/properties/social_energy/type",
+																	keyword: "type",
+																	params: { type: "integer" },
+																	message: "must be integer"
+																}];
+																return false;
+															}
+															if (typeof data10 == "number" && isFinite(data10)) {
+																if (data10 > 100 || isNaN(data10)) {
+																	validate181.errors = [{
+																		instancePath: instancePath + "/dimensions/social_energy",
+																		schemaPath: "#/$defs/PersonaDimensions/properties/social_energy/maximum",
+																		keyword: "maximum",
+																		params: {
+																			comparison: "<=",
+																			limit: 100
+																		},
+																		message: "must be <= 100"
+																	}];
+																	return false;
+																} else if (data10 < 0 || isNaN(data10)) {
+																	validate181.errors = [{
+																		instancePath: instancePath + "/dimensions/social_energy",
+																		schemaPath: "#/$defs/PersonaDimensions/properties/social_energy/minimum",
+																		keyword: "minimum",
+																		params: {
+																			comparison: ">=",
+																			limit: 0
+																		},
+																		message: "must be >= 0"
+																	}];
+																	return false;
+																}
+															}
+															var valid3 = true;
+														} else var valid3 = true;
+													}
 												}
 											}
 										}
@@ -905,9 +948,9 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 							} else var valid0 = true;
 							if (valid0) {
 								if (data.revision !== void 0) {
-									let data13 = data.revision;
-									if (typeof data13 === "string") {
-										if (func2(data13) > 19) {
+									let data14 = data.revision;
+									if (typeof data14 === "string") {
+										if (func2(data14) > 19) {
 											validate181.errors = [{
 												instancePath: instancePath + "/revision",
 												schemaPath: "#/$defs/DecimalString/maxLength",
@@ -916,7 +959,7 @@ function validate181(data, { instancePath = "", parentData, parentDataProperty, 
 												message: "must NOT have more than 19 characters"
 											}];
 											return false;
-										} else if (!pattern4.test(data13)) {
+										} else if (!pattern4.test(data14)) {
 											validate181.errors = [{
 												instancePath: instancePath + "/revision",
 												schemaPath: "#/$defs/DecimalString/pattern",

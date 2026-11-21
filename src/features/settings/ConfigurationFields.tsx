@@ -24,8 +24,8 @@ async function applyInteger(value: number, apply: (value: number) => Promise<voi
 }
 
 export function DimensionsFields({ value, onChange }: { value: PersonaDimensions; onChange: (key: keyof PersonaDimensions, value: number) => Promise<void> }) {
-  const labels: Record<keyof PersonaDimensions, string> = { professional: "专业", formal: "正式", casual: "随和", humor: "幽默", direct: "直接", empathy: "共情", social_energy: "社交活力" }
-  return <div className="config-stack">{(Object.keys(labels) as (keyof PersonaDimensions)[]).map((key) => <Field key={key} label={labels[key]}>
+  const labels: Record<keyof PersonaDimensions, string> = { professional: "专业", formal: "正式", casual: "随和", humor: "幽默", direct: "直接", empathy: "共情", social_energy: "社交活力", activity: "活跃度" }
+  return <div className="config-stack">{(Object.keys(labels) as (keyof PersonaDimensions)[]).map((key) => <Field key={key} label={labels[key]} caption={key === "activity" ? "越高越愿意参与话题、主动接话；不会强制回复或突破请求上限。" : key === "social_energy" ? "影响交流时的热情与表达能量，不代表发言频率。" : undefined}>
     <NumberInput label={labels[key]} value={value[key]} min={0} max={100} step={1} onValueChange={(next) => applyInteger(next, (value) => onChange(key, value))} />
   </Field>)}</div>
 }

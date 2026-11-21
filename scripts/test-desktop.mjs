@@ -18,8 +18,9 @@ const identifier = `app.sageroom.desktop.e2e.r${runId}`
 const productName = `Sageroom 测试 ${runId}`
 const output = path.join(root, ".test-results", `desktop-${runId}`)
 mkdirSync(output, { recursive: true })
-const report = { platform: `${os.platform()} ${os.release()}`, app_version: "0.1.0", build: "debug", identifier, cpu: os.cpus()[0]?.model, memory_bytes: os.totalmem(), tests: [], screenshots: [], page_errors: [], console_errors: [], limitations: ["Windows 11 无设备，Blocked", "真实中文输入法需人工走查；自动化只验证组合输入事件", "安装态通知、release 性能、24h、完整备份恢复和独立智能体运行未验收"] }
-const executable = path.join(root, "src-tauri/target/debug/sageroom.exe")
+const report = { platform: `${os.platform()} ${os.release()}`, app_version: "0.1.0", build: "debug", identifier, cpu: os.cpus()[0]?.model, memory_bytes: os.totalmem(), tests: [], screenshots: [], page_errors: [], console_errors: [], limitations: ["其他 Windows 版本未验收", "真实中文输入法需人工走查；自动化只验证组合输入事件", "安装态通知、release 性能、24h 和完整备份恢复未验收"] }
+const desktopTarget = path.join(root, ".test-results", "desktop-target")
+const executable = path.join(desktopTarget, "debug", "sageroom.exe")
 let server
 let current
 let builder
@@ -106,7 +107,7 @@ async function launch(index) {
   await page.waitForFunction(() => Boolean(window.__TAURI_INTERNALS__), { timeout: 30_000 })
   const snapshot = data(await invoke(page, "app_get_snapshot", { data_generation_id: null, last_event_seq: null }))
   assert.ok(snapshot.data_directory.toLowerCase().includes(identifier), "拒绝向非隔离数据目录写入测试消息")
-  await expect(page.getByRole("textbox", { name: "消息输入" })).toBeEnabled()
+  await expect(page.getByRole("textbox", { name: "消息输入" })).toBeEnabled({ timeout: 30_000 })
   report.user_agent = await page.evaluate(() => navigator.userAgent)
   report.page_url = page.url()
   report.device_scale = await page.evaluate(() => window.devicePixelRatio)
@@ -138,7 +139,7 @@ try {
   const configFile = path.join(output, "tauri-test-config.json")
   writeFileSync(configFile, JSON.stringify(config))
   const buildLog = createWriteStream(path.join(output, "build.log"))
-  builder = spawn(process.execPath, [path.join(root, "node_modules/@tauri-apps/cli/tauri.js"), "build", "--debug", "--no-bundle", "--config", configFile], { cwd: root, shell: false, env: { ...process.env, NODE_ENV: "production" } })
+  builder = spawn(process.execPath, [path.join(root, "node_modules/@tauri-apps/cli/tauri.js"), "build", "--debug", "--no-bundle", "--config", configFile], { cwd: root, shell: false, env: { ...process.env, NODE_ENV: "production", CARGO_TARGET_DIR: desktopTarget } })
   builder.stdout.pipe(buildLog, { end: false })
   builder.stderr.pipe(buildLog, { end: false })
   await waitExit(builder, 600_000)
@@ -146,9 +147,9 @@ try {
   assert.equal(builder.exitCode, 0, "桌面构建失败，详见 build.log")
   assert.ok(readFileSync(executable).includes(Buffer.from(identifier)), "构建未包含隔离测试标识，不启动应用")
   passed("Tauri Windows debug 原生构建")
-  server = await createServer({ configFile: path.join(root, "vite.config.ts"), root })
+  server = await createServer({ configFile: path.join(root, "vite.config.ts"), root, server: { port: await freePort() } })
   await server.listen()
-  assert.equal((await fetch("http://127.0.0.1:1420")).status, 200)
+  assert.equal((await fetch(`http://127.0.0.1:${server.config.server.port}`)).status, 200)
   passed("Vite 开发服务器启动")
 
   const session = await launch(1)
@@ -245,6 +246,21 @@ try {
   assert.equal(savedGlobal.runtime_defaults.request_limit_daily, 321)
   await page.getByRole("button", { name: /^Sage/ }).click()
   const oldAgent = data(await invoke(page, "agent_list", { data_generation_id: generation }))[0]
+  assert.deepEqual(oldAgent.dimensions, { professional: 85, formal: 80, casual: 85, humor: 85, direct: 85, empathy: 90, social_energy: 90, activity: 90 })
+  const agentPersonality = page.getByRole("region", { name: "人格与表达", exact: true })
+  await agentPersonality.getByText("八个人格维度（0–100）", { exact: true }).click()
+  const activityInput = agentPersonality.getByRole("spinbutton", { name: "活跃度", exact: true })
+  await expect(activityInput).toHaveValue("90")
+  await activityInput.fill("101")
+  await activityInput.press("Enter")
+  await expect(page.getByRole("alert")).toHaveText("不能大于 100。")
+  assert.equal(data(await invoke(page, "agent_list", { data_generation_id: generation }))[0].dimensions.activity, 90)
+  await activityInput.fill("88")
+  await activityInput.press("Enter")
+  await expect.poll(async () => data(await invoke(page, "agent_list", { data_generation_id: generation }))[0].dimensions.activity).toBe(88)
+  await agentPersonality.getByText("越高越愿意参与话题、主动接话；不会强制回复或突破请求上限。", { exact: true }).scrollIntoViewIfNeeded()
+  await screenshot(page, "sage-eight-dimensions")
+  passed("Sage 八维高默认值、活跃度越界拒绝与即时保存")
   await page.getByRole("textbox", { name: "名称", exact: true }).fill("Sage · 本地配置")
   await page.getByRole("textbox", { name: "语言风格", exact: true }).fill("自然、克制，保留独立参数")
   await page.getByRole("button", { name: "应用语言风格", exact: true }).click()
@@ -292,7 +308,7 @@ try {
   await page.getByRole("button", { name: "聊天", exact: true }).click()
   passed("用户昵称和简介保存、稳定身份与历史快照不回写")
 
-  if (existsSync(path.join(root, ".env"))) {
+  if (!process.argv.includes("--local-model-only") && existsSync(path.join(root, ".env"))) {
     await page.getByRole("button", { name: "智能体", exact: true }).click()
     await page.getByRole("button", { name: "全局配置", exact: true }).click()
     await page.getByRole("button", { name: "模型配置", exact: true }).click()
@@ -317,7 +333,7 @@ try {
   }
 
   await page.getByRole("button", { name: "群信息", exact: true }).click()
-  await expect(page.getByRole("complementary", { name: "群信息" })).toBeVisible()
+  await expect(page.getByRole("dialog", { name: "群信息", exact: true })).toBeVisible()
   await screenshot(page, "chat-group-information")
   await page.getByRole("button", { name: "关闭群信息" }).click()
   await page.getByRole("button", { name: "搜索聊天", exact: true }).click()
@@ -443,6 +459,7 @@ try {
   assert.equal(reopened.snapshot.local_user.display_name, "本地测试者 · 退出前应用")
   assert.equal(data(await invoke(reopened.page, "global_configuration_get", { data_generation_id: reopened.snapshot.data_generation_id })).runtime_defaults.request_limit_daily, 321)
   assert.equal(data(await invoke(reopened.page, "agent_list", { data_generation_id: reopened.snapshot.data_generation_id }))[0].display_name, "Sage · 本地配置")
+  assert.equal(data(await invoke(reopened.page, "agent_list", { data_generation_id: reopened.snapshot.data_generation_id }))[0].dimensions.activity, 88)
   const afterRestart = data(await invoke(reopened.page, "chat_list", { data_generation_id: reopened.snapshot.data_generation_id, before_seq: null, after_seq: null, around_seq: null, limit: 50 }))
   assert.deepEqual(afterRestart.items.map((message) => message.id), beforeRestart.items.map((message) => message.id))
   assert.equal((await invoke(reopened.page, "chat_send", { ...request, data_generation_id: generation })).error.code, "DATA_GENERATION_CHANGED")
@@ -478,6 +495,7 @@ try {
     }
     if (model === "alpha" && text(latestUser) === "运行器延迟暂停测试") { reply = "暂停后不得发送"; sendAfter = 2000 }
     if (model === "alpha" && text(latestUser) === "运行器后台测试" && !alreadySent("后台仍在处理", latestUser)) reply = "后台仍在处理"
+    if (model === "alpha" && text(latestUser) === "运行器新消息恢复测试" && !alreadySent("临时故障后已恢复", latestUser)) reply = "临时故障后已恢复"
     if (model === "alpha" && context.opportunity === "planned_wake") reply = "持久计划到期回复"
     if (reply) {
       decision.participation = "speak"
@@ -485,6 +503,8 @@ try {
     }
     return decision
   }
+  let failNextAlpha = false
+  let connectionTests = 0
   modelServer = createHttpServer(async (request, response) => {
     try {
       assert.equal(request.method, "POST")
@@ -500,8 +520,20 @@ try {
       const body = JSON.parse(Buffer.concat(chunks).toString("utf8"))
       assert.ok(["alpha", "beta"].includes(body.model))
       const prompt = body.messages.findLast((message) => message.role === "user").content
+      if (!body.messages.some((message) => message.role === "system")) {
+        connectionTests += 1
+        response.writeHead(200, { "Content-Type": "application/json" })
+        response.end(JSON.stringify({ model: body.model, choices: [{ message: { role: "assistant", content: "连接测试通过" }, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }))
+        return
+      }
       const context = JSON.parse(prompt.split("\n")[0])
       hits.push({ model: body.model, opportunity: context.opportunity })
+      if (body.model === "alpha" && failNextAlpha) {
+        failNextAlpha = false
+        response.writeHead(503, { "Content-Type": "application/json" })
+        response.end(JSON.stringify({ error: { message: "临时不可用" } }))
+        return
+      }
       const content = JSON.stringify(fixtureDecision(body.model, context))
       response.writeHead(200, { "Content-Type": "application/json" })
       response.end(JSON.stringify({ model: body.model, choices: [{ message: { role: "assistant", content }, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 } }))
@@ -520,7 +552,7 @@ try {
     try {
       await expect.poll(async () => {
         state = (await runtimeSnapshot()).participants.find((member) => member.id === agentId)?.runtime
-        if (state?.status === "offline") throw new Error(state.detail ?? "智能体离线，未完成桌面验收。")
+        if (state?.status === "offline" && state.detail) throw new Error(state.detail)
         return state?.status
       }, { timeout }).toBe(status)
     } catch (error) {
@@ -545,21 +577,61 @@ try {
   const savedLocal = withLocal.model_profiles.find((profile) => profile.id === localId)
   data(await invoke(running.page, "secret_set", { data_generation_id: runtimeGeneration(), profile_id: localId, expected_revision: savedLocal.revision, api_key: syntheticKey }))
   const configuredLocal = data(await invoke(running.page, "global_configuration_get", { data_generation_id: runtimeGeneration() })).model_profiles.find((profile) => profile.id === localId)
+  await running.page.getByRole("button", { name: "智能体", exact: true }).click()
+  await running.page.getByRole("button", { name: "全局配置", exact: true }).click()
+  await running.page.getByRole("button", { name: "模型配置", exact: true }).click()
+  const localModelPanel = running.page.getByRole("region", { name: "模型预设 本地确定性验收模型", exact: true })
+  await localModelPanel.getByRole("button", { name: "测试连接", exact: true }).click()
+  await expect(localModelPanel.getByText(/连接可用/)).toBeVisible({ timeout: 20_000 })
+  assert.equal(connectionTests, 1)
+  assert.equal(hits.length, 0)
+  await screenshot(running.page, "local-model-connection")
+  await running.page.getByRole("button", { name: "聊天", exact: true }).click()
+  passed("本地模型测试连接成功，独立请求归属不要求智能体身份")
   async function createRuntimeAgent(id, name, profile, modelName, preferences, skill = "这是隔离的确定性运行器测试，遵循自主聊天输出协议。") {
     return data(await invoke(running.page, "agent_save", { data_generation_id: runtimeGeneration(), client_request_id: randomUUID(), expected_revision: null, configuration: { ...existingAgents[0], agent_id: id, revision: "0", display_name: name, introduction: "隔离桌面验收成员", avatar_id: null, agent_type: "social", skill, model: { source_profile_id: profile.id, source_profile_revision: profile.revision, profile: { ...profileInput(profile), model_name: modelName } }, preferences } }))
   }
   await createRuntimeAgent(alphaId, "本地成员甲", configuredLocal, "alpha", { request_limit_daily: 30, persistent_memory: false, allow_autonomous_wake: true })
   await createRuntimeAgent(betaId, "本地成员乙", configuredLocal, "beta", { request_limit_daily: 30, persistent_memory: false, allow_autonomous_wake: false })
+  await running.page.reload()
+  await expect(running.page.getByRole("textbox", { name: "消息输入" })).toBeEnabled({ timeout: 30_000 })
   await waitRuntime(alphaId, "observing")
   await waitRuntime(betaId, "observing")
-  assert.ok(hits.some((hit) => hit.model === "alpha" && hit.opportunity === "initialized"))
-  assert.ok(hits.some((hit) => hit.model === "beta" && hit.opportunity === "initialized"))
+  assert.equal(hits.filter((hit) => hit.model === "alpha" && hit.opportunity === "initialized").length, 1)
+  assert.equal(hits.filter((hit) => hit.model === "beta" && hit.opportunity === "initialized").length, 1)
   await expect.poll(async () => (await runtimeSnapshot()).participants.find((member) => member.id === alphaId)?.runtime.next_wake_at).toBeGreaterThan(Date.now())
   const startupCalls = hits.length
   for (let index = 0; index < 3; index += 1) await runtimeSnapshot()
   await delay(1500)
   assert.equal(hits.length, startupCalls, "状态事件和快照查询不能触发模型调用")
   passed("已配置社交成员真实启动，观察成功且模型自主计划持久化，无状态事件调用循环")
+
+  const startupWakeAt = (await runtimeSnapshot()).participants.find((member) => member.id === alphaId).runtime.next_wake_at
+  const unrelatedGlobal = data(await invoke(running.page, "global_configuration_get", { data_generation_id: runtimeGeneration() }))
+  data(await invoke(running.page, "global_configuration_save", { data_generation_id: runtimeGeneration(), client_request_id: randomUUID(), expected_revision: unrelatedGlobal.revision, model_profiles: unrelatedGlobal.model_profiles.map(profileInput), persona_presets: unrelatedGlobal.persona_presets, runtime_defaults: { ...unrelatedGlobal.runtime_defaults, request_limit_daily: unrelatedGlobal.runtime_defaults.request_limit_daily + 1 } }))
+  await delay(1500)
+  assert.equal(hits.length, startupCalls, "无关全局运行默认配置保存不能重启成员或增加模型调用")
+  assert.equal((await runtimeSnapshot()).participants.find((member) => member.id === alphaId).runtime.next_wake_at, startupWakeAt, "无关全局配置保存必须保留现有唤醒计划")
+  passed("无关全局运行默认配置保存不增加调用且保留成员既有计划")
+
+  failNextAlpha = true
+  data(await invoke(running.page, "chat_send", runtimeRequest("运行器临时故障测试")))
+  await expect.poll(async () => (await runtimeSnapshot()).participants.find((member) => member.id === alphaId)?.runtime.status).toBe("offline")
+  await running.page.getByRole("button", { name: "智能体", exact: true }).click()
+  await running.page.getByRole("button", { name: /^本地成员甲/ }).click()
+  await expect(running.page.getByRole("button", { name: "重试启动", exact: true })).toBeEnabled()
+  await expect(running.page.getByRole("button", { name: "暂停运行", exact: true })).toHaveCount(0)
+  const failedCalls = hits.filter((hit) => hit.model === "alpha").length
+  for (let index = 0; index < 3; index += 1) await runtimeSnapshot()
+  assert.equal(hits.filter((hit) => hit.model === "alpha").length, failedCalls)
+  await screenshot(running.page, "runtime-transient-offline")
+  await running.page.getByRole("button", { name: "聊天", exact: true }).click()
+  data(await invoke(running.page, "chat_send", runtimeRequest("运行器新消息恢复测试")))
+  await waitReply("临时故障后已恢复", alphaId)
+  await waitRuntime(alphaId, "observing")
+  assert.equal(hits.filter((hit) => hit.model === "alpha").length, failedCalls + 1)
+  assert.equal(hits.filter((hit) => hit.model === "alpha").at(-1).opportunity, "new_message")
+  passed("临时模型故障显示重试而非暂停，新消息自动恢复且只新增一次请求")
 
   const mutualRequest = runtimeRequest("运行器互聊测试")
   const mutualResult = data(await invoke(running.page, "chat_send", mutualRequest))
@@ -590,6 +662,7 @@ try {
   await delay(1500)
   assert.equal(hits.filter((hit) => hit.model === "alpha").length, pausedAlphaCalls)
   await runtimeControl(alphaId, false)
+  await expect.poll(() => hits.filter((hit) => hit.model === "alpha").length).toBe(pausedAlphaCalls + 1)
   await waitRuntime(alphaId, "observing")
   assert.equal(hits.filter((hit) => hit.model === "alpha").length, pausedAlphaCalls + 1)
   passed("待发分条暂停即取消、暂停期间不调用模型，恢复提供一次初始化机会")
@@ -622,17 +695,32 @@ try {
   assert.equal(hits.length, pausedCalls, "暂停成员重启后不能调用模型")
   passed("暂停持久化，退出及重启不补发旧候选或额外调用模型")
 
+  const alphaBeforeResume = hits.filter((hit) => hit.model === "alpha").length
   await runtimeControl(alphaId, false)
+  await expect.poll(() => hits.filter((hit) => hit.model === "alpha").length).toBe(alphaBeforeResume + 1)
   await waitRuntime(alphaId, "observing")
+  await expect.poll(async () => (await runtimeSnapshot()).participants.find((member) => member.id === alphaId)?.runtime.next_wake_at).toBeGreaterThan(Date.now())
   const savedWakeAt = (await runtimeSnapshot()).participants.find((member) => member.id === alphaId).runtime.next_wake_at
   assert.ok(savedWakeAt > Date.now())
+  const betaBeforeResume = hits.filter((hit) => hit.model === "beta").length
+  await runtimeControl(betaId, false)
+  await expect.poll(() => hits.filter((hit) => hit.model === "beta").length).toBe(betaBeforeResume + 1)
+  await waitRuntime(betaId, "observing")
+  assert.equal((await runtimeSnapshot()).participants.find((member) => member.id === betaId).runtime.next_wake_at, null)
+  const idleBetaCalls = hits.filter((hit) => hit.model === "beta").length
   const plannedCalls = hits.length
   await stop(running)
   running = await launch(4)
   await expect.poll(async () => (await runtimeSnapshot()).participants.find((member) => member.id === alphaId)?.runtime.next_wake_at).toBe(savedWakeAt)
+  await waitRuntime(betaId, "observing")
+  assert.equal((await runtimeSnapshot()).participants.find((member) => member.id === betaId).runtime.next_wake_at, null)
   await delay(1500)
+  assert.equal(hits.filter((hit) => hit.model === "beta").length, idleBetaCalls, "同配置修订的无计划 observing 成员重启必须恢复观察且不能重新初始化")
   assert.equal(hits.length, plannedCalls, "未到期的持久计划重启后不能增加初始化或轮询调用")
   passed("自主唤醒计划跨重启保留，未到期不调用模型")
+  passed("无计划 observing 成员跨重启恢复观察且不增加模型调用")
+  await runtimeControl(betaId, true)
+  await waitRuntime(betaId, "paused")
 
   const wakeDatabaseFile = path.join(running.snapshot.data_directory, "chat.sqlite3")
   assert.ok(running.snapshot.data_directory.toLowerCase().includes(identifier), "拒绝修改非隔离数据目录的唤醒计划")
@@ -688,6 +776,7 @@ try {
   passed("WebView2 无页面异常或 CSP 错误")
   await stop(running)
 } catch (error) {
+  if (current?.page && !current.page.isClosed()) await screenshot(current.page, "desktop-failure").catch(() => {})
   report.tests.push({ name: "桌面主路径", status: "Failed", detail: error.message })
   process.exitCode = 1
   console.error(error.message)

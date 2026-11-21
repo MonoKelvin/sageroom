@@ -117,6 +117,7 @@ fn assert_no_chat_rows(conn: &Connection) {
         "message_parts",
         "mentions",
         "search_text",
+        "runtime_message_activity",
         "domain_events",
         "request_records",
     ] {
@@ -1249,6 +1250,84 @@ fn corrupt_database_is_preserved_instead_of_replaced_with_empty_database() {
 }
 
 #[test]
+fn obsolete_schema_versions_are_rejected_with_reset_instructions_without_modifying_data() {
+    for version in 1..CURRENT_SCHEMA {
+        let (directory, mut database) = database();
+        send(&mut database, "before-version-rejection", "首版测试数据");
+        database
+            .conn
+            .pragma_update(None, "journal_mode", "DELETE")
+            .unwrap();
+        database
+            .conn
+            .pragma_update(None, "user_version", version)
+            .unwrap();
+        drop(database);
+        let path = directory.path().join("chat.sqlite3");
+        let manifest = directory.path().join("data-manifest.json");
+        let bytes = fs::read(&path).unwrap();
+        let manifest_bytes = fs::read(&manifest).unwrap();
+        let error = Database::open(directory.path(), "obsolete-generation".into())
+            .err()
+            .unwrap();
+        assert_eq!(error.code, ErrorCode::SchemaUnsupported);
+        assert!(error.message.contains("删除旧数据目录"));
+        assert!(error.message.contains("重启"));
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert_eq!(fs::read(&manifest).unwrap(), manifest_bytes);
+        assert!(!directory.path().join("backups").exists());
+        assert_eq!(count(&open_reader(&path).unwrap(), "messages"), 1);
+    }
+}
+
+#[test]
+fn obsolete_schema_hash_is_rejected_without_resetting_existing_data() {
+    let (directory, database) = database();
+    database
+        .conn
+        .pragma_update(None, "journal_mode", "DELETE")
+        .unwrap();
+    database
+        .conn
+        .execute("UPDATE app_meta SET schema_hash='obsolete-schema-hash'", [])
+        .unwrap();
+    drop(database);
+    let path = directory.path().join("chat.sqlite3");
+    let manifest = directory.path().join("data-manifest.json");
+    let bytes = fs::read(&path).unwrap();
+    let manifest_bytes = fs::read(&manifest).unwrap();
+    let error = Database::open(directory.path(), "obsolete-hash-generation".into())
+        .err()
+        .unwrap();
+    assert_eq!(error.code, ErrorCode::SchemaUnsupported);
+    assert!(error.message.contains("删除旧数据目录"));
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+    assert_eq!(fs::read(&manifest).unwrap(), manifest_bytes);
+    assert!(!directory.path().join("backups").exists());
+}
+
+#[test]
+fn unexpected_current_schema_structure_is_rejected_read_only() {
+    let (directory, database) = database();
+    database
+        .conn
+        .pragma_update(None, "journal_mode", "DELETE")
+        .unwrap();
+    database
+        .conn
+        .execute_batch("ALTER TABLE runtime_messages ADD COLUMN unexpected TEXT")
+        .unwrap();
+    drop(database);
+    let path = directory.path().join("chat.sqlite3");
+    let bytes = fs::read(&path).unwrap();
+    assert_code(
+        Database::open(directory.path(), "unexpected-schema-generation".into()),
+        ErrorCode::DataRootInvalid,
+    );
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+}
+
+#[test]
 fn future_schema_is_rejected_before_writing_database_bytes() {
     let (directory, database) = database();
     database
@@ -1293,7 +1372,7 @@ fn mismatched_and_oversized_manifests_are_preserved() {
     let before_database = fs::read(&database_path).unwrap();
     for bytes in [
         b"{not valid json}".to_vec(),
-        json!({ "format_version": 1, "schema_version": 1, "root_id": "wrong-root" })
+        json!({ "format_version": 1, "schema_version": CURRENT_SCHEMA, "root_id": "wrong-root" })
             .to_string()
             .into_bytes(),
         vec![b'x'; 4097],

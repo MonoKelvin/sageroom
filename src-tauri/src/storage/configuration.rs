@@ -23,6 +23,20 @@ pub fn default_dimensions() -> PersonaDimensions {
         direct: 50,
         empathy: 60,
         social_energy: 50,
+        activity: 50,
+    }
+}
+
+pub fn sage_dimensions() -> PersonaDimensions {
+    PersonaDimensions {
+        professional: 85,
+        formal: 80,
+        casual: 85,
+        humor: 85,
+        direct: 85,
+        empathy: 90,
+        social_energy: 90,
+        activity: 90,
     }
 }
 
@@ -69,13 +83,17 @@ pub fn seed_configuration(conn: &Connection) -> AppResult<()> {
         let config = AgentConfiguration {
             agent_id: id,
             revision: 1_i64.into(),
+            dimensions: if name == "Sage" {
+                sage_dimensions()
+            } else {
+                default_dimensions()
+            },
             display_name: name,
             introduction,
             gender_description: None,
             address_terms: Vec::new(),
             language_style: persona.language_style.clone(),
             skill: BASE_SKILL.into(),
-            dimensions: default_dimensions(),
             avatar_id,
             agent_type: AgentType::Social,
             model: None,
@@ -184,6 +202,7 @@ fn validate_dimensions(value: &PersonaDimensions) -> AppResult<()> {
         value.direct,
         value.empathy,
         value.social_energy,
+        value.activity,
     ]
     .into_iter()
     .any(|v| v > 100)
@@ -685,6 +704,7 @@ impl Database {
             &format!("{}:{revision}", config.agent_id),
             &config.avatar_id,
         )?;
+        super::runtime::reset_configuration_state(&transaction, &config)?;
         let event = record_event(
             &transaction,
             EventPayload::AgentConfigurationChanged {

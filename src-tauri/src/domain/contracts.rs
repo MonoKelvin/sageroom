@@ -558,6 +558,8 @@ pub struct PersonaDimensions {
     pub empathy: u8,
     #[schemars(range(max = 100))]
     pub social_energy: u8,
+    #[schemars(range(max = 100))]
+    pub activity: u8,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]

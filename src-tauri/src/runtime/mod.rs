@@ -28,6 +28,13 @@ enum RuntimeEvent {
     Restart(String),
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ReconcileTrigger {
+    Configuration,
+    GlobalConfiguration,
+    NewMessage,
+}
+
 #[derive(Clone)]
 struct Opportunity {
     chain_id: String,
@@ -44,6 +51,7 @@ struct CompletedDecision {
 
 struct Actor {
     revision: DecimalString,
+    credential_ref: Option<String>,
     cancellation: CancellationToken,
     opportunities: watch::Sender<Opportunity>,
 }
@@ -93,7 +101,7 @@ impl RuntimeSupervisor {
                 &cancellation,
                 &mut actors,
                 None,
-                false,
+                ReconcileTrigger::Configuration,
             )
             .await
             .is_err()
@@ -111,7 +119,7 @@ impl RuntimeSupervisor {
                             &cancellation,
                             &mut actors,
                             Some(&id),
-                            false,
+                            ReconcileTrigger::Configuration,
                         )
                         .await;
                     }
@@ -124,7 +132,7 @@ impl RuntimeSupervisor {
                                 &cancellation,
                                 &mut actors,
                                 None,
-                                false,
+                                ReconcileTrigger::Configuration,
                             )
                             .await;
                         }
@@ -136,7 +144,7 @@ impl RuntimeSupervisor {
                                 &cancellation,
                                 &mut actors,
                                 None,
-                                true,
+                                ReconcileTrigger::GlobalConfiguration,
                             )
                             .await;
                         }
@@ -163,6 +171,18 @@ impl RuntimeSupervisor {
                                 .and_then(|p| p.items.into_iter().next())
                                 .map(|m| (m.mention_ids, m.mention_all))
                                 .unwrap_or_default();
+                            if actors.values().any(|actor| actor.opportunities.is_closed()) {
+                                let _ = reconcile(
+                                    &worker,
+                                    &models,
+                                    &secrets,
+                                    &cancellation,
+                                    &mut actors,
+                                    None,
+                                    ReconcileTrigger::NewMessage,
+                                )
+                                .await;
+                            }
                             for (id, actor) in &actors {
                                 if id != &sender_id {
                                     let mention_seq = if mentions.1 || mentions.0.contains(id) {
@@ -193,12 +213,23 @@ impl RuntimeSupervisor {
                                 .runtime_chain(snapshot.latest_message_seq.clone())
                                 .await
                                 .unwrap_or_else(|_| Uuid::now_v7().to_string());
-                            for actor in actors.values() {
+                            for (id, actor) in &actors {
+                                let previous = actor.opportunities.borrow().clone();
+                                let mention_seq = worker
+                                    .runtime_mention_seq(id.clone(), previous.message_seq.clone())
+                                    .await
+                                    .unwrap_or_else(|_| previous.mention_seq.clone());
                                 actor.opportunities.send_replace(Opportunity {
                                     chain_id: chain.clone(),
                                     reason: "resynchronize",
                                     message_seq: snapshot.latest_message_seq.clone(),
-                                    mention_seq: snapshot.latest_message_seq.clone(),
+                                    mention_seq: if sequence(&mention_seq)
+                                        > sequence(&previous.mention_seq)
+                                    {
+                                        mention_seq
+                                    } else {
+                                        previous.mention_seq
+                                    },
                                 });
                             }
                         }
@@ -209,7 +240,7 @@ impl RuntimeSupervisor {
                             &cancellation,
                             &mut actors,
                             None,
-                            false,
+                            ReconcileTrigger::Configuration,
                         )
                         .await;
                     }
@@ -230,8 +261,9 @@ async fn reconcile(
     shutdown: &CancellationToken,
     actors: &mut HashMap<String, Actor>,
     restart: Option<&str>,
-    force: bool,
+    trigger: ReconcileTrigger,
 ) -> AppResult<()> {
+    let force = trigger == ReconcileTrigger::GlobalConfiguration;
     let snapshot = worker
         .snapshot(AppSnapshotRequest {
             data_generation_id: None,
@@ -257,17 +289,43 @@ async fn reconcile(
             break;
         }
         let paused = worker.runtime_is_paused(agent.agent_id.clone()).await?;
+        let protected = snapshot
+            .participants
+            .iter()
+            .find(|p| p.id == agent.agent_id)
+            .and_then(|p| p.runtime.as_ref())
+            .is_some_and(|s| {
+                s.config_revision == agent.revision && s.status == AgentRuntimeStatus::Protected
+            });
+        if paused || (protected && restart != Some(agent.agent_id.as_str())) {
+            if let Some(old) = actors.remove(&agent.agent_id) {
+                old.cancellation.cancel();
+            }
+            continue;
+        }
+        let credential_ref = if force || !actors.contains_key(&agent.agent_id) {
+            worker
+                .runtime_input(agent.agent_id.clone())
+                .await
+                .ok()
+                .map(|input| input.credential_ref)
+        } else {
+            actors
+                .get(&agent.agent_id)
+                .and_then(|actor| actor.credential_ref.clone())
+        };
+        let binding_changed = force
+            && actors
+                .get(&agent.agent_id)
+                .is_some_and(|actor| actor.credential_ref != credential_ref);
         let unchanged = actors
             .get(&agent.agent_id)
-            .is_some_and(|a| a.revision == agent.revision);
-        if unchanged && !force && restart != Some(agent.agent_id.as_str()) && !paused {
+            .is_some_and(|a| a.revision == agent.revision && !a.opportunities.is_closed());
+        if unchanged && !binding_changed && restart != Some(agent.agent_id.as_str()) {
             continue;
         }
         if let Some(old) = actors.remove(&agent.agent_id) {
             old.cancellation.cancel();
-        }
-        if paused {
-            continue;
         }
         if agent.model.is_none() || agent.agent_type == AgentType::Tool {
             let detail = if agent.agent_type == AgentType::Tool {
@@ -287,7 +345,12 @@ async fn reconcile(
                 .await;
             continue;
         }
-        if actors.len() >= 4 {
+        if actors
+            .values()
+            .filter(|a| !a.opportunities.is_closed())
+            .count()
+            >= 4
+        {
             let _ = worker
                 .set_runtime_state(AgentRuntimeState {
                     agent_id: agent.agent_id,
@@ -312,6 +375,7 @@ async fn reconcile(
             agent.agent_id.clone(),
             Actor {
                 revision: agent.revision.clone(),
+                credential_ref,
                 cancellation: cancellation.clone(),
                 opportunities,
             },
@@ -319,7 +383,7 @@ async fn reconcile(
         let worker = worker.clone();
         let models = models.clone();
         let secrets = secrets.clone();
-        let restore = !force && restart.is_none();
+        let restore = !binding_changed && restart.is_none();
         tauri::async_runtime::spawn(async move {
             run_actor(
                 agent,
@@ -328,6 +392,7 @@ async fn reconcile(
                 receiver,
                 cancellation,
                 restore,
+                trigger == ReconcileTrigger::NewMessage,
             )
             .await;
         });
@@ -367,6 +432,7 @@ async fn run_actor(
     mut opportunities: watch::Receiver<Opportunity>,
     cancellation: CancellationToken,
     restore: bool,
+    wait_for_opportunity: bool,
 ) {
     let (models, secrets) = services;
     let stored = worker
@@ -387,12 +453,39 @@ async fn run_actor(
         && stored.as_ref().is_some_and(|s| {
             s.config_revision == agent.revision && s.status == AgentRuntimeStatus::Sleeping
         });
+    let restored_idle = restore
+        && stored.as_ref().is_some_and(|s| {
+            s.config_revision == agent.revision
+                && matches!(
+                    s.status,
+                    AgentRuntimeStatus::Observing | AgentRuntimeStatus::Sleeping
+                )
+        });
     let mut observed_through_seq = DecimalString::from(0);
-    let mut opportunity = if next.is_none() && !sleeping {
+    let mut opportunity = if next.is_none() && !restored_idle && !wait_for_opportunity {
         Some(opportunities.borrow_and_update().clone())
     } else {
         None
     };
+    if opportunity.is_none()
+        && state(
+            &worker,
+            &agent,
+            if sleeping {
+                AgentRuntimeStatus::Sleeping
+            } else {
+                AgentRuntimeStatus::Observing
+            },
+            None,
+            next.as_ref().map(|(at, _, _)| *at),
+            count,
+            &cancellation,
+        )
+        .await
+        .is_err()
+    {
+        return;
+    }
     loop {
         if cancellation.is_cancelled() {
             break;
@@ -418,7 +511,8 @@ async fn run_actor(
                         Ok(Some(at))=>{
                             next=Some((at,chain.clone(),agent.revision.clone()));
                             let _=worker.save_runtime_plan(agent.agent_id.clone(),agent.revision.clone(),Some(at),chain).await;
-                            let _=state(&worker,&agent,AgentRuntimeStatus::Protected,Some("自主检查已达到两次/滚动小时，将按既有计划稍后继续。".into()),Some(at),count,&cancellation).await;
+                            sleeping = true;
+                            let _=state(&worker,&agent,AgentRuntimeStatus::Sleeping,Some("自主检查已达到两次/滚动小时，将按既有计划稍后继续。".into()),Some(at),count,&cancellation).await;
                             continue;
                         },
                         Ok(None)=>Some(Opportunity{chain_id:chain,reason:"planned_wake",message_seq:observed_through_seq.clone(),mention_seq:0.into()}),
@@ -693,7 +787,288 @@ async fn report_failure(
             agent.agent_id.clone(),
             agent.revision.clone(),
             None,
-            String::new(),
+            Uuid::now_v7().to_string(),
         )
         .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::database::Database;
+    use tempfile::TempDir;
+    use tokio::sync::mpsc;
+
+    async fn fixture() -> (
+        TempDir,
+        Arc<DbWorker>,
+        AgentConfiguration,
+        mpsc::UnboundedReceiver<DomainEvent>,
+    ) {
+        let directory = TempDir::new().unwrap();
+        let (events, receiver) = mpsc::unbounded_channel();
+        let worker = DbWorker::open(
+            directory.path(),
+            "actor-tests".into(),
+            Arc::new(move |event| {
+                let _ = events.send(event.clone());
+            }),
+        )
+        .unwrap();
+        let agent = worker
+            .call(|database: &mut Database| {
+                let global = database.get_global_configuration("actor-tests")?;
+                let profile = ModelProfileInput {
+                    id: "actor-test-model".into(),
+                    name: "Actor fixture".into(),
+                    protocol: ModelProtocol::OpenaiChatCompletions,
+                    base_url: "https://actor.example.invalid/v1".into(),
+                    model_name: "fixture".into(),
+                    parameters: ModelParameters {
+                        temperature: 0.5,
+                        top_p: 1.0,
+                        max_output_tokens: 1024,
+                        input_budget: 4096,
+                        reasoning: ReasoningMode::Off,
+                    },
+                };
+                let global = database
+                    .save_global_configuration(GlobalConfigurationSaveRequest {
+                        data_generation_id: "actor-tests".into(),
+                        client_request_id: Uuid::now_v7().to_string(),
+                        expected_revision: global.revision,
+                        model_profiles: vec![profile],
+                        persona_presets: global.persona_presets,
+                        runtime_defaults: global.runtime_defaults,
+                    })?
+                    .0;
+                database.replace_credential_reference(
+                    &global.model_profiles[0].id,
+                    &global.model_profiles[0].revision,
+                    Some(Uuid::now_v7().to_string()),
+                )?;
+                let mut agent = database.list_agents("actor-tests")?.remove(0);
+                agent.model = Some(AgentModelSnapshot {
+                    source_profile_id: global.model_profiles[0].id.clone(),
+                    source_profile_revision: global.model_profiles[0].revision.clone(),
+                    profile: global.model_profiles[0].input(),
+                });
+                Ok(database
+                    .save_agent(AgentSaveRequest {
+                        data_generation_id: "actor-tests".into(),
+                        client_request_id: Uuid::now_v7().to_string(),
+                        expected_revision: Some(agent.revision.clone()),
+                        configuration: agent,
+                    })?
+                    .0)
+            })
+            .await
+            .unwrap();
+        (directory, worker, agent, receiver)
+    }
+
+    fn unavailable<T>() -> AppResult<T> {
+        Err(AppError::new(
+            ErrorCode::CapabilityUnsupported,
+            "测试不访问模型或系统凭据。",
+        ))
+    }
+
+    fn initialized() -> Opportunity {
+        Opportunity {
+            chain_id: "initial-chain".into(),
+            reason: "initialized",
+            message_seq: 0.into(),
+            mention_seq: 0.into(),
+        }
+    }
+
+    fn actor(agent: &AgentConfiguration) -> (Actor, watch::Receiver<Opportunity>) {
+        let (opportunities, receiver) = watch::channel(initialized());
+        (
+            Actor {
+                revision: agent.revision.clone(),
+                credential_ref: None,
+                cancellation: CancellationToken::new(),
+                opportunities,
+            },
+            receiver,
+        )
+    }
+
+    #[test]
+    fn live_unchanged_actor_is_not_restarted_for_fresh_messages() {
+        tauri::async_runtime::block_on(async {
+            let (_directory, worker, agent, _events) = fixture().await;
+            let shutdown = CancellationToken::new();
+            let (existing, _receiver) = actor(&agent);
+            let cancellation = existing.cancellation.clone();
+            let mut actors = HashMap::from([(agent.agent_id.clone(), existing)]);
+            reconcile(
+                &worker,
+                &unavailable(),
+                &unavailable(),
+                &shutdown,
+                &mut actors,
+                None,
+                ReconcileTrigger::NewMessage,
+            )
+            .await
+            .unwrap();
+            assert!(!cancellation.is_cancelled());
+            assert!(!actors[&agent.agent_id].opportunities.is_closed());
+            shutdown.cancel();
+        });
+    }
+
+    #[test]
+    fn finished_actor_recovers_on_fresh_message_without_a_synthetic_decision() {
+        tauri::async_runtime::block_on(async {
+            let (_directory, worker, agent, mut events) = fixture().await;
+            let shutdown = CancellationToken::new();
+            let (existing, receiver) = actor(&agent);
+            let previous = existing.cancellation.clone();
+            drop(receiver);
+            let mut actors = HashMap::from([(agent.agent_id.clone(), existing)]);
+            reconcile(
+                &worker,
+                &unavailable(),
+                &unavailable(),
+                &shutdown,
+                &mut actors,
+                None,
+                ReconcileTrigger::NewMessage,
+            )
+            .await
+            .unwrap();
+            assert!(previous.is_cancelled());
+            let recovered = &actors[&agent.agent_id];
+            assert!(!recovered.opportunities.is_closed());
+            let event = tokio::time::timeout(Duration::from_secs(2), events.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            match event.payload {
+                EventPayload::ParticipantProfileChanged { participant } => {
+                    assert_eq!(
+                        participant.runtime.unwrap().status,
+                        AgentRuntimeStatus::Observing
+                    );
+                }
+                _ => panic!("unexpected event"),
+            }
+            let latest = worker
+                .runtime_states()
+                .await
+                .unwrap()
+                .into_iter()
+                .find(|state| state.agent_id == agent.agent_id)
+                .unwrap();
+            assert_eq!(latest.status, AgentRuntimeStatus::Observing);
+            recovered.opportunities.send_replace(Opportunity {
+                chain_id: "fresh-message-chain".into(),
+                reason: "new_message",
+                message_seq: 1.into(),
+                mention_seq: 0.into(),
+            });
+            tokio::time::timeout(Duration::from_secs(2), recovered.opportunities.closed())
+                .await
+                .unwrap();
+            let latest = worker
+                .runtime_states()
+                .await
+                .unwrap()
+                .into_iter()
+                .find(|state| state.agent_id == agent.agent_id)
+                .unwrap();
+            assert_eq!(latest.status, AgentRuntimeStatus::NeedsConfiguration);
+            assert_eq!(latest.requests_today, 0);
+            shutdown.cancel();
+        });
+    }
+
+    #[test]
+    fn recovered_actor_consumes_fresh_opportunity_queued_before_startup() {
+        tauri::async_runtime::block_on(async {
+            let (_directory, worker, agent, _events) = fixture().await;
+            let cancellation = CancellationToken::new();
+            let (opportunities, receiver) = watch::channel(initialized());
+            opportunities.send_replace(Opportunity {
+                chain_id: "queued-fresh-message".into(),
+                reason: "new_message",
+                message_seq: 1.into(),
+                mention_seq: 0.into(),
+            });
+            tokio::time::timeout(
+                Duration::from_secs(2),
+                run_actor(
+                    agent.clone(),
+                    worker.clone(),
+                    (unavailable(), unavailable()),
+                    receiver,
+                    cancellation,
+                    true,
+                    true,
+                ),
+            )
+            .await
+            .unwrap();
+            assert!(opportunities.is_closed());
+            let latest = worker
+                .runtime_states()
+                .await
+                .unwrap()
+                .into_iter()
+                .find(|state| state.agent_id == agent.agent_id)
+                .unwrap();
+            assert_eq!(latest.status, AgentRuntimeStatus::NeedsConfiguration);
+            assert_eq!(latest.requests_today, 0);
+        });
+    }
+
+    #[test]
+    fn fresh_messages_do_not_revive_paused_or_same_revision_protected_actors() {
+        tauri::async_runtime::block_on(async {
+            for status in [AgentRuntimeStatus::Paused, AgentRuntimeStatus::Protected] {
+                let (_directory, worker, agent, _events) = fixture().await;
+                if status == AgentRuntimeStatus::Paused {
+                    worker
+                        .set_runtime_paused(agent.agent_id.clone(), true)
+                        .await
+                        .unwrap();
+                } else {
+                    worker
+                        .set_runtime_state(AgentRuntimeState {
+                            agent_id: agent.agent_id.clone(),
+                            config_revision: agent.revision.clone(),
+                            status,
+                            detail: None,
+                            next_wake_at: None,
+                            requests_today: 0,
+                        })
+                        .await
+                        .unwrap();
+                }
+                let shutdown = CancellationToken::new();
+                let (existing, receiver) = actor(&agent);
+                let previous = existing.cancellation.clone();
+                drop(receiver);
+                let mut actors = HashMap::from([(agent.agent_id.clone(), existing)]);
+                reconcile(
+                    &worker,
+                    &unavailable(),
+                    &unavailable(),
+                    &shutdown,
+                    &mut actors,
+                    None,
+                    ReconcileTrigger::NewMessage,
+                )
+                .await
+                .unwrap();
+                assert!(previous.is_cancelled());
+                assert!(!actors.contains_key(&agent.agent_id));
+                shutdown.cancel();
+            }
+        });
+    }
 }

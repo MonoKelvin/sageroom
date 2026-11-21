@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest"
 import fixtures from "../../tests/fixtures/contracts.json"
-import { validateAgentRuntimeControlRequest, validateAgentRuntimeControlResponse, validateAppSnapshotResponse, validateChatSendRequest, validateChatListRequest, validateChatSendResponse } from "./generated/validators.js"
+import { validateAgentSaveRequest, validateAgentRuntimeControlRequest, validateAgentRuntimeControlResponse, validateAppSnapshotResponse, validateChatSendRequest, validateChatListRequest, validateChatSendResponse } from "./generated/validators.js"
 import { snapshot } from "@/features/chat/chat.test-fixtures"
+import { agentConfiguration } from "@/features/settings/configuration.test-fixtures"
 import type { AgentRuntimeState } from "./generated"
 
 const validators: Record<string, (value: unknown) => boolean> = {
@@ -26,6 +27,12 @@ const runtime: AgentRuntimeState = {
 const runtimeResponse = (data: unknown) => ({ schema_version: "0.3", data })
 
 describe("智能体运行合同", () => {
+  it("活跃度必须为 0–100 整数且不可缺失", () => {
+    const request = { data_generation_id: "generation-test", client_request_id: "activity-test", expected_revision: "1", configuration: agentConfiguration() }
+    for (const activity of [0, 50, 100]) expect(validateAgentSaveRequest({ ...request, configuration: { ...request.configuration, dimensions: { ...request.configuration.dimensions, activity } } })).toBe(true)
+    for (const activity of [-1, 101, 1.5, "50", undefined]) expect(validateAgentSaveRequest({ ...request, configuration: { ...request.configuration, dimensions: { ...request.configuration.dimensions, activity } } })).toBe(false)
+  })
+
   it("校验暂停与恢复请求，并拒绝错误类型及未知字段", () => {
     const request = { data_generation_id: "generation-test", agent_id: runtime.agent_id, paused: true }
     expect(validateAgentRuntimeControlRequest(request)).toBe(true)

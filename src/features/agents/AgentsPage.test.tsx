@@ -65,6 +65,32 @@ describe("持久资源智能体页面", () => {
     expect(detail("新智能体").queryByRole("button", { name: /暂停运行|恢复运行|重试启动/ })).not.toBeInTheDocument()
     expect(sidebar().getByRole("button", { name: /新智能体.*待配置/ })).toBeInTheDocument()
   })
+  it("八个人格维度包含可持久化活跃度，非法值不写入，重开页面读回", async () => {
+    const view = render(page())
+    await openSage()
+    await userEvent.click(detail("Sage").getByText("八个人格维度（0–100）"))
+    const labels = ["专业", "正式", "随和", "幽默", "直接", "共情", "社交活力", "活跃度"]
+    for (const label of labels) expect(detail("Sage").getByRole("spinbutton", { name: label })).toBeInTheDocument()
+    const activity = detail("Sage").getByRole("spinbutton", { name: "活跃度" })
+    for (const value of ["101", "-1", "1.5", ""]) {
+      fireEvent.change(activity, { target: { value } })
+      fireEvent.blur(activity)
+      await detail("Sage").findByRole("alert")
+      expect(ipc.saveAgent).not.toHaveBeenCalled()
+    }
+    for (const value of ["0", "100"]) {
+      fireEvent.change(activity, { target: { value } })
+      fireEvent.blur(activity)
+      await waitFor(() => expect(vi.mocked(ipc.saveAgent).mock.lastCall?.[0].configuration.dimensions.activity).toBe(Number(value)))
+    }
+    expect(ipc.controlAgentRuntime).not.toHaveBeenCalled()
+    view.unmount()
+    render(page())
+    await openSage()
+    await userEvent.click(detail("Sage").getByText("八个人格维度（0–100）"))
+    expect(detail("Sage").getByRole("spinbutton", { name: "活跃度" })).toHaveValue("100")
+  })
+
   it("晚创建结果不会切换当前选择，后续文本失焦独立应用并更新列表名称", async () => {
     let finish!: () => void
     vi.mocked(ipc.saveAgent).mockImplementationOnce((request) => new Promise((resolve) => { finish = () => resolve({ ...request.configuration, revision: "1" }) }))
@@ -146,7 +172,8 @@ describe("智能体实时运行状态", () => {
     await userEvent.click(await sidebar().findByRole("button", { name: /Sage.*已配置.*正在启动/ }))
     expect(detail("Sage").getByRole("status")).toHaveTextContent("正在启动")
     expect(detail("Sage").queryByText(/在线观察|今日请求|下次唤醒/)).not.toBeInTheDocument()
-    expect(detail("Sage").getByRole("button", { name: "暂停运行" })).toBeEnabled()
+    await userEvent.click(detail("Sage").getByRole("button", { name: "开始运行" }))
+    expect(ipc.controlAgentRuntime).toHaveBeenCalledExactlyOnceWith({ data_generation_id: "generation-test", agent_id: "sage-test", paused: false })
   })
 
   it("未配置模型时即使有旧runtime仍待配置，且没有虚假启动入口", async () => {
@@ -188,6 +215,10 @@ describe("智能体实时运行状态", () => {
     render(page(configuredProps(runtimeState(status))))
     await userEvent.click(await sidebar().findByRole("button", { name: new RegExp(`Sage.*已配置.*${label}`) }))
     expect(detail("Sage").getByRole("status")).toHaveTextContent(label)
+    const isActive = ["observing", "deciding", "waiting_to_send"].includes(status)
+    const action = isActive ? "暂停运行" : ["sleeping", "paused"].includes(status) ? "恢复运行" : "重试启动"
+    await userEvent.click(detail("Sage").getByRole("button", { name: action }))
+    expect(ipc.controlAgentRuntime).toHaveBeenCalledExactlyOnceWith({ data_generation_id: "generation-test", agent_id: "sage-test", paused: isActive })
   })
 
   it.each([null, "模型暂不可用 <img src=x onerror=alert(1)>"])("离线detail=%s安全展示且可重试启动", async (message) => {

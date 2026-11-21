@@ -57,6 +57,21 @@ describe("即时应用的全局配置", () => {
     await userEvent.click(screen.getByRole("button", { name: "人格预设" }))
     expect(screen.getByLabelText("人格名称", { selector: "input" })).toHaveValue("分类间草稿")
   })
+  it("人格预设的活跃度立即应用且不改变其他人格维度", async () => {
+    const data = mockConfigurationIpc()
+    const originalDimensions = { ...data.global.persona_presets[0].dimensions }
+    render(panel())
+    await screen.findByLabelText("模型标识", { selector: "input" })
+    await userEvent.click(screen.getByRole("button", { name: "人格预设" }))
+    await userEvent.click(screen.getByText("八个人格维度（0–100）"))
+    const activity = screen.getByRole("spinbutton", { name: "活跃度" })
+    fireEvent.change(activity, { target: { value: "88" } })
+    fireEvent.blur(activity)
+    await waitFor(() => expect(ipc.saveGlobalConfiguration).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(ipc.saveGlobalConfiguration).mock.lastCall?.[0].persona_presets[0].dimensions).toEqual({ ...originalDimensions, activity: 88 })
+    expect(ipc.controlAgentRuntime).not.toHaveBeenCalled()
+  })
+
   it("checkbox/switch 立即应用且各字段小 patch 不覆盖其他设置", async () => {
     render(panel())
     await screen.findByLabelText("模型标识", { selector: "input" })
@@ -146,6 +161,6 @@ describe("即时应用的全局配置", () => {
     expect(screen.queryByText("开发环境导入")).not.toBeInTheDocument()
     await userEvent.click(screen.getByText("生成参数与预算"))
     expect(screen.getByRole("combobox", { name: "推理模式" })).toHaveTextContent("不请求额外推理")
-    expect(screen.getByText("本轮连接测试不接受 enabled。普通连通不保证关闭模型自身推理。")).toBeInTheDocument()
+    expect(screen.getByText("聊天与连接测试均不支持 enabled；off 仅表示不请求额外推理。")).toBeInTheDocument()
   })
 })

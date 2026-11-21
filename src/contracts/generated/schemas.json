@@ -326,6 +326,12 @@
       "PersonaDimensions": {
         "additionalProperties": false,
         "properties": {
+          "activity": {
+            "format": "uint8",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
           "casual": {
             "format": "uint8",
             "maximum": 100,
@@ -376,7 +382,8 @@
           "humor",
           "direct",
           "empathy",
-          "social_energy"
+          "social_energy",
+          "activity"
         ],
         "type": "object"
       },
@@ -829,6 +836,12 @@
       "PersonaDimensions": {
         "additionalProperties": false,
         "properties": {
+          "activity": {
+            "format": "uint8",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
           "casual": {
             "format": "uint8",
             "maximum": 100,
@@ -879,7 +892,8 @@
           "humor",
           "direct",
           "empathy",
-          "social_energy"
+          "social_energy",
+          "activity"
         ],
         "type": "object"
       },
@@ -1232,6 +1246,12 @@
       "PersonaDimensions": {
         "additionalProperties": false,
         "properties": {
+          "activity": {
+            "format": "uint8",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
           "casual": {
             "format": "uint8",
             "maximum": 100,
@@ -1282,7 +1302,8 @@
           "humor",
           "direct",
           "empathy",
-          "social_energy"
+          "social_energy",
+          "activity"
         ],
         "type": "object"
       },
@@ -3841,6 +3862,12 @@
       "PersonaDimensions": {
         "additionalProperties": false,
         "properties": {
+          "activity": {
+            "format": "uint8",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
           "casual": {
             "format": "uint8",
             "maximum": 100,
@@ -3891,7 +3918,8 @@
           "humor",
           "direct",
           "empathy",
-          "social_energy"
+          "social_energy",
+          "activity"
         ],
         "type": "object"
       },
@@ -4866,6 +4894,12 @@
       "PersonaDimensions": {
         "additionalProperties": false,
         "properties": {
+          "activity": {
+            "format": "uint8",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
           "casual": {
             "format": "uint8",
             "maximum": 100,
@@ -4916,7 +4950,8 @@
           "humor",
           "direct",
           "empathy",
-          "social_energy"
+          "social_energy",
+          "activity"
         ],
         "type": "object"
       },
@@ -5109,6 +5144,12 @@
       "PersonaDimensions": {
         "additionalProperties": false,
         "properties": {
+          "activity": {
+            "format": "uint8",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
           "casual": {
             "format": "uint8",
             "maximum": 100,
@@ -5159,7 +5200,8 @@
           "humor",
           "direct",
           "empathy",
-          "social_energy"
+          "social_energy",
+          "activity"
         ],
         "type": "object"
       },
@@ -5490,6 +5532,12 @@
       "PersonaDimensions": {
         "additionalProperties": false,
         "properties": {
+          "activity": {
+            "format": "uint8",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
           "casual": {
             "format": "uint8",
             "maximum": 100,
@@ -5540,7 +5588,8 @@
           "humor",
           "direct",
           "empathy",
-          "social_energy"
+          "social_energy",
+          "activity"
         ],
         "type": "object"
       },

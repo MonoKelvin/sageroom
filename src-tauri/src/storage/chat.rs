@@ -33,6 +33,7 @@ pub fn read_appearance(conn: &Connection) -> AppResult<Appearance> {
 }
 
 pub(crate) fn participants(conn: &Connection) -> AppResult<Vec<Participant>> {
+    let runtime_states = super::runtime::read_runtime_states(conn)?;
     let mut statement = conn.prepare("SELECT id, kind, display_name, introduction, status, builtin_key, avatar_id, profile_revision FROM participants ORDER BY kind DESC, created_at, id")?;
     let rows = statement.query_map([], |row| {
         Ok((
@@ -50,13 +51,20 @@ pub(crate) fn participants(conn: &Connection) -> AppResult<Vec<Participant>> {
         .into_iter()
         .map(
             |(id, kind, display_name, introduction, status, builtin, avatar_id, revision)| {
-                let runtime = super::runtime::read_runtime(conn, &id)?;
+                let runtime = runtime_states
+                    .iter()
+                    .find(|state| state.agent_id == id)
+                    .cloned();
+                let status = runtime.as_ref().map_or_else(
+                    || serde_json::from_value(serde_json::Value::String(status)),
+                    |state| Ok(super::runtime::participant_status(&state.status)),
+                )?;
                 Ok(Participant {
                     id,
                     display_name,
                     introduction,
                     kind: serde_json::from_value(serde_json::Value::String(kind))?,
-                    status: serde_json::from_value(serde_json::Value::String(status))?,
+                    status,
                     is_builtin: builtin.is_some(),
                     avatar_id,
                     profile_revision: revision.into(),
@@ -191,7 +199,7 @@ pub fn validate_list(request: &ChatListRequest) -> AppResult<()> {
     Ok(())
 }
 
-fn load_messages(conn: &Connection, sequences: &[i64]) -> AppResult<Vec<ChatMessage>> {
+pub(crate) fn load_messages(conn: &Connection, sequences: &[i64]) -> AppResult<Vec<ChatMessage>> {
     let mut message_statement = conn.prepare("SELECT id, sender_id, sender_snapshot_json, created_at, state, quote_message_id, mention_all FROM messages WHERE seq = ?1")?;
     let mut parts_statement =
         conn.prepare("SELECT text FROM message_parts WHERE message_id = ?1 ORDER BY ordinal")?;
@@ -254,10 +262,10 @@ fn sequence_query(conn: &Connection, sql: &str, cursor: i64, limit: u32) -> AppR
         .collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
-fn validate_message(
+pub(crate) fn validate_message_content(
     parts: &[MessagePart],
-    quote_message_id: &Option<String>,
-    mention_ids: &[String],
+    quote: &Option<String>,
+    mentions: &[String],
 ) -> AppResult<String> {
     if parts.is_empty() || parts.len() > 16 {
         return Err(AppError::invalid("parts", "消息需要 1～16 个文本部分。"));
@@ -265,70 +273,52 @@ fn validate_message(
     let mut text = String::new();
     let mut characters = 0;
     for part in parts {
-        match part {
-            MessagePart::Text { text: value } => {
-                if value.len() > TEXT_BYTE_LIMIT.saturating_sub(text.len()) {
-                    return Err(AppError::invalid(
-                        "parts",
-                        "消息超过 10000 个 Unicode 字符或 32KiB，请缩短后发送。",
-                    ));
-                }
-                characters += value.chars().count();
-                if characters > TEXT_CHARACTER_LIMIT {
-                    return Err(AppError::invalid(
-                        "parts",
-                        "消息超过 10000 个 Unicode 字符或 32KiB，请缩短后发送。",
-                    ));
-                }
-                text.push_str(value);
-            }
-            _ => {
-                return Err(AppError::new(
-                    ErrorCode::CapabilityUnsupported,
-                    "当前交付只支持文本消息，图片和表情附件尚未启用。",
-                ));
-            }
+        let MessagePart::Text { text: value } = part else {
+            return Err(AppError::new(
+                ErrorCode::CapabilityUnsupported,
+                "当前交付只支持文本消息，图片和表情附件尚未启用。",
+            ));
+        };
+        characters += value.chars().count();
+        if value.len() > TEXT_BYTE_LIMIT.saturating_sub(text.len())
+            || characters > TEXT_CHARACTER_LIMIT
+        {
+            return Err(AppError::invalid(
+                "parts",
+                "消息超过 10000 个 Unicode 字符或 32KiB，请缩短后发送。",
+            ));
         }
+        text.push_str(value);
     }
     if text.trim().is_empty() {
         return Err(AppError::invalid("parts", "消息不能只有空白字符。"));
     }
-    if mention_ids.len() > 32 {
+    if mentions.len() > 32 {
         return Err(AppError::invalid("mention_ids", "单条消息的提及数量过多。"));
     }
-    if let Some(id) = quote_message_id {
+    if let Some(id) = quote {
         validate_id(id, "quote_message_id")?;
     }
-    for id in mention_ids {
+    for id in mentions {
         validate_id(id, "mention_ids")?;
     }
     Ok(text)
 }
 
-pub(crate) fn commit_message(
+// Internal transaction helper only. The public user send path always supplies
+// local_user_id; IPC cannot select a sender or a runtime decision.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn insert_message(
     transaction: &Transaction<'_>,
+    generation: &str,
     room_id: &str,
     sender_id: &str,
     parts: &[MessagePart],
-    quote_message_id: &Option<String>,
+    quote: &Option<String>,
     mention_ids: &[String],
     mention_all: bool,
-    generation: &str,
+    text: &str,
 ) -> AppResult<(ChatSendResult, DomainEvent)> {
-    let text = validate_message(parts, quote_message_id, mention_ids)?;
-    if let Some(id) = quote_message_id {
-        let exists: bool = transaction.query_row(
-            "SELECT EXISTS(SELECT 1 FROM messages WHERE id = ?1 AND room_id = ?2)",
-            params![id, room_id],
-            |row| row.get(0),
-        )?;
-        if !exists {
-            return Err(AppError::new(
-                ErrorCode::MessageNotFound,
-                "被引用消息不存在，草稿未清除。",
-            ));
-        }
-    }
     let (owner, display_name, kind, avatar_id): (String, String, String, Option<String>) = transaction.query_row(
         "SELECT r.owner_participant_id, p.display_name, p.kind, p.avatar_id FROM room r JOIN participants p ON p.id = ?1 WHERE r.singleton = 1",
         [sender_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
@@ -367,8 +357,12 @@ pub(crate) fn commit_message(
         avatar_id,
     };
     let message_id = Uuid::now_v7().to_string();
-    transaction.execute("INSERT INTO messages(id, room_id, sender_id, sender_snapshot_json, created_at, quote_message_id, mention_all) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)", params![message_id, room_id, sender_id, serde_json::to_string(&snapshot)?, now_ms(), quote_message_id, mention_all])?;
+    transaction.execute("INSERT INTO messages(id, room_id, sender_id, sender_snapshot_json, created_at, quote_message_id, mention_all) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)", params![message_id, room_id, sender_id, serde_json::to_string(&snapshot)?, now_ms(), quote, mention_all])?;
     let message_seq = transaction.last_insert_rowid();
+    transaction.execute(
+        "INSERT INTO runtime_message_activity(message_seq,message_id,sender_id) VALUES (?1,?2,?3)",
+        params![message_seq, message_id, sender_id],
+    )?;
     super::configuration::update_avatar_refs(
         transaction,
         "message",
@@ -389,7 +383,8 @@ pub(crate) fn commit_message(
             params![message_id, id, ordinal as i64],
         )?;
     }
-    // trusted_schema=OFF 时不用触发器写 FTS，正文与索引仍在同一事务。
+    // No FTS triggers with trusted_schema=OFF; both indexes still commit with
+    // the message, mentions, avatar reference, and domain event.
     transaction.execute(
         "INSERT INTO search_text(seq, text) VALUES (?1, ?2)",
         params![message_seq, text],
@@ -407,13 +402,15 @@ pub(crate) fn commit_message(
         },
         generation,
     )?;
-    let result = ChatSendResult {
-        data_generation_id: generation.to_owned(),
-        message_id,
-        message_seq: message_seq.into(),
-        event_seq: event.event_seq.clone(),
-    };
-    Ok((result, event))
+    Ok((
+        ChatSendResult {
+            data_generation_id: generation.to_owned(),
+            message_id,
+            message_seq: message_seq.into(),
+            event_seq: event.event_seq.clone(),
+        },
+        event,
+    ))
 }
 
 impl Database {
@@ -428,6 +425,14 @@ impl Database {
     }
 
     pub fn snapshot(&mut self, request: AppSnapshotRequest) -> AppResult<AppSnapshot> {
+        Ok(self.snapshot_with(request, |_| Ok(()))?.0)
+    }
+
+    pub(crate) fn snapshot_with<T>(
+        &mut self,
+        request: AppSnapshotRequest,
+        read: impl FnOnce(&Connection) -> AppResult<T>,
+    ) -> AppResult<(AppSnapshot, T)> {
         let generation = self.generation_id.clone();
         let user_id = self.local_user_id.clone();
         let data_directory = self.root.to_string_lossy().into_owned();
@@ -496,28 +501,32 @@ impl Database {
             events.clear();
         }
         let appearance = read_appearance(&transaction)?;
+        let extra = read(&transaction)?;
         transaction.commit()?;
-        Ok(AppSnapshot {
-            data_generation_id: generation,
-            room: Room {
-                id,
-                name,
-                owner_participant_id: owner,
-                version: version.into(),
-                content_epoch: epoch.into(),
+        Ok((
+            AppSnapshot {
+                data_generation_id: generation,
+                room: Room {
+                    id,
+                    name,
+                    owner_participant_id: owner,
+                    version: version.into(),
+                    content_epoch: epoch.into(),
+                },
+                local_user,
+                participants,
+                appearance,
+                latest_message_seq: latest_message.into(),
+                latest_event_seq: latest_event.into(),
+                events,
+                requires_full_reload,
+                data_directory,
+                data_usage,
+                app_version: env!("CARGO_PKG_VERSION").to_owned(),
+                development_tools_available: cfg!(debug_assertions),
             },
-            local_user,
-            participants,
-            appearance,
-            latest_message_seq: latest_message.into(),
-            latest_event_seq: latest_event.into(),
-            events,
-            requires_full_reload,
-            data_directory,
-            data_usage,
-            app_version: env!("CARGO_PKG_VERSION").to_owned(),
-            development_tools_available: cfg!(debug_assertions),
-        })
+            extra,
+        ))
     }
 
     pub fn send_message(
@@ -526,7 +535,7 @@ impl Database {
     ) -> AppResult<(ChatSendResult, Option<DomainEvent>)> {
         self.check_generation(&request.data_generation_id)?;
         validate_id(&request.client_request_id, "client_request_id")?;
-        validate_message(
+        let text = validate_message_content(
             &request.parts,
             &request.quote_message_id,
             &request.mention_ids,
@@ -557,29 +566,54 @@ impl Database {
                 None,
             ));
         }
-        let (result, event) = commit_message(
+        if let Some(id) = &request.quote_message_id {
+            let exists: bool = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM messages WHERE id = ?1 AND room_id = ?2)",
+                params![id, room_id],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                return Err(AppError::new(
+                    ErrorCode::MessageNotFound,
+                    "被引用消息不存在，草稿未清除。",
+                ));
+            }
+        }
+        let (result, event) = insert_message(
             &transaction,
+            &generation,
             &room_id,
             &user_id,
             &request.parts,
             &request.quote_message_id,
             &request.mention_ids,
             request.mention_all,
-            &generation,
+            &text,
         )?;
+        let message_id = result.message_id;
+        let message_seq = parse_counter(&result.message_seq, "message_seq")?;
+        let event_seq = parse_counter(&event.event_seq, "event_seq")?;
         record_request(
             &transaction,
             &request.client_request_id,
             "chat_send",
             &hash,
             &StoredSendResult {
-                message_id: result.message_id.clone(),
-                message_seq: parse_counter(&result.message_seq, "message_seq")?,
-                event_seq: parse_counter(&result.event_seq, "event_seq")?,
+                message_id: message_id.clone(),
+                message_seq,
+                event_seq,
             },
         )?;
         transaction.commit()?;
-        Ok((result, Some(event)))
+        Ok((
+            ChatSendResult {
+                data_generation_id: generation,
+                message_id,
+                message_seq: message_seq.into(),
+                event_seq: event_seq.into(),
+            },
+            Some(event),
+        ))
     }
 
     pub fn list_messages(&mut self, request: ChatListRequest) -> AppResult<MessagePage> {
