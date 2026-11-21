@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { isDesktopEnvironment } from "./ipc"
 
-export type WindowAction = "minimize" | "maximize" | "close" | "drag"
+export type WindowAction = "minimize" | "maximize" | "close" | "drag" | {
+  resize: Parameters<ReturnType<typeof getCurrentWindow>["startResizeDragging"]>[0]
+}
 
 export function useWindowState() {
   const [maximized, setMaximized] = useState(false)
@@ -55,7 +57,8 @@ export function useWindowState() {
     setError(null)
     try {
       const current = getCurrentWindow()
-      if (action === "minimize") await current.minimize()
+      if (typeof action !== "string") await current.startResizeDragging(action.resize)
+      else if (action === "minimize") await current.minimize()
       else if (action === "close") await current.close()
       else if (action === "drag") await current.startDragging()
       else {

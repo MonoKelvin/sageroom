@@ -2,7 +2,7 @@ use tauri::WebviewWindow;
 
 const SHADOW_GUTTER: f64 = 16.0;
 const CORNER_RADIUS: f64 = 16.0;
-const RESIZE_BORDER: f64 = 5.0;
+const RESIZE_BORDER: f64 = 8.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Hit {

@@ -16,7 +16,7 @@ use crate::domain::{
 };
 
 pub const SCHEMA: &str = include_str!("schema.sql");
-pub const CURRENT_SCHEMA: u32 = 4;
+pub const CURRENT_SCHEMA: u32 = 5;
 
 pub struct Database {
     pub(crate) conn: Connection,

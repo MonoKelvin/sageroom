@@ -190,7 +190,7 @@ pub fn context(input: &mut RuntimeInput, opportunity: &str) -> AppResult<(String
         })
         .collect();
     let mut messages: Vec<_> = input.messages.iter().filter(|m| m.state == MessageState::Visible).map(|m| json!({
-        "id":m.id,"seq":m.seq,"sender_id":m.sender_id,"sender_name":m.sender_snapshot.display_name,
+        "id":m.id,"seq":m.seq,"sender_id":m.sender_id,
         "parts":m.parts,"quote_message_id":m.quote_message_id,"mention_ids":m.mention_ids,"mention_all":m.mention_all,
     })).collect();
     loop {

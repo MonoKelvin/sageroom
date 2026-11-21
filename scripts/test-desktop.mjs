@@ -303,10 +303,13 @@ try {
   assert.equal(savedUser.participant_id, snapshot.local_user.id)
   assert.equal(savedUser.display_name, "本地测试者")
   const originalHistory = data(await invoke(page, "chat_list", { data_generation_id: generation, before_seq: null, after_seq: null, around_seq: null, limit: 50 }))
-  assert.equal(originalHistory.items[0].sender_snapshot.display_name, snapshot.local_user.display_name)
+  assert.equal(originalHistory.items[0].sender_id, savedUser.participant_id)
+  const currentProfile = data(await invoke(page, "app_get_snapshot", { data_generation_id: generation, last_event_seq: null })).participants.find((participant) => participant.id === originalHistory.items[0].sender_id)
+  assert.equal(currentProfile.display_name, savedUser.display_name)
+  assert.equal(currentProfile.avatar_id, savedUser.avatar_id)
   await screenshot(page, "user-profile")
   await page.getByRole("button", { name: "聊天", exact: true }).click()
-  passed("用户昵称和简介保存、稳定身份与历史快照不回写")
+  passed("用户昵称和简介保存、稳定身份与历史消息当前资料同步")
 
   if (!process.argv.includes("--local-model-only") && existsSync(path.join(root, ".env"))) {
     await page.getByRole("button", { name: "智能体", exact: true }).click()
@@ -563,7 +566,8 @@ try {
   async function waitReply(body, agentId, timeout = 20_000) {
     await expect.poll(async () => (await runtimeMessages()).filter((message) => message.sender_id === agentId && message.parts.some((part) => part.kind === "text" && part.text.includes(body))).length, { timeout }).toBe(1)
     const message = (await runtimeMessages()).find((message) => message.sender_id === agentId && message.parts.some((part) => part.kind === "text" && part.text.includes(body)))
-    assert.equal(message.sender_snapshot.kind, "agent")
+    const participant = (await runtimeSnapshot()).participants.find((member) => member.id === message.sender_id)
+    assert.equal(participant.kind, "agent")
     await expect(running.page.getByText(body, { exact: false }).first()).toBeVisible({ timeout })
   }
   const runtimeRequest = (text) => ({ data_generation_id: runtimeGeneration(), client_request_id: randomUUID(), parts: [{ kind: "text", text }], quote_message_id: null, mention_ids: [], mention_all: false })
@@ -761,7 +765,7 @@ try {
     await expect.poll(async () => {
       const member = (await runtimeSnapshot()).participants.find((participant) => participant.id === realId)
       if (["offline", "needs_configuration", "protected"].includes(member?.runtime?.status)) throw new Error(member.runtime.detail ?? "真实模型运行器未完成回复验收。")
-      return (await runtimeMessages()).some((message) => message.sender_id === realId && message.sender_snapshot.kind === "agent" && message.parts.some((part) => part.kind === "text" && part.text.includes("真实模型链路通过")))
+      return member?.kind === "agent" && (await runtimeMessages()).some((message) => message.sender_id === realId && message.parts.some((part) => part.kind === "text" && part.text.includes("真实模型链路通过")))
     }, { timeout: 90_000 }).toBe(true)
     await waitReply("真实模型链路通过", realId, 90_000)
     const realState = (await runtimeSnapshot()).participants.find((member) => member.id === realId).runtime

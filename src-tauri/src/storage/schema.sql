@@ -1,7 +1,7 @@
 CREATE TABLE app_meta (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     root_id TEXT NOT NULL,
-    schema_version INTEGER NOT NULL CHECK (schema_version = 4),
+    schema_version INTEGER NOT NULL CHECK (schema_version = 5),
     schema_hash TEXT NOT NULL
 );
 
@@ -32,7 +32,6 @@ CREATE TABLE messages (
     id TEXT NOT NULL UNIQUE,
     room_id TEXT NOT NULL REFERENCES room(id),
     sender_id TEXT NOT NULL REFERENCES participants(id),
-    sender_snapshot_json TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     state TEXT NOT NULL DEFAULT 'visible' CHECK (state IN ('visible', 'recalled', 'deleted')),
     quote_message_id TEXT REFERENCES messages(id),
@@ -197,4 +196,4 @@ CREATE TABLE runtime_messages (
 CREATE INDEX runtime_messages_chain ON runtime_messages(chain_id);
 CREATE INDEX runtime_messages_time ON runtime_messages(committed_at);
 
-PRAGMA user_version = 4;
+PRAGMA user_version = 5;

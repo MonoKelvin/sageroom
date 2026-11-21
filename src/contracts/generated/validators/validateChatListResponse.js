@@ -28,7 +28,6 @@ var schema189 = {
 		},
 		"quote_message_id": { "type": ["string", "null"] },
 		"sender_id": { "type": "string" },
-		"sender_snapshot": { "$ref": "#/$defs/SenderSnapshot" },
 		"seq": { "$ref": "#/$defs/DecimalString" },
 		"state": { "$ref": "#/$defs/MessageState" }
 	},
@@ -36,7 +35,6 @@ var schema189 = {
 		"id",
 		"seq",
 		"sender_id",
-		"sender_snapshot",
 		"created_at",
 		"state",
 		"parts",
@@ -55,128 +53,6 @@ var schema194 = {
 	"type": "string"
 };
 var func1 = Object.prototype.hasOwnProperty;
-var schema191 = {
-	"additionalProperties": false,
-	"properties": {
-		"avatar_id": {
-			"default": null,
-			"type": ["string", "null"]
-		},
-		"display_name": { "type": "string" },
-		"kind": { "$ref": "#/$defs/ParticipantKind" }
-	},
-	"required": [
-		"display_name",
-		"kind",
-		"avatar_id"
-	],
-	"type": "object"
-};
-var schema192 = {
-	"enum": ["user", "agent"],
-	"type": "string"
-};
-function validate142(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
-	let vErrors = null;
-	const evaluated0 = validate142.evaluated;
-	if (evaluated0.dynamicProps) evaluated0.props = void 0;
-	if (evaluated0.dynamicItems) evaluated0.items = void 0;
-	if (data && typeof data == "object" && !Array.isArray(data)) {
-		let missing0;
-		if (data.display_name === void 0 && (missing0 = "display_name") || data.kind === void 0 && (missing0 = "kind") || data.avatar_id === void 0 && (missing0 = "avatar_id")) {
-			validate142.errors = [{
-				instancePath,
-				schemaPath: "#/required",
-				keyword: "required",
-				params: { missingProperty: missing0 },
-				message: "must have required property '" + missing0 + "'"
-			}];
-			return false;
-		} else {
-			for (const key0 in data) if (!(key0 === "avatar_id" || key0 === "display_name" || key0 === "kind")) {
-				validate142.errors = [{
-					instancePath,
-					schemaPath: "#/additionalProperties",
-					keyword: "additionalProperties",
-					params: { additionalProperty: key0 },
-					message: "must NOT have additional properties"
-				}];
-				return false;
-			}
-			if (data.avatar_id !== void 0) {
-				let data0 = data.avatar_id;
-				if (typeof data0 !== "string" && data0 !== null) {
-					validate142.errors = [{
-						instancePath: instancePath + "/avatar_id",
-						schemaPath: "#/properties/avatar_id/type",
-						keyword: "type",
-						params: { type: schema191.properties.avatar_id.type },
-						message: "must be string,null"
-					}];
-					return false;
-				}
-				var valid0 = true;
-			} else var valid0 = true;
-			if (valid0) {
-				if (data.display_name !== void 0) {
-					if (typeof data.display_name !== "string") {
-						validate142.errors = [{
-							instancePath: instancePath + "/display_name",
-							schemaPath: "#/properties/display_name/type",
-							keyword: "type",
-							params: { type: "string" },
-							message: "must be string"
-						}];
-						return false;
-					}
-					var valid0 = true;
-				} else var valid0 = true;
-				if (valid0) {
-					if (data.kind !== void 0) {
-						let data2 = data.kind;
-						if (typeof data2 !== "string") {
-							validate142.errors = [{
-								instancePath: instancePath + "/kind",
-								schemaPath: "#/$defs/ParticipantKind/type",
-								keyword: "type",
-								params: { type: "string" },
-								message: "must be string"
-							}];
-							return false;
-						}
-						if (!(data2 === "user" || data2 === "agent")) {
-							validate142.errors = [{
-								instancePath: instancePath + "/kind",
-								schemaPath: "#/$defs/ParticipantKind/enum",
-								keyword: "enum",
-								params: { allowedValues: schema192.enum },
-								message: "must be equal to one of the allowed values"
-							}];
-							return false;
-						}
-						var valid0 = true;
-					} else var valid0 = true;
-				}
-			}
-		}
-	} else {
-		validate142.errors = [{
-			instancePath,
-			schemaPath: "#/type",
-			keyword: "type",
-			params: { type: "object" },
-			message: "must be object"
-		}];
-		return false;
-	}
-	validate142.errors = vErrors;
-	return true;
-}
-validate142.evaluated = {
-	"props": true,
-	"dynamicProps": false,
-	"dynamicItems": false
-};
 function validate141(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
 	let errors = 0;
@@ -186,7 +62,7 @@ function validate141(data, { instancePath = "", parentData, parentDataProperty, 
 	if (errors === 0) {
 		if (data && typeof data == "object" && !Array.isArray(data)) {
 			let missing0;
-			if (data.id === void 0 && (missing0 = "id") || data.seq === void 0 && (missing0 = "seq") || data.sender_id === void 0 && (missing0 = "sender_id") || data.sender_snapshot === void 0 && (missing0 = "sender_snapshot") || data.created_at === void 0 && (missing0 = "created_at") || data.state === void 0 && (missing0 = "state") || data.parts === void 0 && (missing0 = "parts") || data.quote_message_id === void 0 && (missing0 = "quote_message_id") || data.mention_ids === void 0 && (missing0 = "mention_ids") || data.mention_all === void 0 && (missing0 = "mention_all")) {
+			if (data.id === void 0 && (missing0 = "id") || data.seq === void 0 && (missing0 = "seq") || data.sender_id === void 0 && (missing0 = "sender_id") || data.created_at === void 0 && (missing0 = "created_at") || data.state === void 0 && (missing0 = "state") || data.parts === void 0 && (missing0 = "parts") || data.quote_message_id === void 0 && (missing0 = "quote_message_id") || data.mention_ids === void 0 && (missing0 = "mention_ids") || data.mention_all === void 0 && (missing0 = "mention_all")) {
 				validate141.errors = [{
 					instancePath,
 					schemaPath: "#/required",
@@ -701,20 +577,6 @@ function validate141(data, { instancePath = "", parentData, parentDataProperty, 
 												var valid0 = _errs40 === errors;
 											} else var valid0 = true;
 											if (valid0) {
-												if (data.sender_snapshot !== void 0) {
-													const _errs42 = errors;
-													if (!validate142(data.sender_snapshot, {
-														instancePath: instancePath + "/sender_snapshot",
-														parentData: data,
-														parentDataProperty: "sender_snapshot",
-														rootData,
-														dynamicAnchors
-													})) {
-														vErrors = vErrors === null ? validate142.errors : vErrors.concat(validate142.errors);
-														errors = vErrors.length;
-													}
-													var valid0 = _errs42 === errors;
-												} else var valid0 = true;
 												if (valid0) {
 													if (data.seq !== void 0) {
 														let data16 = data.seq;

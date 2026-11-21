@@ -11,6 +11,8 @@ import { useConfigurationAppearance, useConfigurationRuntime } from "./configura
 
 export type { ApplicationPageProps, PageId } from "./navigation"
 
+const resizeDirections = ["North", "NorthEast", "East", "SouthEast", "South", "SouthWest", "West", "NorthWest"] as const
+
 export function AppShell() {
   const session = useChatSession()
   return <ConfigurationProvider snapshot={session.snapshot}><ApplicationShell session={session} /></ConfigurationProvider>
@@ -29,9 +31,13 @@ function ApplicationShell({ session }: { session: ReturnType<typeof useChatSessi
   }, [])
   // WebView 缩放改变 CSS px，窗口轮廓仍与原生 DIP 命中区域对齐。
   const zoom = pixelRatio / windowState.nativeScale
-  const frameStyle = { "--window-gutter": `${16 / zoom}px`, "--window-radius": `${16 / zoom}px`, "--frame-shadow-y": `${5 / zoom}px`, "--frame-shadow-blur": `${16 / zoom}px` } as CSSProperties
+  const frameStyle = { "--window-zoom": zoom } as CSSProperties
   useAppearance(previewAppearance ?? session.snapshot?.appearance)
-  const navigate = useCallback((page: PageId) => setCurrentPage(page), [])
+  const setChatActive = session.setChatActive
+  const navigate = useCallback((page: PageId) => {
+    setChatActive(page === "chat")
+    setCurrentPage(page)
+  }, [setChatActive])
 
   useEffect(() => {
     const pointer = () => { document.documentElement.dataset.inputModality = "pointer" }
@@ -77,6 +83,20 @@ function ApplicationShell({ session }: { session: ReturnType<typeof useChatSessi
           </main>
         </div>
         <div id="application-layers" className="application-layers" />
+        {!windowState.maximized && resizeDirections.map((direction) => (
+          <div
+            key={direction}
+            className="window-resize-handle"
+            data-direction={direction}
+            aria-hidden="true"
+            onPointerDown={(event) => {
+              if (event.button !== 0) return
+              event.preventDefault()
+              event.stopPropagation()
+              void windowState.perform({ resize: direction })
+            }}
+          />
+        ))}
       </div>
     </div>
   )

@@ -27,6 +27,8 @@ describe("群信息抽屉", () => {
     const members = screen.getByRole("list", { name: "群成员" })
     expect(within(members).getAllByRole("listitem")).toHaveLength(2)
     expect(within(members).queryByText("群聊成员")).not.toBeInTheDocument()
+    expect(screen.queryByRole("textbox", { name: "群名称" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "编辑群名称" }))
     const name = screen.getByRole("textbox", { name: "群名称" })
     fireEvent.change(name, { target: { value: " 新群名称 " } })
     fireEvent.keyDown(name, { key: "Enter" })
@@ -37,6 +39,7 @@ describe("群信息抽屉", () => {
   it("普通成员只读群名", () => {
     mount(snapshot({ room: { ...snapshot().room, owner_participant_id: "sage-test" } }))
     expect(screen.queryByRole("textbox", { name: "群名称" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "编辑群名称" })).not.toBeInTheDocument()
     expect(screen.getByText("Sageroom")).toBeInTheDocument()
     expect(ipc.saveRoom).not.toHaveBeenCalled()
   })
@@ -44,6 +47,7 @@ describe("群信息抽屉", () => {
   it("保存失败保留编辑内容并显示错误", async () => {
     vi.mocked(ipc.saveRoom).mockRejectedValue(new Error("群资料已更新"))
     const { onRoomChange } = mount()
+    fireEvent.click(screen.getByRole("button", { name: "编辑群名称" }))
     const name = screen.getByRole("textbox", { name: "群名称" })
     fireEvent.change(name, { target: { value: "保留草稿" } })
     fireEvent.keyDown(name, { key: "Enter" })

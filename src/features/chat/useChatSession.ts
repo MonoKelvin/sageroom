@@ -3,6 +3,8 @@ import type { AppSnapshot, Appearance, ChatSendResult, DomainEvent, MessagePage,
 import { errorMessage, ipc, IpcError } from "@/app/ipc"
 import { compareSequence, INITIAL_ITEM_INDEX, mergePage, PAGE_SIZE } from "./timeline"
 
+export type ScrollAnchor = { id: string; seq: string; offset: number }
+
 function generationError() {
   return new IpcError({
     code: "DATA_GENERATION_CHANGED",
@@ -25,9 +27,12 @@ export function useChatSession() {
   const [firstItemIndex, setFirstItemIndex] = useState(INITIAL_ITEM_INDEX)
   const [windowRevision, setWindowRevision] = useState(0)
   const [targetMessageId, setTargetMessageId] = useState<string | null>(null)
+  const [restoreAnchor, setRestoreAnchor] = useState<ScrollAnchor | null>(null)
+  const chatActive = useRef(true)
+  const navigationEpoch = useRef(0)
   const snapshotRef = useRef<AppSnapshot | null>(null)
   const pageRef = useRef<MessagePage | null>(null)
-  const renderedAnchor = useRef<{ id: string; seq: string } | null>(null)
+  const renderedAnchor = useRef<ScrollAnchor | null>(null)
   const firstIndexRef = useRef(INITIAL_ITEM_INDEX)
   const atBottomRef = useRef(true)
   const eventCursor = useRef(0n)
@@ -61,12 +66,17 @@ export function useChatSession() {
     return next
   }, [])
 
-  const replaceWindow = useCallback(async (aroundSeq?: string, targetId?: string) => {
+  const setChatActive = useCallback((value: boolean) => {
+    if (chatActive.current === value) return
+    chatActive.current = value
+    navigationEpoch.current += 1
+  }, [])
+
+  const replaceWindow = useCallback(async (aroundSeq?: string, targetId?: string, anchor?: ScrollAnchor, navigation?: { epoch: number; followLatest?: boolean }) => {
     const current = snapshotRef.current
-    if (!current) return
+    if (!current) return false
     const token = lifecycle.current
     const epoch = ++viewEpoch.current
-    renderedAnchor.current = null
     const next = await ipc.list({
       data_generation_id: current.data_generation_id,
       before_seq: null,
@@ -74,11 +84,14 @@ export function useChatSession() {
       around_seq: aroundSeq ?? null,
       limit: PAGE_SIZE,
     })
-    if (token !== lifecycle.current || epoch !== viewEpoch.current) return
-    if (next.data_generation_id !== snapshotRef.current?.data_generation_id) return
+    if (token !== lifecycle.current || epoch !== viewEpoch.current) return false
+    if (next.data_generation_id !== snapshotRef.current?.data_generation_id) return false
+    if (navigation && (!chatActive.current || navigation.epoch !== navigationEpoch.current || (navigation.followLatest && !atBottomRef.current))) return false
+    renderedAnchor.current = anchor ?? null
     assignPage(next, INITIAL_ITEM_INDEX)
     setWindowRevision(epoch)
     setTargetMessageId(targetId ?? null)
+    setRestoreAnchor(anchor ?? null)
     setHasNewMessages(false)
     atBottomRef.current = !aroundSeq
     setAtBottom(!aroundSeq)
@@ -88,6 +101,7 @@ export function useChatSession() {
         if (token === lifecycle.current) setTargetMessageId(null)
       }, 900)
     }
+    return true
   }, [assignPage])
 
   const markNewMessages = useCallback(() => {
@@ -100,12 +114,13 @@ export function useChatSession() {
     const currentSnapshot = snapshotRef.current
     const currentPage = pageRef.current
     if (!currentSnapshot || !currentPage) return
-    if (!atBottomRef.current || currentPage.has_more_after) {
+    if (!chatActive.current || !atBottomRef.current || currentPage.has_more_after) {
       if (compareSequence(currentSnapshot.latest_message_seq, currentPage.last_seq ?? "0") > 0) markNewMessages()
       return
     }
     const token = lifecycle.current
     const epoch = viewEpoch.current
+    const navigation = navigationEpoch.current
     const next = await ipc.list({
       data_generation_id: currentSnapshot.data_generation_id,
       before_seq: null,
@@ -115,12 +130,14 @@ export function useChatSession() {
     })
     if (token !== lifecycle.current || epoch !== viewEpoch.current) return
     if (next.data_generation_id !== snapshotRef.current?.data_generation_id) return
-    if (!atBottomRef.current) {
+    if (!chatActive.current || navigation !== navigationEpoch.current || !atBottomRef.current) {
       if (next.items.length) markNewMessages()
       return
     }
     if (next.has_more_after) {
-      await replaceWindow()
+      const applied = await replaceWindow(undefined, undefined, undefined, { epoch: navigation, followLatest: true })
+      const updated = snapshotRef.current
+      if (!applied && token === lifecycle.current && updated && currentSnapshot.data_generation_id === updated.data_generation_id && compareSequence(updated.latest_message_seq, pageRef.current?.last_seq ?? "0") > 0) markNewMessages()
       return
     }
     const visible = pageRef.current
@@ -145,12 +162,12 @@ export function useChatSession() {
       setPage(null)
       await replaceWindow()
     } else if (previous.room.content_epoch !== next.room.content_epoch) {
-      const wasAtLatest = atBottomRef.current && !currentPage.has_more_after
-      const anchor = renderedAnchor.current ?? currentPage.items[0]
+      const wasAtLatest = chatActive.current && atBottomRef.current && !currentPage.has_more_after
+      const anchor = renderedAnchor.current ?? (currentPage.items[0] ? { id: currentPage.items[0].id, seq: currentPage.items[0].seq, offset: 0 } : null)
       pageRef.current = null
       setPage(null)
       if (wasAtLatest || !anchor) await replaceWindow()
-      else await replaceWindow(anchor.seq, anchor.id)
+      else await replaceWindow(anchor.seq, undefined, anchor)
     } else {
       await synchronizeMessages()
     }
@@ -275,12 +292,13 @@ export function useChatSession() {
   const loadPage = useCallback(async (direction: "before" | "after") => {
     const current = pageRef.current
     const currentSnapshot = snapshotRef.current
-    if (!current || !currentSnapshot || paginationBusy.current) return
+    if (!chatActive.current || !current || !currentSnapshot || paginationBusy.current) return
     if (direction === "before" ? !current.has_more_before : !current.has_more_after) return
     paginationBusy.current = true
     setLoadingMore(true)
     const token = lifecycle.current
     const epoch = viewEpoch.current
+    const navigation = navigationEpoch.current
     try {
       const next = await ipc.list({
         data_generation_id: currentSnapshot.data_generation_id,
@@ -290,6 +308,7 @@ export function useChatSession() {
         limit: PAGE_SIZE,
       })
       if (token !== lifecycle.current || epoch !== viewEpoch.current || next.data_generation_id !== snapshotRef.current?.data_generation_id) return
+      if (!chatActive.current || navigation !== navigationEpoch.current) return
       const visible = pageRef.current
       if (!visible) return
       const merged = mergePage(visible, next, direction, firstIndexRef.current)
@@ -338,23 +357,25 @@ export function useChatSession() {
   }, [assignSnapshot])
 
   const goToLatest = useCallback(async () => {
+    if (!chatActive.current) return
     try {
-      await replaceWindow()
+      await replaceWindow(undefined, undefined, undefined, { epoch: navigationEpoch.current })
     } catch (cause) {
       report(cause)
     }
   }, [replaceWindow, report])
 
   const jumpTo = useCallback(async (seq: string, id: string) => {
+    if (!chatActive.current) return
     try {
-      await replaceWindow(seq, id)
+      await replaceWindow(seq, id, undefined, { epoch: navigationEpoch.current })
     } catch (cause) {
       report(cause)
       throw cause
     }
   }, [replaceWindow, report])
 
-  const updateRenderedAnchor = useCallback((anchor: { id: string; seq: string }) => {
+  const updateRenderedAnchor = useCallback((anchor: ScrollAnchor) => {
     renderedAnchor.current = anchor
   }, [])
 
@@ -366,8 +387,8 @@ export function useChatSession() {
 
   return {
     snapshot, page, loading, loadingMore, error, hasNewMessages, atBottom,
-    firstItemIndex, windowRevision, targetMessageId,
-    reload, send, goToLatest, jumpTo, updateAtBottom, updateRenderedAnchor, applyRoom, applyAppearance,
+    firstItemIndex, windowRevision, targetMessageId, restoreAnchor,
+    reload, send, goToLatest, jumpTo, updateAtBottom, updateRenderedAnchor, setChatActive, applyRoom, applyAppearance,
     loadOlder: () => loadPage("before"),
     loadNewer: () => loadPage("after"),
   }

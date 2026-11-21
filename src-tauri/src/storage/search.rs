@@ -83,14 +83,14 @@ pub fn search_database(conn: &Connection, request: &ChatSearchRequest) -> AppRes
         ""
     };
     let sql = format!(
-        "SELECT m.id, m.seq, json_extract(m.sender_snapshot_json, '$.display_name'), substr(s.text, max(1, instr(s.text, ?1) - 30), ?4), m.created_at FROM search_text s JOIN messages m ON m.seq = s.seq WHERE m.state = 'visible' AND m.seq < ?2 AND instr(s.text, ?1) > 0{candidate} ORDER BY m.seq DESC LIMIT ?3"
+        "SELECT m.id, m.seq, m.sender_id, substr(s.text, max(1, instr(s.text, ?1) - 30), ?4), m.created_at FROM search_text s JOIN messages m ON m.seq = s.seq WHERE m.state = 'visible' AND m.seq < ?2 AND instr(s.text, ?1) > 0{candidate} ORDER BY m.seq DESC LIMIT ?3"
     );
     let mut statement = conn.prepare(&sql)?;
     let collect = |row: &rusqlite::Row<'_>| -> rusqlite::Result<SearchHit> {
         Ok(SearchHit {
             message_id: row.get(0)?,
             seq: row.get::<_, i64>(1)?.into(),
-            sender_display_name: row.get(2)?,
+            sender_id: row.get(2)?,
             snippet: row.get(3)?,
             created_at: row.get(4)?,
         })

@@ -268,7 +268,7 @@ mod tests {
     }
 
     #[test]
-    fn historical_sender_keeps_avatar_after_current_profile_changes() {
+    fn historical_sender_resolves_current_profile_after_avatar_changes() {
         let directory = TempDir::new().unwrap();
         let mut database = Database::open(directory.path(), "avatars".into()).unwrap();
         let avatar = database
@@ -318,11 +318,10 @@ mod tests {
                 limit: 50,
             })
             .unwrap();
-        assert_eq!(page.items[0].sender_snapshot.display_name, "原昵称");
-        assert_eq!(
-            page.items[0].sender_snapshot.avatar_id.as_deref(),
-            Some(avatar.id.as_str())
-        );
+        let profile = database.get_user_profile("avatars").unwrap();
+        assert_eq!(page.items[0].sender_id, profile.participant_id);
+        assert_eq!(profile.display_name, "新昵称");
+        assert_eq!(profile.avatar_id, None);
         assert!(database.read_avatar("avatars", &avatar.id).is_ok());
         assert!(database.read_avatar("wrong", &avatar.id).is_err());
         assert!(database.read_avatar("avatars", "../secrets").is_err());

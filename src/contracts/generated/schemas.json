@@ -2891,9 +2891,6 @@
           "sender_id": {
             "type": "string"
           },
-          "sender_snapshot": {
-            "$ref": "#/$defs/SenderSnapshot"
-          },
           "seq": {
             "$ref": "#/$defs/DecimalString"
           },
@@ -2905,7 +2902,6 @@
           "id",
           "seq",
           "sender_id",
-          "sender_snapshot",
           "created_at",
           "state",
           "parts",
@@ -3063,13 +3059,6 @@
         ],
         "type": "string"
       },
-      "ParticipantKind": {
-        "enum": [
-          "user",
-          "agent"
-        ],
-        "type": "string"
-      },
       "Retryability": {
         "enum": [
           "never",
@@ -3083,30 +3072,6 @@
           "0.3"
         ],
         "type": "string"
-      },
-      "SenderSnapshot": {
-        "additionalProperties": false,
-        "properties": {
-          "avatar_id": {
-            "default": null,
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "display_name": {
-            "type": "string"
-          },
-          "kind": {
-            "$ref": "#/$defs/ParticipantKind"
-          }
-        },
-        "required": [
-          "display_name",
-          "kind",
-          "avatar_id"
-        ],
-        "type": "object"
       }
     },
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3281,7 +3246,7 @@
           "message_id": {
             "type": "string"
           },
-          "sender_display_name": {
+          "sender_id": {
             "type": "string"
           },
           "seq": {
@@ -3294,7 +3259,7 @@
         "required": [
           "message_id",
           "seq",
-          "sender_display_name",
+          "sender_id",
           "snippet",
           "created_at"
         ],

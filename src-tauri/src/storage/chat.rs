@@ -200,7 +200,7 @@ pub fn validate_list(request: &ChatListRequest) -> AppResult<()> {
 }
 
 pub(crate) fn load_messages(conn: &Connection, sequences: &[i64]) -> AppResult<Vec<ChatMessage>> {
-    let mut message_statement = conn.prepare("SELECT id, sender_id, sender_snapshot_json, created_at, state, quote_message_id, mention_all FROM messages WHERE seq = ?1")?;
+    let mut message_statement = conn.prepare("SELECT id, sender_id, created_at, state, quote_message_id, mention_all FROM messages WHERE seq = ?1")?;
     let mut parts_statement =
         conn.prepare("SELECT text FROM message_parts WHERE message_id = ?1 ORDER BY ordinal")?;
     let mut mentions_statement = conn.prepare(
@@ -209,8 +209,7 @@ pub(crate) fn load_messages(conn: &Connection, sequences: &[i64]) -> AppResult<V
     sequences
         .iter()
         .map(|&seq| {
-            let (id, sender_id, snapshot, created_at, state, quote, mention_all): (
-                String,
+            let (id, sender_id, created_at, state, quote, mention_all): (
                 String,
                 String,
                 i64,
@@ -225,7 +224,6 @@ pub(crate) fn load_messages(conn: &Connection, sequences: &[i64]) -> AppResult<V
                     row.get(3)?,
                     row.get(4)?,
                     row.get(5)?,
-                    row.get(6)?,
                 ))
             })?;
             let parts = parts_statement
@@ -239,7 +237,6 @@ pub(crate) fn load_messages(conn: &Connection, sequences: &[i64]) -> AppResult<V
                 id,
                 seq: seq.into(),
                 sender_id,
-                sender_snapshot: serde_json::from_str(&snapshot)?,
                 created_at,
                 parts: if state == MessageState::Visible {
                     parts
@@ -319,9 +316,9 @@ pub(crate) fn insert_message(
     mention_all: bool,
     text: &str,
 ) -> AppResult<(ChatSendResult, DomainEvent)> {
-    let (owner, display_name, kind, avatar_id): (String, String, String, Option<String>) = transaction.query_row(
-        "SELECT r.owner_participant_id, p.display_name, p.kind, p.avatar_id FROM room r JOIN participants p ON p.id = ?1 WHERE r.singleton = 1",
-        [sender_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    let owner: String = transaction.query_row(
+        "SELECT r.owner_participant_id FROM room r JOIN participants p ON p.id = ?1 WHERE r.singleton = 1",
+        [sender_id], |row| row.get(0),
     )?;
     if mention_all && owner != sender_id {
         return Err(AppError::new(
@@ -351,23 +348,12 @@ pub(crate) fn insert_message(
             ));
         }
     }
-    let snapshot = SenderSnapshot {
-        display_name,
-        kind: serde_json::from_value(serde_json::Value::String(kind))?,
-        avatar_id,
-    };
     let message_id = Uuid::now_v7().to_string();
-    transaction.execute("INSERT INTO messages(id, room_id, sender_id, sender_snapshot_json, created_at, quote_message_id, mention_all) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)", params![message_id, room_id, sender_id, serde_json::to_string(&snapshot)?, now_ms(), quote, mention_all])?;
+    transaction.execute("INSERT INTO messages(id, room_id, sender_id, created_at, quote_message_id, mention_all) VALUES (?1, ?2, ?3, ?4, ?5, ?6)", params![message_id, room_id, sender_id, now_ms(), quote, mention_all])?;
     let message_seq = transaction.last_insert_rowid();
     transaction.execute(
         "INSERT INTO runtime_message_activity(message_seq,message_id,sender_id) VALUES (?1,?2,?3)",
         params![message_seq, message_id, sender_id],
-    )?;
-    super::configuration::update_avatar_refs(
-        transaction,
-        "message",
-        &message_id,
-        &snapshot.avatar_id,
     )?;
     for (ordinal, part) in parts.iter().enumerate() {
         if let MessagePart::Text { text } = part {
@@ -383,8 +369,7 @@ pub(crate) fn insert_message(
             params![message_id, id, ordinal as i64],
         )?;
     }
-    // No FTS triggers with trusted_schema=OFF; both indexes still commit with
-    // the message, mentions, avatar reference, and domain event.
+    // trusted_schema=OFF requires updating FTS explicitly within this transaction.
     transaction.execute(
         "INSERT INTO search_text(seq, text) VALUES (?1, ?2)",
         params![message_seq, text],

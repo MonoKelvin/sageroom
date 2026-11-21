@@ -176,7 +176,7 @@ describe("聊天室数据与事件", () => {
     await waitFor(() => expect(result.current.page?.items).toHaveLength(3))
     act(() => {
       result.current.updateAtBottom(false)
-      result.current.updateRenderedAnchor({ id: "message-11", seq: "11" })
+      result.current.updateRenderedAnchor({ id: "message-11", seq: "11", offset: -17 })
     })
     vi.mocked(ipc.snapshot).mockResolvedValue({ ...original, room: { ...original.room, content_epoch: "1" }, latest_event_seq: "23", requires_full_reload: true })
     let complete!: (value: ReturnType<typeof page>) => void
@@ -190,7 +190,8 @@ describe("聊天室数据与事件", () => {
     await act(async () => { complete(corrected); await refresh })
     expect(ipc.list).toHaveBeenLastCalledWith(expect.objectContaining({ around_seq: "11" }))
     expect(result.current.page?.items[1]?.parts).toEqual([])
-    expect(result.current.targetMessageId).toBe("message-11")
+    expect(result.current.targetMessageId).toBeNull()
+    expect(result.current.restoreAnchor).toEqual({ id: "message-11", seq: "11", offset: -17 })
     expect(result.current.atBottom).toBe(false)
   })
 

@@ -826,18 +826,10 @@ fn agent_save_replay_and_revision_conflict_preserve_active_and_historical_versio
 }
 
 #[test]
-fn user_profile_rename_preserves_historical_sender_and_survives_restart() {
+fn user_profile_rename_updates_historical_sender_and_survives_restart() {
     let (directory, mut database) = database();
     let before_profile = database.get_user_profile(GENERATION).unwrap();
     let before_message = send(&mut database, "message-before-rename", "改名前的消息");
-    let raw_before: String = database
-        .conn
-        .query_row(
-            "SELECT sender_snapshot_json FROM messages WHERE id=?1",
-            [&before_message.message_id],
-            |row| row.get(0),
-        )
-        .unwrap();
     let request = UserProfileSaveRequest {
         data_generation_id: GENERATION.into(),
         client_request_id: "rename-user".into(),
@@ -866,21 +858,15 @@ fn user_profile_rename_preserves_historical_sender_and_survives_restart() {
         .iter()
         .find(|message| message.id == after_message.message_id)
         .unwrap();
-    assert_eq!(
-        old.sender_snapshot.display_name,
-        before_profile.display_name
-    );
-    assert_eq!(new.sender_snapshot.display_name, saved.display_name);
+    assert_eq!(old.sender_id, saved.participant_id);
     assert_eq!(old.sender_id, new.sender_id);
-    let raw_after: String = database
-        .conn
-        .query_row(
-            "SELECT sender_snapshot_json FROM messages WHERE id=?1",
-            [&old.id],
-            |row| row.get(0),
-        )
+    let participant = super::chat::participants(&database.conn)
+        .unwrap()
+        .into_iter()
+        .find(|participant| participant.id == old.sender_id)
         .unwrap();
-    assert_eq!(raw_before, raw_after);
+    assert_eq!(participant.display_name, saved.display_name);
+    assert_eq!(participant.avatar_id, saved.avatar_id);
     assert_eq!(count(&database.conn, "domain_events"), 3);
     drop(database);
     let mut restarted = Database::open(directory.path(), "user-restarted".into()).unwrap();
@@ -894,9 +880,8 @@ fn user_profile_rename_preserves_historical_sender_and_survives_restart() {
             .iter()
             .find(|message| message.id == before_message.message_id)
             .unwrap()
-            .sender_snapshot
-            .display_name,
-        before_profile.display_name
+            .sender_id,
+        saved.participant_id
     );
 }
 

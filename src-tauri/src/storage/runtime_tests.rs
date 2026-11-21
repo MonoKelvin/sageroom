@@ -434,7 +434,7 @@ fn connection_test_quota_is_separate_durable_and_included_in_the_global_cap() {
 }
 
 #[test]
-fn sender_identity_avatar_mentions_indexes_chain_and_snapshot_commit_in_one_transaction() {
+fn sender_identity_mentions_indexes_and_chain_commit_in_one_transaction() {
     let (_directory, mut database, mut agent) = fixture();
     database.conn.execute("INSERT INTO avatar_objects VALUES ('runtime-avatar','avatars/runtime.png','image/png',1,1,1,'test-hash')", []).unwrap();
     agent.display_name = "真实成员昵称".into();
@@ -469,9 +469,14 @@ fn sender_identity_avatar_mentions_indexes_chain_and_snapshot_commit_in_one_tran
         .unwrap();
     let stored = page.items.last().unwrap();
     assert_eq!(stored.sender_id, agent.agent_id);
-    assert_eq!(stored.sender_snapshot.kind, ParticipantKind::Agent);
-    assert_eq!(stored.sender_snapshot.display_name, agent.display_name);
-    assert_eq!(stored.sender_snapshot.avatar_id, agent.avatar_id);
+    let participant = super::chat::participants(&database.conn)
+        .unwrap()
+        .into_iter()
+        .find(|participant| participant.id == stored.sender_id)
+        .unwrap();
+    assert_eq!(participant.kind, ParticipantKind::Agent);
+    assert_eq!(participant.display_name, agent.display_name);
+    assert_eq!(participant.avatar_id, agent.avatar_id);
     assert_eq!(stored.mention_ids, vec![database.local_user_id.clone()]);
     assert_eq!(
         database
@@ -488,7 +493,7 @@ fn sender_identity_avatar_mentions_indexes_chain_and_snapshot_commit_in_one_tran
                 |row| row.get::<_, i64>(0)
             )
             .unwrap(),
-        1
+        0
     );
     let search = search_database(
         &database.conn,
@@ -502,23 +507,16 @@ fn sender_identity_avatar_mentions_indexes_chain_and_snapshot_commit_in_one_tran
     )
     .unwrap();
     assert_eq!(search.items[0].message_id, committed.message_id);
+    assert_eq!(search.items[0].sender_id, agent.agent_id);
     let mut renamed = agent;
     renamed.display_name = "之后改名".into();
-    save_agent(&mut database, renamed);
-    let snapshot: String = database
-        .conn
-        .query_row(
-            "SELECT sender_snapshot_json FROM messages WHERE id=?1",
-            [&committed.message_id],
-            |row| row.get(0),
-        )
+    let renamed = save_agent(&mut database, renamed);
+    let participant = super::chat::participants(&database.conn)
+        .unwrap()
+        .into_iter()
+        .find(|participant| participant.id == stored.sender_id)
         .unwrap();
-    assert_eq!(
-        serde_json::from_str::<SenderSnapshot>(&snapshot)
-            .unwrap()
-            .display_name,
-        "真实成员昵称"
-    );
+    assert_eq!(participant.display_name, renamed.display_name);
     verify_database(&database.conn).unwrap();
 }
 

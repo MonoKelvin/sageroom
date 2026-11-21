@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { IconMessageCircle, IconUsers } from "@tabler/icons-react"
 import type { ApplicationPageProps } from "@/app/navigation"
 import { WorkspaceList } from "@/components/WorkspaceList"
@@ -16,6 +16,10 @@ export function ChatView({ session, active, onNavigate }: ApplicationPageProps) 
   const [chatCard, setChatCard] = useState<HTMLElement | null>(null)
   const [scrollToBottomSignal, setScrollToBottomSignal] = useState(0)
   const snapshot = session.snapshot
+  const participants = useMemo(() => new Map(snapshot?.participants.map((participant) => [participant.id, participant])), [snapshot?.participants])
+  const visible = useRef(active)
+  const navigationEpoch = useRef(0)
+  useLayoutEffect(() => { visible.current = active; navigationEpoch.current += 1 }, [active])
   const scenes = snapshot ? availableScenes(snapshot) : []
   const scene = scenes[0]
   const returnTarget = useRef<HTMLElement | null>(null)
@@ -31,9 +35,12 @@ export function ChatView({ session, active, onNavigate }: ApplicationPageProps) 
   async function handleSend(text: string, requestId: string) {
     const adapter = sceneAdapters[scene?.kind ?? "group"]
     if (!adapter) throw new Error("当前聊天对象不可用。")
+    const navigation = navigationEpoch.current
     const result = await adapter.send(session, text, requestId)
+    if (!visible.current || navigation !== navigationEpoch.current) return result
     if (session.page?.has_more_after || !session.atBottom) await session.goToLatest()
     else session.updateAtBottom(true)
+    if (!visible.current || navigation !== navigationEpoch.current) return result
     setScrollToBottomSignal((value) => value + 1)
     return result
   }
@@ -69,14 +76,14 @@ export function ChatView({ session, active, onNavigate }: ApplicationPageProps) 
           <p className="panel-description">{snapshot ? `${onlineCount} 位成员在线` : session.loading ? "正在读取本地聊天" : "本地数据未就绪"}</p>
         </div>
         <div className="chat-heading-actions">
-          <SearchPanel open={panel === "search" && active} onOpenChange={(open) => { if (open) openPanel("search"); else closePanel() }} generation={snapshot?.data_generation_id ?? null} onLocate={session.jumpTo} onReturnFocus={restoreFocus} />
+          <SearchPanel open={panel === "search" && active} onOpenChange={(open) => { if (open) openPanel("search"); else closePanel() }} generation={snapshot?.data_generation_id ?? null} participants={participants} onLocate={session.jumpTo} onReturnFocus={restoreFocus} />
           <Tooltip disableHoverableContent><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label="群信息" aria-expanded={panel === "members"} onClick={() => openPanel("members")}><IconUsers size={20} stroke={1.5} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>群信息</TooltipContent></Tooltip>
         </div>
       </header>
       {session.error && <div className="chat-error" role="alert"><p>{session.error}</p><Button size="sm" variant="ghost" onClick={() => void session.reload()}>重试连接</Button></div>}
       <div className="chat-body">
         <div className="chat-conversation">
-          {session.page && snapshot ? <MessageList key={session.windowRevision} active={active} page={session.page} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !session.page.has_more_after} hasNewMessages={session.hasNewMessages} scrollToBottomSignal={scrollToBottomSignal} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={session.goToLatest} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}
+          {session.page && snapshot ? <MessageList key={session.windowRevision} active={active} page={session.page} participants={participants} restoreAnchor={session.restoreAnchor} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !session.page.has_more_after} hasNewMessages={session.hasNewMessages} scrollToBottomSignal={scrollToBottomSignal} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={session.goToLatest} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}
           <MessageComposer active={active} dataGenerationId={snapshot?.data_generation_id ?? null} disabled={!snapshot} onSend={handleSend} />
         </div>
       </div>

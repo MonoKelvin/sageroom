@@ -51,7 +51,7 @@ function UserEditor({ active, onNavigate }: ApplicationPageProps) {
     <WorkspaceList aria-label="用户资料导航">
       <div className="panel-heading"><h1 className="panel-title">用户</h1></div>
       <div className="list-entry" data-active="true"><IconUserCircle size={22} aria-hidden="true" /><span className="config-entry-text"><strong>{profile?.display_name || "我的资料"}</strong><span>本机用户</span></span></div>
-      <p className="form-caption p-3">昵称和头像用于之后发送的消息，历史消息保留发送时的资料。</p>
+      <p className="form-caption p-3">昵称和头像修改后，会同步更新所有历史消息。</p>
       <Button variant="ghost" size="sm" onClick={() => onNavigate("chat")}>返回聊天</Button>
     </WorkspaceList>
     <div className="workspace-detail"><section className="surface-card">
@@ -60,7 +60,7 @@ function UserEditor({ active, onNavigate }: ApplicationPageProps) {
         {!profile && <p className="form-caption">{state.loading ? "正在读取本地资料…" : "资料尚未就绪。"}</p>}
         {profile && <fieldset disabled={runtime.exiting} className="config-stack">
           <div className="config-avatar-row"><Avatar name={profile.display_name} avatarId={profile.avatar_id} generation={generation} size={72} retryable /><div className="config-stack"><div className="config-actions"><Button variant="secondary" size="sm" disabled={avatarPending} onClick={() => void importAvatar()}><IconPhoto size={16} aria-hidden="true" />{avatarPending ? "正在选择…" : "选择头像"}</Button>{profile.avatar_id && <Button variant="ghost" size="sm" onClick={() => setConfirmRemoveAvatar(true)}>移除头像</Button>}</div><p className="form-caption">选择 PNG 或 JPEG，成功后直接应用。</p></div></div>
-          {confirmRemoveAvatar && <div className="config-notice"><p>移除当前头像？历史消息中的头像不受影响。</p><div className="config-actions"><Button size="sm" onClick={() => void removeAvatar()}>确认移除头像</Button><Button variant="ghost" size="sm" onClick={() => setConfirmRemoveAvatar(false)}>保留头像</Button></div></div>}
+          {confirmRemoveAvatar && <div className="config-notice"><p>移除当前头像？历史消息也会改用默认头像。</p><div className="config-actions"><Button size="sm" onClick={() => void removeAvatar()}>确认移除头像</Button><Button variant="ghost" size="sm" onClick={() => setConfirmRemoveAvatar(false)}>保留头像</Button></div></div>}
           <SettingSection title="基本资料" description="文本离开输入框或确认后应用，取消会还原本次编辑。">
             <Field label="昵称"><EditableInput label="昵称" active={active} maxLength={80} value={profile.display_name} normalize={(next) => next.trim()} validate={(next) => validateText(next, 80, true)} onApply={(display_name) => store.updateUser({ display_name })} /></Field>
             <Field label="简介"><EditableTextarea label="简介" active={active} rows={4} maxLength={2000} value={profile.introduction} placeholder="写下你愿意分享的介绍" validate={(next) => validateText(next, 2000)} onApply={(introduction) => store.updateUser({ introduction })} /></Field>

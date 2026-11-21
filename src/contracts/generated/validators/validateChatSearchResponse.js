@@ -43,7 +43,7 @@ function validate155(data, { instancePath = "", parentData, parentDataProperty, 
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		let missing0;
-		if (data.message_id === void 0 && (missing0 = "message_id") || data.seq === void 0 && (missing0 = "seq") || data.sender_display_name === void 0 && (missing0 = "sender_display_name") || data.snippet === void 0 && (missing0 = "snippet") || data.created_at === void 0 && (missing0 = "created_at")) {
+		if (data.message_id === void 0 && (missing0 = "message_id") || data.seq === void 0 && (missing0 = "seq") || data.sender_id === void 0 && (missing0 = "sender_id") || data.snippet === void 0 && (missing0 = "snippet") || data.created_at === void 0 && (missing0 = "created_at")) {
 			validate155.errors = [{
 				instancePath,
 				schemaPath: "#/required",
@@ -53,7 +53,7 @@ function validate155(data, { instancePath = "", parentData, parentDataProperty, 
 			}];
 			return false;
 		} else {
-			for (const key0 in data) if (!(key0 === "created_at" || key0 === "message_id" || key0 === "sender_display_name" || key0 === "seq" || key0 === "snippet")) {
+			for (const key0 in data) if (!(key0 === "created_at" || key0 === "message_id" || key0 === "sender_id" || key0 === "seq" || key0 === "snippet")) {
 				validate155.errors = [{
 					instancePath,
 					schemaPath: "#/additionalProperties",
@@ -119,11 +119,11 @@ function validate155(data, { instancePath = "", parentData, parentDataProperty, 
 					var valid0 = true;
 				} else var valid0 = true;
 				if (valid0) {
-					if (data.sender_display_name !== void 0) {
-						if (typeof data.sender_display_name !== "string") {
+					if (data.sender_id !== void 0) {
+						if (typeof data.sender_id !== "string") {
 							validate155.errors = [{
-								instancePath: instancePath + "/sender_display_name",
-								schemaPath: "#/properties/sender_display_name/type",
+								instancePath: instancePath + "/sender_id",
+								schemaPath: "#/properties/sender_id/type",
 								keyword: "type",
 								params: { type: "string" },
 								message: "must be string"

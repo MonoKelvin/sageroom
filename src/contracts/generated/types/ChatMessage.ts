@@ -2,6 +2,5 @@
 import type { DecimalString } from "./DecimalString";
 import type { MessagePart } from "./MessagePart";
 import type { MessageState } from "./MessageState";
-import type { SenderSnapshot } from "./SenderSnapshot";
 
-export type ChatMessage = { id: string, seq: DecimalString, sender_id: string, sender_snapshot: SenderSnapshot, created_at: number, state: MessageState, parts: Array<MessagePart>, quote_message_id: string | null, mention_ids: Array<string>, mention_all: boolean, };
+export type ChatMessage = { id: string, seq: DecimalString, sender_id: string, created_at: number, state: MessageState, parts: Array<MessagePart>, quote_message_id: string | null, mention_ids: Array<string>, mention_all: boolean, };

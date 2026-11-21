@@ -1,36 +1,42 @@
 import { useEffect, useEffectEvent, useRef, useState, type FormEvent } from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { IconCornerDownRight, IconSearch, IconX } from "@tabler/icons-react"
-import type { SearchPage } from "@/contracts/generated"
+import type { Participant, SearchPage } from "@/contracts/generated"
 import { Avatar } from "@/components/Avatar"
 import { Button } from "@/components/ui/button"
 import { errorMessage, ipc } from "@/app/ipc"
 import { ChatSearchInput } from "./ChatSearchInput"
 
 const formatter = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+const SNIPPET_CONTEXT_LENGTH = 10
 
 function Highlight({ text, query }: { text: string; query: string }) {
-  if (!query) return <>{text}</>
+  const matchIndex = query ? text.indexOf(query) : -1
+  if (matchIndex < 0) return <>{text}</>
+  const before = [...text.slice(0, matchIndex)]
+  const after = [...text.slice(matchIndex + query.length)]
+  const snippet = before.slice(-SNIPPET_CONTEXT_LENGTH).join("") + query + after.slice(0, SNIPPET_CONTEXT_LENGTH).join("")
   const parts = []
   let from = 0
-  let index = text.indexOf(query)
+  let index = snippet.indexOf(query)
   while (index >= 0) {
-    parts.push(text.slice(from, index), <mark key={index} className="chat-search-match">{text.slice(index, index + query.length)}</mark>)
+    parts.push(snippet.slice(from, index), <mark key={index} className="chat-search-match">{snippet.slice(index, index + query.length)}</mark>)
     from = index + query.length
-    index = text.indexOf(query, from)
+    index = snippet.indexOf(query, from)
   }
-  parts.push(text.slice(from))
-  return <>{parts}</>
+  parts.push(snippet.slice(from))
+  return <>{before.length > SNIPPET_CONTEXT_LENGTH && "..."}{parts}{after.length > SNIPPET_CONTEXT_LENGTH && "..."}</>
 }
 
 type FormProps = {
+  participants: ReadonlyMap<string, Participant>
   generation: string
   enabled: boolean
   onLocate: (seq: string, messageId: string) => Promise<void>
   onClose: () => void
 }
 
-function SearchForm({ generation, enabled, onLocate, onClose }: FormProps) {
+function SearchForm({ generation, participants, enabled, onLocate, onClose }: FormProps) {
   const [query, setQuery] = useState("")
   const [composing, setComposing] = useState(false)
   const [result, setResult] = useState<SearchPage | null>(null)
@@ -141,20 +147,26 @@ function SearchForm({ generation, enabled, onLocate, onClose }: FormProps) {
       {error && <p role="alert" className="chat-search-feedback">{error}</p>}
       {result && !pending && !notice && result.items.length === 0 && <p className="chat-search-empty">没有匹配的消息。</p>}
       <ul aria-label="搜索结果" className="chat-search-list">
-        {result?.items.map((hit) => <li key={hit.message_id}>
-          <button type="button" className="chat-search-result" onClick={() => void locate(hit.seq, hit.message_id)} aria-label={`定位${hit.sender_display_name}的消息`}>
-            <span className="chat-search-sender"><Avatar name={hit.sender_display_name} size={28} /><span className="chat-search-author">{hit.sender_display_name}</span><time dateTime={new Date(hit.created_at).toISOString()}>{formatter.format(hit.created_at)}</time></span>
-            <span className="chat-search-snippet"><Highlight text={hit.snippet} query={result!.query} /></span>
-            <IconCornerDownRight size={18} className="chat-search-locate" aria-hidden="true" />
-          </button>
-        </li>)}
+        {result?.items.map((hit) => {
+          const participant = participants.get(hit.sender_id)!
+          return <li key={hit.message_id}>
+            <button type="button" className="chat-search-result" onClick={() => void locate(hit.seq, hit.message_id)} aria-label={`定位${participant.display_name}的消息`}>
+              <span className="chat-search-sender"><Avatar name={participant.display_name} avatarId={participant.avatar_id} colorId={participant.kind === "agent" ? participant.id : undefined} generation={generation} size={28} /><span className="chat-search-author">{participant.display_name}</span><time dateTime={new Date(hit.created_at).toISOString()}>{formatter.format(hit.created_at)}</time></span>
+              <span className="chat-search-body">
+                <span className="chat-search-snippet"><Highlight text={hit.snippet} query={result!.query} /></span>
+                <span className="chat-search-locate" aria-hidden="true"><IconCornerDownRight size={18} /></span>
+              </span>
+            </button>
+          </li>
+        })}
       </ul>
       {result?.has_more && <Button className="chat-search-more" variant="ghost" size="sm" disabled={pending} onClick={() => void search(result.next_cursor)}>加载更早的匹配</Button>}
     </aside>}
   </>
 }
 
-export function SearchPanel({ open, onOpenChange, generation, onLocate, onReturnFocus }: {
+export function SearchPanel({ open, onOpenChange, generation, participants, onLocate, onReturnFocus }: {
+  participants: ReadonlyMap<string, Participant>
   open: boolean
   onOpenChange: (open: boolean) => void
   generation: string | null
@@ -170,7 +182,7 @@ export function SearchPanel({ open, onOpenChange, generation, onLocate, onReturn
         onCloseAutoFocus={(event) => { if (onReturnFocus) { event.preventDefault(); onReturnFocus() } }}
       >
         <DialogPrimitive.Title className="sr-only">搜索聊天</DialogPrimitive.Title>
-        {!generation ? <p className="chat-search-feedback">本地聊天数据尚未就绪。</p> : open && <SearchForm key={generation} generation={generation} enabled onLocate={onLocate} onClose={() => onOpenChange(false)} />}
+        {!generation ? <p className="chat-search-feedback">本地聊天数据尚未就绪。</p> : open && <SearchForm key={generation} generation={generation} participants={participants} enabled onLocate={onLocate} onClose={() => onOpenChange(false)} />}
       </DialogPrimitive.Content>
       <DialogPrimitive.Trigger asChild><Button type="button" variant="ghost" size="icon" className="chat-search-toggle" aria-label={open ? "关闭搜索" : "搜索聊天"}>{open ? <IconX size={20} stroke={1.5} aria-hidden="true" /> : <IconSearch size={20} stroke={1.5} aria-hidden="true" />}</Button></DialogPrimitive.Trigger>
     </div>

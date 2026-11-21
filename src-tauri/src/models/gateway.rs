@@ -47,8 +47,7 @@ impl Limits {
     }
 }
 
-/// Internal model output. The runtime must strictly parse it before publishing
-/// messages; intentionally not serializable as an IPC response.
+// Raw model output must be validated before crossing IPC.
 pub struct ChatReply {
     pub text: String,
     pub usage_input_tokens: Option<u32>,
@@ -129,8 +128,7 @@ impl ModelGateway {
                 ErrorCode::ShuttingDown, "模型调用队列已关闭。", false,
             ))?,
         };
-        // Queuing does not consume either the 90-second request deadline or the
-        // connection-test process budget. Dropping the future releases this permit.
+        // Queue time is excluded from the request deadline.
         let deadline = tokio::time::Instant::now() + self.chat_deadline;
         if cancellation.is_cancelled() {
             return Err(chat_cancelled(false));

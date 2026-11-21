@@ -128,16 +128,10 @@ fn assert_no_chat_rows(conn: &Connection) {
 fn populate_corpus(database: &mut Database, size: i64) {
     let room = database.room_id.clone();
     let user = database.local_user_id.clone();
-    let sender = serde_json::to_string(&SenderSnapshot {
-        display_name: "基准昵称".into(),
-        kind: ParticipantKind::User,
-        avatar_id: None,
-    })
-    .unwrap();
     let transaction = database.conn.transaction().unwrap();
     {
         let mut messages = transaction
-            .prepare("INSERT INTO messages(seq, id, room_id, sender_id, sender_snapshot_json, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
+            .prepare("INSERT INTO messages(seq, id, room_id, sender_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5)")
             .unwrap();
         let mut parts = transaction
             .prepare("INSERT INTO message_parts VALUES (?1, 0, 'text', ?2)")
@@ -161,7 +155,6 @@ fn populate_corpus(database: &mut Database, size: i64) {
                     id,
                     room,
                     user,
-                    sender,
                     1_760_000_000_000_i64 + index * 3_600_000
                 ])
                 .unwrap();
@@ -412,7 +405,7 @@ fn first_start_has_one_user_and_unconfigured_sage_without_fake_chat() {
 }
 
 #[test]
-fn restart_preserves_identity_history_and_sender_snapshot() {
+fn restart_preserves_identity_history_and_current_sender_profile() {
     let (directory, mut database) = database();
     let original = snapshot(&mut database);
     let sent = send(&mut database, "restart-request", "重启后的历史仍然可读");
@@ -431,7 +424,7 @@ fn restart_preserves_identity_history_and_sender_snapshot() {
     assert_eq!(restored.local_user.display_name, "修改后的昵称");
     let page = list(&mut reopened, 50);
     assert_eq!(page.items[0].id, sent.message_id);
-    assert_eq!(page.items[0].sender_snapshot.display_name, "我");
+    assert_eq!(page.items[0].sender_id, restored.local_user.id);
     assert_eq!(page.data_generation_id, "generation-restarted");
 }
 

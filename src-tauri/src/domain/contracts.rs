@@ -214,15 +214,6 @@ pub enum MessagePart {
     Emote { emote_id: String },
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
-#[serde(deny_unknown_fields)]
-pub struct SenderSnapshot {
-    pub display_name: String,
-    pub kind: ParticipantKind,
-    #[serde(default)]
-    pub avatar_id: Option<String>,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageState {
@@ -237,7 +228,6 @@ pub struct ChatMessage {
     pub id: String,
     pub seq: DecimalString,
     pub sender_id: String,
-    pub sender_snapshot: SenderSnapshot,
     #[ts(type = "number")]
     #[schemars(range(min = -9007199254740991.0, max = 9007199254740991.0))]
     pub created_at: i64,
@@ -387,7 +377,7 @@ pub struct ChatSearchRequest {
 pub struct SearchHit {
     pub message_id: String,
     pub seq: DecimalString,
-    pub sender_display_name: String,
+    pub sender_id: String,
     pub snippet: String,
     #[ts(type = "number")]
     #[schemars(range(min = -9007199254740991.0, max = 9007199254740991.0))]

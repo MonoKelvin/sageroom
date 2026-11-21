@@ -3,7 +3,9 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ipc } from "@/app/ipc"
 import { SearchPanel } from "./SearchPanel"
-import { GENERATION, searchPage } from "./chat.test-fixtures"
+import { GENERATION, searchPage, snapshot } from "./chat.test-fixtures"
+
+const participants = new Map(snapshot().participants.map((participant) => [participant.id, participant]))
 
 vi.mock("@/app/ipc", () => ({
   errorMessage: (error: unknown) => error instanceof Error ? error.message : "测试失败",
@@ -18,7 +20,7 @@ beforeEach(() => {
 describe("聊天搜索", () => {
   it("打开时不显示结果面板，输入内容后才出现，关闭后重新打开清空", () => {
     vi.mocked(ipc.search).mockResolvedValue(searchPage())
-    const props = { onOpenChange: vi.fn(), generation: GENERATION, onLocate: vi.fn().mockResolvedValue(undefined) }
+    const props = { participants, onOpenChange: vi.fn(), generation: GENERATION, onLocate: vi.fn().mockResolvedValue(undefined) }
     const { rerender } = render(<SearchPanel open {...props} />)
     expect(screen.queryByRole("complementary", { name: "搜索结果面板" })).not.toBeInTheDocument()
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索聊天文本" }), { target: { value: "测试" } })
@@ -33,7 +35,7 @@ describe("聊天搜索", () => {
     const onLocate = vi.fn().mockResolvedValue(undefined)
     const onOpenChange = vi.fn()
     vi.mocked(ipc.search).mockResolvedValue(searchPage())
-    render(<SearchPanel open onOpenChange={onOpenChange} generation={GENERATION} onLocate={onLocate} />)
+    render(<SearchPanel open participants={participants} onOpenChange={onOpenChange} generation={GENERATION} onLocate={onLocate} />)
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索聊天文本" }), { target: { value: "测试" } })
     fireEvent.click(screen.getByRole("button", { name: "开始搜索" }))
     fireEvent.click(await screen.findByRole("button", { name: "定位我的消息" }))
@@ -46,7 +48,7 @@ describe("聊天搜索", () => {
     const result = searchPage("测试")
     result.items[0].snippet = "测试内容，再次测试 <img src=x>"
     vi.mocked(ipc.search).mockResolvedValue(result)
-    render(<SearchPanel open onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
+    render(<SearchPanel open participants={participants} onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索聊天文本" }), { target: { value: "测试" } })
     fireEvent.click(screen.getByRole("button", { name: "开始搜索" }))
     const hit = await screen.findByRole("button", { name: "定位我的消息" })
@@ -60,7 +62,7 @@ describe("聊天搜索", () => {
     const result = searchPage(".*")
     result.items[0].snippet = "文字 .* 文字 .*"
     vi.mocked(ipc.search).mockResolvedValue(result)
-    render(<SearchPanel open onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
+    render(<SearchPanel open participants={participants} onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索聊天文本" }), { target: { value: ".*" } })
     fireEvent.click(screen.getByRole("button", { name: "开始搜索" }))
     expect((await screen.findByRole("button", { name: "定位我的消息" })).querySelectorAll("mark")).toHaveLength(2)
@@ -70,7 +72,7 @@ describe("聊天搜索", () => {
     vi.useFakeTimers()
     try {
       vi.mocked(ipc.search).mockResolvedValue(searchPage("中文"))
-      render(<SearchPanel open onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
+      render(<SearchPanel open participants={participants} onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
       const input = screen.getByRole("searchbox", { name: "搜索聊天文本" })
       fireEvent.compositionStart(input)
       fireEvent.change(input, { target: { value: "中" } })
@@ -89,7 +91,7 @@ describe("聊天搜索", () => {
 
   it("组合未结束时不提交检索", async () => {
     vi.mocked(ipc.search).mockResolvedValue(searchPage("中文"))
-    render(<SearchPanel open onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
+    render(<SearchPanel open participants={participants} onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
     const input = screen.getByRole("searchbox", { name: "搜索聊天文本" })
     fireEvent.compositionStart(input)
     fireEvent.change(input, { target: { value: "中文" } })
@@ -100,7 +102,7 @@ describe("聊天搜索", () => {
   it("取消后忽略迟到结果，不把取消当无匹配", async () => {
     let complete!: (value: ReturnType<typeof searchPage>) => void
     vi.mocked(ipc.search).mockReturnValue(new Promise((resolve) => { complete = resolve }))
-    render(<SearchPanel open onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
+    render(<SearchPanel open participants={participants} onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索聊天文本" }), { target: { value: "测试" } })
     fireEvent.click(screen.getByRole("button", { name: "开始搜索" }))
     fireEvent.click(await screen.findByRole("button", { name: "取消检索" }))
@@ -114,7 +116,7 @@ describe("聊天搜索", () => {
   it("新检索取消旧检索，旧结果不能覆盖新查询", async () => {
     let finishOld!: (value: ReturnType<typeof searchPage>) => void
     vi.mocked(ipc.search).mockReturnValueOnce(new Promise((resolve) => { finishOld = resolve })).mockResolvedValueOnce(searchPage("新查询"))
-    render(<SearchPanel open onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
+    render(<SearchPanel open participants={participants} onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
     const input = screen.getByRole("searchbox", { name: "搜索聊天文本" })
     fireEvent.change(input, { target: { value: "旧查询" } })
     fireEvent.click(screen.getByRole("button", { name: "开始搜索" }))
