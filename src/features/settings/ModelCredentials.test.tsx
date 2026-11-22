@@ -53,7 +53,7 @@ describe("安全即时凭据与显式连接测试", () => {
     render(panel())
     await screen.findByLabelText("API Key", { selector: "input" })
     expect(ipc.testModel).not.toHaveBeenCalled()
-    await userEvent.click(screen.getByRole("button", { name: "测试连接" }))
+    await userEvent.click(screen.getByRole("button", { name: "测试模型是否可用" }))
     const alert = await screen.findByRole("alert")
     expect(alert).toHaveTextContent(message)
     if (charged) expect(alert).toHaveTextContent("本次请求可能已计费，重试可能再次计费。")
@@ -66,44 +66,39 @@ describe("安全即时凭据与显式连接测试", () => {
     expect(ipc.testModel).not.toHaveBeenCalled()
     // Unconfirmed secret is canceled before the explicit network-test action.
     fireEvent.keyDown(input, { key: "Escape" })
-    await userEvent.click(screen.getByRole("button", { name: "测试连接" }))
+    await userEvent.click(screen.getByRole("button", { name: "测试模型是否可用" }))
     await screen.findByText("连接可用 · 80 ms")
     expect(screen.getByText("输入 12 tokens · 输出 1 tokens")).toBeInTheDocument()
     expect(ipc.testModel).toHaveBeenCalledWith({ data_generation_id: "generation-test", profile_id: "model-a", expected_revision: "1" })
   })
-  it("空输入不删除，明确移除确认后解绑并由 barrier 更新元数据", async () => {
+  it("空输入不写入，重新输入即覆盖旧密钥且不再提供移除入口", async () => {
     const data = mockConfigurationIpc()
     data.global.model_profiles[0].credential_configured = true
     render(panel())
     const input = await screen.findByLabelText("API Key", { selector: "input" })
     fireEvent.change(input, { target: { value: "  " } })
     fireEvent.blur(input)
-    expect(ipc.deleteSecret).not.toHaveBeenCalled()
     expect(ipc.setSecret).not.toHaveBeenCalled()
-    await userEvent.click(screen.getByRole("button", { name: "移除密钥" }))
-    expect(ipc.deleteSecret).not.toHaveBeenCalled()
-    await userEvent.click(screen.getByRole("button", { name: "确认移除" }))
-    await waitFor(() => expect(ipc.deleteSecret).toHaveBeenCalledTimes(1))
-    await screen.findByText("未配置系统密钥")
-    expect(ipc.getGlobalConfiguration).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole("button", { name: "移除密钥" })).not.toBeInTheDocument()
+    fireEvent.change(input, { target: { value: "new-key" } })
+    fireEvent.blur(input)
+    await waitFor(() => expect(ipc.setSecret).toHaveBeenCalledWith({ data_generation_id: "generation-test", profile_id: "model-a", expected_revision: "1", api_key: "new-key" }))
   })
-  it("模型标识暂留空时仍可明确移除已配置密钥，但不能测试", async () => {
+  it("模型名称留空时不能测试，且不提供移除密钥入口", async () => {
     const data = mockConfigurationIpc()
     data.global.model_profiles[0].model_name = ""
     data.global.model_profiles[0].credential_configured = true
     render(panel())
     await screen.findByLabelText("API Key", { selector: "input" })
-    expect(screen.getByRole("button", { name: "测试连接" })).toBeDisabled()
-    await userEvent.click(screen.getByRole("button", { name: "移除密钥" }))
-    await userEvent.click(screen.getByRole("button", { name: "确认移除" }))
-    await waitFor(() => expect(ipc.deleteSecret).toHaveBeenCalledTimes(1))
+    expect(screen.getByRole("button", { name: "测试模型是否可用" })).toBeDisabled()
+    expect(screen.queryByRole("button", { name: "移除密钥" })).not.toBeInTheDocument()
   })
   it("不完整模型不能绑定密钥或测试", async () => {
     const data = mockConfigurationIpc()
     data.global.model_profiles[0].base_url = ""
     render(panel())
     expect(await screen.findByLabelText("API Key", { selector: "input" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: "测试连接" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "测试模型是否可用" })).toBeDisabled()
     expect(ipc.testModel).not.toHaveBeenCalled()
   })
 })

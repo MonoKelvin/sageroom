@@ -7,7 +7,6 @@ import { Avatar } from "@/components/Avatar"
 import { WorkspaceList } from "@/components/WorkspaceList"
 import { Button } from "@/components/ui/button"
 import { EditableInput } from "@/components/ui/editable-input"
-import { EditableTextarea } from "@/components/ui/editable-textarea"
 import { SettingSection } from "@/components/ui/setting-row"
 import { userSections } from "./sections"
 import { Field, ResourceFeedback } from "@/features/settings/ConfigurationFields"
@@ -63,7 +62,6 @@ function UserEditor({ active, onNavigate }: ApplicationPageProps) {
           {confirmRemoveAvatar && <div className="config-notice"><p>移除当前头像？历史消息也会改用默认头像。</p><div className="config-actions"><Button size="sm" onClick={() => void removeAvatar()}>确认移除头像</Button><Button variant="ghost" size="sm" onClick={() => setConfirmRemoveAvatar(false)}>保留头像</Button></div></div>}
           <SettingSection title="基本资料" description="文本离开输入框或确认后应用，取消会还原本次编辑。">
             <Field label="昵称"><EditableInput label="昵称" active={active} maxLength={80} value={profile.display_name} normalize={(next) => next.trim()} validate={(next) => validateText(next, 80, true)} onApply={(display_name) => store.updateUser({ display_name })} /></Field>
-            <Field label="简介"><EditableTextarea label="简介" active={active} rows={4} maxLength={2000} value={profile.introduction} placeholder="写下你愿意分享的介绍" validate={(next) => validateText(next, 2000)} onApply={(introduction) => store.updateUser({ introduction })} /></Field>
           </SettingSection>
         </fieldset>}
         {avatarError && state.status !== "error" && <p role="alert">{avatarError}</p>}

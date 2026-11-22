@@ -1,14 +1,14 @@
 // generated/raw-validators/validateAgentRuntimeControlRequest.js
-var validateAgentRuntimeControlRequest = validate36;
-function validate36(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+var validateAgentRuntimeControlRequest = validate34;
+function validate34(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
-	const evaluated0 = validate36.evaluated;
+	const evaluated0 = validate34.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		let missing0;
 		if (data.data_generation_id === void 0 && (missing0 = "data_generation_id") || data.agent_id === void 0 && (missing0 = "agent_id") || data.paused === void 0 && (missing0 = "paused")) {
-			validate36.errors = [{
+			validate34.errors = [{
 				instancePath,
 				schemaPath: "#/required",
 				keyword: "required",
@@ -18,7 +18,7 @@ function validate36(data, { instancePath = "", parentData, parentDataProperty, r
 			return false;
 		} else {
 			for (const key0 in data) if (!(key0 === "agent_id" || key0 === "data_generation_id" || key0 === "paused")) {
-				validate36.errors = [{
+				validate34.errors = [{
 					instancePath,
 					schemaPath: "#/additionalProperties",
 					keyword: "additionalProperties",
@@ -29,7 +29,7 @@ function validate36(data, { instancePath = "", parentData, parentDataProperty, r
 			}
 			if (data.agent_id !== void 0) {
 				if (typeof data.agent_id !== "string") {
-					validate36.errors = [{
+					validate34.errors = [{
 						instancePath: instancePath + "/agent_id",
 						schemaPath: "#/properties/agent_id/type",
 						keyword: "type",
@@ -43,7 +43,7 @@ function validate36(data, { instancePath = "", parentData, parentDataProperty, r
 			if (valid0) {
 				if (data.data_generation_id !== void 0) {
 					if (typeof data.data_generation_id !== "string") {
-						validate36.errors = [{
+						validate34.errors = [{
 							instancePath: instancePath + "/data_generation_id",
 							schemaPath: "#/properties/data_generation_id/type",
 							keyword: "type",
@@ -57,7 +57,7 @@ function validate36(data, { instancePath = "", parentData, parentDataProperty, r
 				if (valid0) {
 					if (data.paused !== void 0) {
 						if (typeof data.paused !== "boolean") {
-							validate36.errors = [{
+							validate34.errors = [{
 								instancePath: instancePath + "/paused",
 								schemaPath: "#/properties/paused/type",
 								keyword: "type",
@@ -72,7 +72,7 @@ function validate36(data, { instancePath = "", parentData, parentDataProperty, r
 			}
 		}
 	} else {
-		validate36.errors = [{
+		validate34.errors = [{
 			instancePath,
 			schemaPath: "#/type",
 			keyword: "type",
@@ -81,10 +81,10 @@ function validate36(data, { instancePath = "", parentData, parentDataProperty, r
 		}];
 		return false;
 	}
-	validate36.errors = vErrors;
+	validate34.errors = vErrors;
 	return true;
 }
-validate36.evaluated = {
+validate34.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

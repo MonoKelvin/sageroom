@@ -3,9 +3,7 @@ use std::{collections::HashMap, fs::File, io::Read, path::Path};
 use uuid::Uuid;
 
 use crate::domain::{
-    contracts::{
-        AppError, ErrorCode, ModelParameters, ModelProfileInput, ModelProtocol, ReasoningMode,
-    },
+    contracts::{AppError, ErrorCode, ModelProfileInput, ModelProtocol},
     error::AppResult,
 };
 
@@ -93,13 +91,6 @@ fn parse(text: &str) -> AppResult<DevelopmentModel> {
             protocol,
             base_url: field("BASE_URL")?.into(),
             model_name: field("MODEL_NAME")?.into(),
-            parameters: ModelParameters {
-                temperature: 0.7,
-                top_p: 1.0,
-                max_output_tokens: 1024,
-                input_budget: 8192,
-                reasoning: ReasoningMode::Off,
-            },
         },
         api_key: api_key.into(),
     })

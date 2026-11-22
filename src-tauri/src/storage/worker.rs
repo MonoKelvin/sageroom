@@ -134,6 +134,11 @@ impl DbWorker {
             .unwrap_or_else(|| Err(shutting_down()))
     }
 
+    /// 记录一条智能体经历；写文件不阻塞数据库事务，直接在工作线程外执行。
+    pub fn record_experience(&self, agent_id: &str, experience: &str) -> AppResult<()> {
+        super::experience::record_from_decision(&self.root, agent_id, experience).map(|_| ())
+    }
+
     pub async fn snapshot(&self, request: AppSnapshotRequest) -> AppResult<AppSnapshot> {
         self.call(move |database| database.snapshot(request)).await
     }

@@ -283,7 +283,6 @@ mod tests {
                 client_request_id: "profile-avatar".into(),
                 expected_revision: 1.into(),
                 display_name: "原昵称".into(),
-                introduction: String::new(),
                 avatar_id: Some(avatar.id.clone()),
             })
             .unwrap();
@@ -305,7 +304,6 @@ mod tests {
                 client_request_id: "profile-no-avatar".into(),
                 expected_revision: 2.into(),
                 display_name: "新昵称".into(),
-                introduction: String::new(),
                 avatar_id: None,
             })
             .unwrap();

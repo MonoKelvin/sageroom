@@ -34,23 +34,22 @@ pub fn read_appearance(conn: &Connection) -> AppResult<Appearance> {
 
 pub(crate) fn participants(conn: &Connection) -> AppResult<Vec<Participant>> {
     let runtime_states = super::runtime::read_runtime_states(conn)?;
-    let mut statement = conn.prepare("SELECT id, kind, display_name, introduction, status, builtin_key, avatar_id, profile_revision FROM participants ORDER BY kind DESC, created_at, id")?;
+    let mut statement = conn.prepare("SELECT id, kind, display_name, status, builtin_key, avatar_id, profile_revision FROM participants ORDER BY kind DESC, created_at, id")?;
     let rows = statement.query_map([], |row| {
         Ok((
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
             row.get::<_, String>(3)?,
-            row.get::<_, String>(4)?,
+            row.get::<_, Option<String>>(4)?,
             row.get::<_, Option<String>>(5)?,
-            row.get::<_, Option<String>>(6)?,
-            row.get::<_, i64>(7)?,
+            row.get::<_, i64>(6)?,
         ))
     })?;
     rows.collect::<rusqlite::Result<Vec<_>>>()?
         .into_iter()
         .map(
-            |(id, kind, display_name, introduction, status, builtin, avatar_id, revision)| {
+            |(id, kind, display_name, status, builtin, avatar_id, revision)| {
                 let runtime = runtime_states
                     .iter()
                     .find(|state| state.agent_id == id)
@@ -62,7 +61,6 @@ pub(crate) fn participants(conn: &Connection) -> AppResult<Vec<Participant>> {
                 Ok(Participant {
                     id,
                     display_name,
-                    introduction,
                     kind: serde_json::from_value(serde_json::Value::String(kind))?,
                     status,
                     is_builtin: builtin.is_some(),

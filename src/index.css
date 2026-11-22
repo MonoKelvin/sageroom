@@ -30,6 +30,8 @@
   --semantic-accent-foreground: #ffffff;
   --action-primary: var(--text-primary);
   --status-error: var(--text-primary);
+  --status-danger: #c25b5b;
+  --status-warning: #b08038;
   --background: var(--surface-canvas);
   --foreground: var(--text-primary);
   --card: var(--surface-glass);
@@ -102,6 +104,8 @@
   --accent: rgb(255 255 255 / 9%);
   --destructive: #ffffff;
   --destructive-foreground: #151517;
+  --status-danger: #e08a8a;
+  --status-warning: #d9b06a;
   --border: rgb(255 255 255 / 10%);
   --input: rgb(255 255 255 / 12%);
   --control-bg: rgb(255 255 255 / 5%);
@@ -358,7 +362,7 @@
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar) transparent;
 }
-.chat-list-scroller, .composer-input {
+.chat-list-scroller, .composer-input, .chat-search-results-scroll {
   scrollbar-width: auto;
   scrollbar-color: auto;
 }

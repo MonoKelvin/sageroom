@@ -2,4 +2,4 @@
 import type { DecimalString } from "./DecimalString";
 import type { PersonaDimensions } from "./PersonaDimensions";
 
-export type PersonaPreset = { id: string, name: string, language_style: string, address_terms: Array<string>, skill: string, dimensions: PersonaDimensions, revision: DecimalString, };
+export type PersonaPreset = { id: string, name: string, language_style: string, skill: string, dimensions: PersonaDimensions, revision: DecimalString, };

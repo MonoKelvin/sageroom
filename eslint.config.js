@@ -15,6 +15,8 @@ export default defineConfig([
     "test-results/**",
     "playwright-report/**",
     ".test-results/**",
+    ".claude/**",
+    ".workbuddy/**",
   ]),
   {
     files: ["**/*.{ts,tsx}"],

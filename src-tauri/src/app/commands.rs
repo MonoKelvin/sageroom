@@ -259,20 +259,6 @@ pub async fn secret_set(
 }
 
 #[tauri::command]
-pub async fn secret_delete(
-    window: WebviewWindow,
-    state: State<'_, AppState>,
-    request: Value,
-) -> Result<ApiResponse<SecretStatus>, AppError> {
-    let result = async {
-        trusted_window(&window)?;
-        state.delete_secret(decode(request)?).await
-    }
-    .await;
-    Ok(result.into())
-}
-
-#[tauri::command]
 pub async fn secret_status(
     window: WebviewWindow,
     state: State<'_, AppState>,
@@ -403,6 +389,76 @@ pub fn app_request_exit(
         lifecycle::prepare_exit(window.app_handle().clone())
     })();
     result.into()
+}
+
+#[tauri::command]
+pub async fn experience_list(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<Vec<ExperienceEntry>>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.experience_list(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn experience_add(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<ExperienceEntry>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.experience_add(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn experience_delete(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<Vec<ExperienceEntry>>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.experience_delete(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn experience_prune(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<Vec<ExperienceEntry>>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.experience_prune(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn model_profile_list(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<ModelListResult>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.list_models(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
 }
 
 #[tauri::command]

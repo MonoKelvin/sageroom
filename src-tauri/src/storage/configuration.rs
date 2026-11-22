@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
+use serde::Deserialize;
 use uuid::Uuid;
 
 use super::{
@@ -12,7 +13,29 @@ use crate::domain::{
     error::{AppResult, now_ms, parse_counter, validate_id},
 };
 
-pub const BASE_SKILL: &str = "你是群里一位平等的智能体成员，不是默认服务某个人的客服。群主与成员聊天地位相同。没有新内容、不感兴趣或话题已经结束时允许沉默。按自己的性格自然表达，不每句总结、提供帮助或反问。不虚构新闻、经历或记忆，不为了拟人频繁错字或撤回。工具和联网始终受本地用户授权与预算约束。";
+/// 通用角色指令：构建期内嵌，运行时强制注入 system prompt，用户 skill 无法覆盖。
+pub const BASE_SKILL: &str = include_str!("../../../agent/SKILL.md");
+
+#[derive(Clone, Deserialize)]
+pub struct DefaultAgentSpec {
+    pub key: String,
+    pub display_name: String,
+    pub gender_description: String,
+    pub language_style: String,
+    pub dimensions: PersonaDimensions,
+}
+
+#[derive(Deserialize)]
+struct DefaultAgentFile {
+    agents: Vec<DefaultAgentSpec>,
+}
+
+/// 内置默认智能体的单一数据源：`agent/agents.json`。
+pub fn default_agent_specs() -> Vec<DefaultAgentSpec> {
+    serde_json::from_str::<DefaultAgentFile>(include_str!("../../../agent/agents.json"))
+        .expect("内置默认智能体配置必须有效")
+        .agents
+}
 
 pub fn default_dimensions() -> PersonaDimensions {
     PersonaDimensions {
@@ -27,38 +50,16 @@ pub fn default_dimensions() -> PersonaDimensions {
     }
 }
 
-pub fn sage_dimensions() -> PersonaDimensions {
-    PersonaDimensions {
-        professional: 85,
-        formal: 80,
-        casual: 85,
-        humor: 85,
-        direct: 85,
-        empathy: 90,
-        social_energy: 90,
-        activity: 90,
-    }
-}
-
-pub fn default_preferences() -> AgentPreferences {
-    AgentPreferences {
-        request_limit_daily: 500,
-        persistent_memory: false,
-        allow_autonomous_wake: false,
-    }
-}
-
 pub fn seed_configuration(conn: &Connection) -> AppResult<()> {
     conn.execute(
         "INSERT INTO global_configuration VALUES (1, 1, ?1)",
-        [serde_json::to_string(&default_preferences())?],
+        ["{}"],
     )?;
     let persona = PersonaPreset {
         id: "natural-member".into(),
         name: "自然成员".into(),
         language_style: "自然、简短、有具体语境".into(),
-        address_terms: Vec::new(),
-        skill: BASE_SKILL.into(),
+        skill: String::new(),
         dimensions: default_dimensions(),
         revision: 1_i64.into(),
     };
@@ -67,37 +68,31 @@ pub fn seed_configuration(conn: &Connection) -> AppResult<()> {
         params![persona.id, serde_json::to_string(&persona)?],
     )?;
     let mut statement = conn.prepare(
-        "SELECT id, display_name, introduction, avatar_id FROM participants WHERE kind = 'agent'",
+        "SELECT id, display_name, avatar_id FROM participants WHERE kind = 'agent'",
     )?;
     let agents = statement
         .query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(2)?,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    for (id, name, introduction, avatar_id) in agents {
+    let specs = default_agent_specs();
+    for (id, name, avatar_id) in agents {
+        let spec = specs.iter().find(|candidate| candidate.display_name == name);
         let config = AgentConfiguration {
             agent_id: id,
             revision: 1_i64.into(),
-            dimensions: if name == "Sage" {
-                sage_dimensions()
-            } else {
-                default_dimensions()
-            },
+            dimensions: spec.map(|item| item.dimensions.clone()).unwrap_or_else(default_dimensions),
             display_name: name,
-            introduction,
-            gender_description: None,
-            address_terms: Vec::new(),
-            language_style: persona.language_style.clone(),
-            skill: BASE_SKILL.into(),
+            gender_description: spec.map(|item| item.gender_description.clone()),
+            language_style: spec.map(|item| item.language_style.clone()).unwrap_or_else(|| persona.language_style.clone()),
+            skill: String::new(),
             avatar_id,
             agent_type: AgentType::Social,
             model: None,
-            preferences: default_preferences(),
         };
         conn.execute(
             "INSERT INTO agent_configurations VALUES (?1, 1)",
@@ -125,26 +120,11 @@ fn bounded(value: &str, field: &str, limit: usize, required: bool) -> AppResult<
     Ok(())
 }
 
-fn validate_parameters(value: &ModelParameters) -> AppResult<()> {
-    if !value.temperature.is_finite()
-        || !(0.0..=2.0).contains(&value.temperature)
-        || !value.top_p.is_finite()
-        || !(0.0..=1.0).contains(&value.top_p)
-        || value.top_p == 0.0
-        || !(1..=32768).contains(&value.max_output_tokens)
-        || !(256..=128000).contains(&value.input_budget)
-    {
-        return Err(AppError::invalid("parameters", "模型参数超出支持范围。"));
-    }
-    Ok(())
-}
-
 fn validate_profile(value: &ModelProfileInput) -> AppResult<()> {
     validate_id(&value.id, "profile_id")?;
     bounded(&value.name, "name", 80, true)?;
     bounded(&value.model_name, "model_name", 200, false)?;
     bounded(&value.base_url, "base_url", 2048, false)?;
-    validate_parameters(&value.parameters)?;
     if value.base_url.is_empty() {
         return Ok(());
     }
@@ -215,26 +195,6 @@ fn validate_dimensions(value: &PersonaDimensions) -> AppResult<()> {
     Ok(())
 }
 
-fn validate_preferences(value: &AgentPreferences) -> AppResult<()> {
-    if !(1..=5000).contains(&value.request_limit_daily) {
-        return Err(AppError::invalid(
-            "request_limit_daily",
-            "每日请求上限必须在 1～5000 之间。",
-        ));
-    }
-    Ok(())
-}
-
-fn validate_terms(terms: &[String]) -> AppResult<()> {
-    if terms.len() > 16 {
-        return Err(AppError::invalid("address_terms", "称呼最多 16 项。"));
-    }
-    for term in terms {
-        bounded(term, "address_terms", 80, true)?;
-    }
-    Ok(())
-}
-
 pub fn validate_avatar(conn: &Connection, avatar: &Option<String>) -> AppResult<()> {
     if let Some(id) = avatar {
         validate_id(id, "avatar_id")?;
@@ -273,10 +233,10 @@ pub fn update_avatar_refs(
 }
 
 fn read_global(conn: &Connection) -> AppResult<GlobalConfiguration> {
-    let (revision, preferences): (i64, String) = conn.query_row(
-        "SELECT revision, preferences_json FROM global_configuration WHERE singleton = 1",
+    let revision: i64 = conn.query_row(
+        "SELECT revision FROM global_configuration WHERE singleton = 1",
         [],
-        |row| Ok((row.get(0)?, row.get(1)?)),
+        |row| row.get(0),
     )?;
     let mut statement = conn.prepare("SELECT p.profile_json, p.revision, b.reference IS NOT NULL FROM model_profiles p LEFT JOIN credential_bindings b ON b.reference=p.credential_ref AND b.profile_id=p.id AND b.endpoint=json_extract(p.profile_json,'$.base_url') AND b.protocol=json_extract(p.profile_json,'$.protocol') ORDER BY p.id")?;
     let rows = statement
@@ -298,7 +258,6 @@ fn read_global(conn: &Connection) -> AppResult<GlobalConfiguration> {
                 protocol: input.protocol,
                 base_url: input.base_url,
                 model_name: input.model_name,
-                parameters: input.parameters,
                 revision: revision.into(),
                 credential_configured: configured,
             })
@@ -316,7 +275,6 @@ fn read_global(conn: &Connection) -> AppResult<GlobalConfiguration> {
         revision: revision.into(),
         model_profiles,
         persona_presets,
-        runtime_defaults: serde_json::from_str(&preferences)?,
     })
 }
 
@@ -355,7 +313,6 @@ impl Database {
                 protocol: input.protocol,
                 base_url: input.base_url,
                 model_name: input.model_name,
-                parameters: input.parameters,
                 revision: revision.into(),
                 credential_configured: reference.is_some(),
             },
@@ -443,7 +400,6 @@ impl Database {
         if request.model_profiles.len() > 32 || request.persona_presets.len() > 32 {
             return Err(AppError::invalid("presets", "模型或人格预设最多 32 项。"));
         }
-        validate_preferences(&request.runtime_defaults)?;
         let mut ids = HashSet::new();
         for profile in &request.model_profiles {
             validate_profile(profile)?;
@@ -459,7 +415,6 @@ impl Database {
             if persona.skill.len() > 65536 {
                 return Err(AppError::invalid("skill", "SKILL 不能超过 64KiB。"));
             }
-            validate_terms(&persona.address_terms)?;
             validate_dimensions(&persona.dimensions)?;
             if !persona_ids.insert(persona.id.clone()) {
                 return Err(AppError::invalid("persona_id", "人格预设标识重复。"));
@@ -469,7 +424,6 @@ impl Database {
             &request.expected_revision,
             &request.model_profiles,
             &request.persona_presets,
-            &request.runtime_defaults,
         ))?);
         let generation = self.generation_id.clone();
         let transaction = self
@@ -498,7 +452,7 @@ impl Database {
         let next_revision = revision
             .checked_add(1)
             .ok_or_else(|| AppError::invalid("expected_revision", "配置版本已达到数据库上限。"))?;
-        let changed = transaction.execute("UPDATE global_configuration SET revision = ?1, preferences_json = ?2 WHERE singleton = 1 AND revision = ?3", params![next_revision, serde_json::to_string(&request.runtime_defaults)?, revision])?;
+        let changed = transaction.execute("UPDATE global_configuration SET revision = ?1 WHERE singleton = 1 AND revision = ?2", params![next_revision, revision])?;
         if changed != 1 {
             return Err(AppError::new(
                 ErrorCode::ConfigConflict,
@@ -594,7 +548,6 @@ impl Database {
         let mut config = request.configuration;
         validate_id(&config.agent_id, "agent_id")?;
         bounded(&config.display_name, "display_name", 80, true)?;
-        bounded(&config.introduction, "introduction", 2000, false)?;
         bounded(&config.language_style, "language_style", 2000, false)?;
         if let Some(gender) = &config.gender_description {
             bounded(gender, "gender_description", 80, false)?;
@@ -605,9 +558,7 @@ impl Database {
                 "SKILL 超过长度上限或含无效字符。",
             ));
         }
-        validate_terms(&config.address_terms)?;
         validate_dimensions(&config.dimensions)?;
-        validate_preferences(&config.preferences)?;
         if let Some(model) = &config.model {
             require_configured_profile(&model.profile)?;
         }
@@ -683,9 +634,9 @@ impl Database {
         }
         config.revision = revision.into();
         if previous.is_none() {
-            transaction.execute("INSERT INTO participants(id, kind, display_name, introduction, status, created_at, avatar_id, profile_revision) VALUES (?1,'agent',?2,?3,'needs_configuration',?4,?5,1)", params![config.agent_id, config.display_name, config.introduction, now_ms(), config.avatar_id])?;
+            transaction.execute("INSERT INTO participants(id, kind, display_name, status, created_at, avatar_id, profile_revision) VALUES (?1,'agent',?2,'needs_configuration',?3,?4,1)", params![config.agent_id, config.display_name, now_ms(), config.avatar_id])?;
         } else {
-            transaction.execute("UPDATE participants SET display_name=?1,introduction=?2,avatar_id=?3,profile_revision=profile_revision+1 WHERE id=?4 AND kind='agent'", params![config.display_name, config.introduction, config.avatar_id, config.agent_id])?;
+            transaction.execute("UPDATE participants SET display_name=?1,avatar_id=?2,profile_revision=profile_revision+1 WHERE id=?3 AND kind='agent'", params![config.display_name, config.avatar_id, config.agent_id])?;
         }
         transaction.execute(
             "INSERT INTO agent_config_versions VALUES (?1,?2,?3)",
@@ -726,7 +677,7 @@ impl Database {
 
     pub fn get_user_profile(&self, generation: &str) -> AppResult<UserProfile> {
         self.check_generation(generation)?;
-        Ok(self.conn.query_row("SELECT id,display_name,introduction,avatar_id,profile_revision FROM participants WHERE id=?1 AND kind='user'", [&self.local_user_id], |row| Ok(UserProfile { participant_id: row.get(0)?, display_name: row.get(1)?, introduction: row.get(2)?, avatar_id: row.get(3)?, revision: row.get::<_,i64>(4)?.into() }))?)
+        Ok(self.conn.query_row("SELECT id,display_name,avatar_id,profile_revision FROM participants WHERE id=?1 AND kind='user'", [&self.local_user_id], |row| Ok(UserProfile { participant_id: row.get(0)?, display_name: row.get(1)?, avatar_id: row.get(2)?, revision: row.get::<_,i64>(3)?.into() }))?)
     }
 
     pub fn save_user_profile(
@@ -736,11 +687,9 @@ impl Database {
         self.check_generation(&request.data_generation_id)?;
         validate_id(&request.client_request_id, "client_request_id")?;
         bounded(&request.display_name, "display_name", 80, true)?;
-        bounded(&request.introduction, "introduction", 2000, false)?;
         let hash = fingerprint(&serde_json::to_vec(&(
             &request.expected_revision,
             &request.display_name,
-            &request.introduction,
             &request.avatar_id,
         ))?);
         let generation = self.generation_id.clone();
@@ -761,7 +710,7 @@ impl Database {
         let next_revision = expected
             .checked_add(1)
             .ok_or_else(|| AppError::invalid("expected_revision", "资料版本已达到数据库上限。"))?;
-        let changed = transaction.execute("UPDATE participants SET display_name=?1,introduction=?2,avatar_id=?3,profile_revision=?4 WHERE id=?5 AND profile_revision=?6 AND kind='user'", params![request.display_name, request.introduction, request.avatar_id, next_revision, user_id, expected])?;
+        let changed = transaction.execute("UPDATE participants SET display_name=?1,avatar_id=?2,profile_revision=?3 WHERE id=?4 AND profile_revision=?5 AND kind='user'", params![request.display_name, request.avatar_id, next_revision, user_id, expected])?;
         if changed != 1 {
             return Err(AppError::new(
                 ErrorCode::ConfigConflict,
@@ -777,7 +726,6 @@ impl Database {
         let profile = UserProfile {
             participant_id: user_id.clone(),
             display_name: request.display_name,
-            introduction: request.introduction,
             avatar_id: request.avatar_id,
             revision: result.into(),
         };
@@ -785,7 +733,6 @@ impl Database {
             id: user_id,
             kind: ParticipantKind::User,
             display_name: profile.display_name.clone(),
-            introduction: profile.introduction.clone(),
             status: ParticipantStatus::Present,
             is_builtin: false,
             avatar_id: profile.avatar_id.clone(),

@@ -18,12 +18,12 @@ export function message(seq: string | number, text = `测试消息 ${seq}`): Cha
 }
 
 export function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
-  const user: AppSnapshot["local_user"] = { id: USER_ID, kind: "user", display_name: "我", introduction: "本地用户", status: "present", is_builtin: false, avatar_id: null, profile_revision: "1" }
+  const user: AppSnapshot["local_user"] = { id: USER_ID, kind: "user", display_name: "我", status: "present", is_builtin: false, avatar_id: null, profile_revision: "1" }
   return {
     data_generation_id: GENERATION,
     room: { id: "room-test", name: "Sageroom", owner_participant_id: USER_ID, version: "1", content_epoch: "0" },
     local_user: user,
-    participants: [user, { id: "sage-test", kind: "agent", display_name: "Sage", introduction: "群聊成员", status: "needs_configuration", is_builtin: true, avatar_id: null, profile_revision: "1" }],
+    participants: [user, { id: "sage-test", kind: "agent", display_name: "Sage", status: "needs_configuration", is_builtin: true, avatar_id: null, profile_revision: "1" }],
     appearance: { theme: "system", reduce_motion: false, revision: "1" },
     latest_message_seq: "0",
     latest_event_seq: "0",

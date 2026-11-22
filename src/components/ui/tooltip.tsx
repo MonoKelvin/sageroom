@@ -11,8 +11,11 @@ function TooltipProvider({
   return <TooltipPrimitive.Provider delayDuration={delayDuration} skipDelayDuration={skipDelayDuration} {...props} />
 }
 
+/** 自带 Provider，保证在独立渲染（如单元测试）或脱离根 Provider 时也能工作。 */
 function Tooltip(props: React.ComponentProps<typeof TooltipPrimitive.Root>) {
-  return <TooltipPrimitive.Root {...props} />
+  return <TooltipPrimitive.Provider delayDuration={600} skipDelayDuration={0}>
+    <TooltipPrimitive.Root {...props} />
+  </TooltipPrimitive.Provider>
 }
 
 function TooltipTrigger(props: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
@@ -31,7 +34,7 @@ function TooltipContent({
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         className={cn(
-          "ui-tooltip z-50 max-w-72 rounded-lg px-3 py-2 text-xs leading-relaxed break-words",
+          "ui-tooltip z-[100] max-w-72 rounded-lg px-3 py-2 text-xs leading-relaxed break-words",
           className,
         )}
         {...props}

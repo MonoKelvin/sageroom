@@ -1,7 +1,7 @@
 CREATE TABLE app_meta (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     root_id TEXT NOT NULL,
-    schema_version INTEGER NOT NULL CHECK (schema_version = 5),
+    schema_version INTEGER NOT NULL CHECK (schema_version = 6),
     schema_hash TEXT NOT NULL
 );
 
@@ -9,7 +9,6 @@ CREATE TABLE participants (
     id TEXT PRIMARY KEY,
     kind TEXT NOT NULL CHECK (kind IN ('user', 'agent')),
     display_name TEXT NOT NULL,
-    introduction TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('present', 'needs_configuration')),
     builtin_key TEXT UNIQUE,
     created_at INTEGER NOT NULL,
@@ -196,4 +195,4 @@ CREATE TABLE runtime_messages (
 CREATE INDEX runtime_messages_chain ON runtime_messages(chain_id);
 CREATE INDEX runtime_messages_time ON runtime_messages(committed_at);
 
-PRAGMA user_version = 5;
+PRAGMA user_version = 6;

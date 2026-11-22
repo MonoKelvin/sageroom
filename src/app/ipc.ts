@@ -34,11 +34,17 @@ import type {
   UserProfileGetRequest,
   UserProfileSaveRequest,
   SecretSetRequest,
-  SecretDeleteRequest,
   SecretStatusRequest,
   SecretStatus,
   ModelProfileTestRequest,
   ModelTestResult,
+  ModelListRequest,
+  ModelListResult,
+  ExperienceAgentRequest,
+  ExperienceAddRequest,
+  ExperienceDeleteRequest,
+  ExperiencePruneRequest,
+  ExperienceEntry,
   DevelopmentModelImportRequest,
   AvatarImportRequest,
   AvatarReadRequest,
@@ -82,12 +88,20 @@ import {
   validateUserProfileSaveResponse,
   validateSecretSetRequest,
   validateSecretSetResponse,
-  validateSecretDeleteRequest,
-  validateSecretDeleteResponse,
   validateSecretStatusRequest,
   validateSecretStatusResponse,
   validateModelProfileTestRequest,
   validateModelProfileTestResponse,
+  validateModelListRequest,
+  validateModelListResponse,
+  validateExperienceAgentRequest,
+  validateExperienceListResponse,
+  validateExperienceAddRequest,
+  validateExperienceAddResponse,
+  validateExperienceDeleteRequest,
+  validateExperienceDeleteResponse,
+  validateExperiencePruneRequest,
+  validateExperiencePruneResponse,
   validateDevelopmentModelImportRequest,
   validateDevelopmentModelImportResponse,
   validateAvatarImportRequest,
@@ -184,12 +198,20 @@ export const ipc = {
     request("user_profile_save", input, validateUserProfileSaveRequest, validateUserProfileSaveResponse),
   setSecret: (input: SecretSetRequest): Promise<SecretStatus> =>
     request("secret_set", input, validateSecretSetRequest, validateSecretSetResponse),
-  deleteSecret: (input: SecretDeleteRequest): Promise<SecretStatus> =>
-    request("secret_delete", input, validateSecretDeleteRequest, validateSecretDeleteResponse),
   secretStatus: (input: SecretStatusRequest): Promise<SecretStatus> =>
     request("secret_status", input, validateSecretStatusRequest, validateSecretStatusResponse),
   testModel: (input: ModelProfileTestRequest): Promise<ModelTestResult> =>
     request("model_profile_test", input, validateModelProfileTestRequest, validateModelProfileTestResponse),
+  listModels: (input: ModelListRequest): Promise<ModelListResult> =>
+    request("model_profile_list", input, validateModelListRequest, validateModelListResponse),
+  experienceList: (input: ExperienceAgentRequest): Promise<ExperienceEntry[]> =>
+    request("experience_list", input, validateExperienceAgentRequest, validateExperienceListResponse),
+  experienceAdd: (input: ExperienceAddRequest): Promise<ExperienceEntry> =>
+    request("experience_add", input, validateExperienceAddRequest, validateExperienceAddResponse),
+  experienceDelete: (input: ExperienceDeleteRequest): Promise<ExperienceEntry[]> =>
+    request("experience_delete", input, validateExperienceDeleteRequest, validateExperienceDeleteResponse),
+  experiencePrune: (input: ExperiencePruneRequest): Promise<ExperienceEntry[]> =>
+    request("experience_prune", input, validateExperiencePruneRequest, validateExperiencePruneResponse),
   importDevelopmentModel: (input: DevelopmentModelImportRequest): Promise<GlobalConfiguration> =>
     request("development_model_import", input, validateDevelopmentModelImportRequest, validateDevelopmentModelImportResponse),
   importAvatar: (input: AvatarImportRequest): Promise<AvatarObject | null> =>

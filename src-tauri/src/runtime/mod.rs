@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use genai::chat::ReasoningEffort;
 use tokio::sync::{broadcast, watch};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -447,7 +448,7 @@ async fn run_actor(
         .ok()
         .flatten()
         .filter(|(_, _, revision)| {
-            restore && revision == &agent.revision && agent.preferences.allow_autonomous_wake
+            restore && revision == &agent.revision
         });
     let mut sleeping = restore
         && stored.as_ref().is_some_and(|s| {
@@ -646,7 +647,6 @@ async fn make_decision(
         protocol: source.profile.protocol.clone(),
         base_url: source.profile.base_url.clone(),
         model_name: source.profile.model_name.clone(),
-        parameters: source.profile.parameters.clone(),
         revision: source.source_profile_revision.clone(),
         credential_configured: true,
     };
@@ -660,7 +660,7 @@ async fn make_decision(
         *count = worker
             .reserve_runtime_request(
                 agent.agent_id.clone(),
-                agent.preferences.request_limit_daily,
+                DAILY_REQUEST_LIMIT,
             )
             .await?;
         state(
@@ -679,11 +679,16 @@ async fn make_decision(
             context.clone()
         };
         let reply = gateway
-            .chat(
+            .chat_with_reasoning(
                 model.clone(),
                 key.clone(),
                 system.clone(),
                 prompt,
+                if agent.agent_type == AgentType::Tool {
+                    ReasoningEffort::Medium
+                } else {
+                    ReasoningEffort::Zero
+                },
                 cancellation.child_token(),
             )
             .await?;
@@ -697,6 +702,12 @@ async fn make_decision(
         }
     }
     let decision = decision.expect("合法决策或明确错误");
+    // 经历写入失败不应阻止本次发言。
+    if let Some(experience) = &decision.experience {
+        if let Err(error) = worker.record_experience(&agent.agent_id, experience) {
+            tracing::warn!(?error, "写入智能体经历失败");
+        }
+    }
     let latest = worker.runtime_input(agent.agent_id.clone()).await?;
     if latest.agent.revision != agent.revision
         || latest.snapshot.latest_message_seq != input.snapshot.latest_message_seq
@@ -824,13 +835,6 @@ mod tests {
                     protocol: ModelProtocol::OpenaiChatCompletions,
                     base_url: "https://actor.example.invalid/v1".into(),
                     model_name: "fixture".into(),
-                    parameters: ModelParameters {
-                        temperature: 0.5,
-                        top_p: 1.0,
-                        max_output_tokens: 1024,
-                        input_budget: 4096,
-                        reasoning: ReasoningMode::Off,
-                    },
                 };
                 let global = database
                     .save_global_configuration(GlobalConfigurationSaveRequest {
@@ -839,7 +843,6 @@ mod tests {
                         expected_revision: global.revision,
                         model_profiles: vec![profile],
                         persona_presets: global.persona_presets,
-                        runtime_defaults: global.runtime_defaults,
                     })?
                     .0;
                 database.replace_credential_reference(

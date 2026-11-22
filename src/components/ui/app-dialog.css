@@ -1,0 +1,33 @@
+/* 透明遮罩只承担点击外部关闭与焦点边界，不降低背景亮度。 */
+.app-dialog-overlay { position: fixed; inset: 0; z-index: 60; background: transparent; }
+.app-dialog-content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  width: min(calc(100% - var(--space-6) * 2), calc(var(--size-unit) * 105));
+  max-height: calc(100dvh - var(--space-6) * 2);
+  transform: translate(-50%, -50%);
+  border: var(--stroke-width) solid var(--border);
+  border-radius: var(--radius-card);
+  outline: none;
+  background: var(--surface-chrome);
+  color: var(--text-primary);
+  backdrop-filter: blur(calc(var(--glass-blur) * 1.5)) saturate(140%);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 1.5)) saturate(140%);
+  box-shadow: var(--floating-shadow);
+  overflow: hidden;
+}
+.app-dialog-content[data-state="open"] { animation: app-dialog-in calc(var(--motion-duration) * 1.75) var(--motion-ease); }
+.app-dialog-content[data-state="closed"] { animation: app-dialog-out var(--motion-duration) var(--motion-ease); }
+.app-dialog-heading { display: flex; flex: none; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4) var(--space-5) var(--space-3); }
+.app-dialog-title { margin: 0; font-size: var(--font-body); font-weight: 600; line-height: 1.5; }
+.app-dialog-body { flex: 1; min-height: 0; padding: 0 var(--space-5) var(--space-4); overflow: auto; color: var(--text-secondary); font-size: var(--font-body); line-height: 1.6; overflow-wrap: anywhere; }
+.app-dialog-body p { margin: 0; }
+.app-dialog-footer { display: flex; flex: none; justify-content: flex-end; gap: var(--space-2); padding: 0 var(--space-5) var(--space-5); }
+@keyframes app-dialog-in { from { opacity: 0; transform: translate(-50%, -50%) scale(.97); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes app-dialog-out { from { opacity: 1; transform: translate(-50%, -50%) scale(1); } to { opacity: 0; transform: translate(-50%, -50%) scale(.97); } }
+html[data-reduced-motion="true"] .app-dialog-content { animation: none; }
+@media (prefers-reduced-motion: reduce) { .app-dialog-content { animation: none; } }

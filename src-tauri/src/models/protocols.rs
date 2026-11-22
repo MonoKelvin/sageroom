@@ -4,7 +4,7 @@ use genai::{
 };
 
 use crate::domain::{
-    contracts::{AppError, ErrorCode, ModelProfile, ModelProtocol, ReasoningMode},
+    contracts::{AppError, ErrorCode, MODEL_INPUT_BUDGET, MODEL_MAX_OUTPUT_TOKENS, MODEL_TEMPERATURE, MODEL_TOP_P, ModelProfile, ModelProtocol},
     error::{AppResult, parse_counter, validate_id},
 };
 
@@ -25,11 +25,11 @@ pub(super) fn adapter(protocol: &ModelProtocol) -> AdapterKind {
 pub(super) fn prepare(profile: &ModelProfile, api_key: &str) -> AppResult<(String, ChatOptions)> {
     let endpoint = validate_common(profile, api_key)?;
     if TEST_PROMPT.len() > MAX_INPUT_BYTES
-        || TEST_PROMPT.len() + INPUT_OVERHEAD > profile.parameters.input_budget.min(256) as usize
+        || TEST_PROMPT.len() + INPUT_OVERHEAD > MODEL_INPUT_BUDGET.min(256) as usize
     {
         return Err(AppError::invalid("parameters", "连接测试预算无效。"));
     }
-    Ok((endpoint, options(profile, MAX_OUTPUT_TOKENS)))
+    Ok((endpoint, options(MAX_OUTPUT_TOKENS, ReasoningEffort::Zero)))
 }
 
 pub(super) fn prepare_chat(
@@ -37,6 +37,7 @@ pub(super) fn prepare_chat(
     api_key: &str,
     system: &str,
     context: &str,
+    reasoning: ReasoningEffort,
 ) -> AppResult<(String, ChatOptions)> {
     let endpoint = validate_common(profile, api_key)?;
     if system.trim().is_empty() || context.trim().is_empty() {
@@ -47,11 +48,12 @@ pub(super) fn prepare_chat(
     }
     // The runtime owns context assembly. This UTF-8 byte estimate is deliberately
     // conservative (at least bytes / 2), not a claim of exact model tokenization.
-    let bytes = system.len().checked_add(context.len());
-    if bytes.is_none_or(|bytes| bytes > profile.parameters.input_budget as usize * 2) {
+    // 通用角色指令是固定开销，不挤占「输入预算」；预算只衡量上下文消息。
+    let ceiling = MODEL_INPUT_BUDGET as usize * 2;
+    if context.len() > ceiling {
         return Err(AppError::invalid("context", "模型输入超过保守上下文预算。"));
     }
-    Ok((endpoint, options(profile, MAX_CHAT_OUTPUT_TOKENS)))
+    Ok((endpoint, options(MAX_CHAT_OUTPUT_TOKENS, reasoning)))
 }
 
 fn validate_common(profile: &ModelProfile, api_key: &str) -> AppResult<String> {
@@ -80,39 +82,22 @@ fn validate_common(profile: &ModelProfile, api_key: &str) -> AppResult<String> {
     {
         return Err(AppError::invalid("api_key", "模型凭据为空或格式无效。"));
     }
-    let p = &profile.parameters;
-    if !p.temperature.is_finite()
-        || !(0.0..=2.0).contains(&p.temperature)
-        || !p.top_p.is_finite()
-        || !(0.0..=1.0).contains(&p.top_p)
-        || p.top_p == 0.0
-        || !(1..=32768).contains(&p.max_output_tokens)
-        || !(256..=128000).contains(&p.input_budget)
-    {
-        return Err(AppError::invalid("parameters", "模型参数无效。"));
-    }
-    if p.reasoning != ReasoningMode::Off {
-        return Err(AppError::new(
-            ErrorCode::CapabilityUnsupported,
-            "尚未验证此协议的推理开关与预算，仅支持关闭推理的纯文本调用。",
-        ));
-    }
     endpoint(&profile.base_url)
 }
 
-fn options(profile: &ModelProfile, max_output_tokens: u32) -> ChatOptions {
-    let p = &profile.parameters;
+fn options(max_output_tokens: u32, reasoning: ReasoningEffort) -> ChatOptions {
     ChatOptions::default()
-        .with_max_tokens(p.max_output_tokens.min(max_output_tokens))
+        .with_max_tokens(MODEL_MAX_OUTPUT_TOKENS.min(max_output_tokens))
         .with_capture_raw_body(false)
         .with_capture_reasoning_content(false)
+        .with_reasoning_effort(reasoning)
         .with_extra_body(serde_json::json!({
-            "temperature": p.temperature,
-            "top_p": p.top_p,
+            "temperature": MODEL_TEMPERATURE,
+            "top_p": MODEL_TOP_P,
         }))
 }
 
-fn endpoint(base_url: &str) -> AppResult<String> {
+pub(super) fn endpoint(base_url: &str) -> AppResult<String> {
     if base_url.is_empty()
         || base_url.chars().count() > 2048
         || base_url.chars().any(char::is_control)

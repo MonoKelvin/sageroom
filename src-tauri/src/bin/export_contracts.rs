@@ -90,12 +90,20 @@ fn main() -> Result<(), Box<dyn Error>> {
     export::<ApiResponse<UserProfile>>("UserProfileSaveResponse", &config, &mut schemas)?;
     export::<SecretSetRequest>("SecretSetRequest", &config, &mut schemas)?;
     export::<ApiResponse<SecretStatus>>("SecretSetResponse", &config, &mut schemas)?;
-    export::<SecretDeleteRequest>("SecretDeleteRequest", &config, &mut schemas)?;
-    export::<ApiResponse<SecretStatus>>("SecretDeleteResponse", &config, &mut schemas)?;
     export::<SecretStatusRequest>("SecretStatusRequest", &config, &mut schemas)?;
     export::<ApiResponse<SecretStatus>>("SecretStatusResponse", &config, &mut schemas)?;
     export::<ModelProfileTestRequest>("ModelProfileTestRequest", &config, &mut schemas)?;
     export::<ApiResponse<ModelTestResult>>("ModelProfileTestResponse", &config, &mut schemas)?;
+    export::<ModelListRequest>("ModelListRequest", &config, &mut schemas)?;
+    export::<ApiResponse<ModelListResult>>("ModelListResponse", &config, &mut schemas)?;
+    export::<ExperienceAgentRequest>("ExperienceAgentRequest", &config, &mut schemas)?;
+    export::<ApiResponse<Vec<ExperienceEntry>>>("ExperienceListResponse", &config, &mut schemas)?;
+    export::<ExperienceAddRequest>("ExperienceAddRequest", &config, &mut schemas)?;
+    export::<ApiResponse<ExperienceEntry>>("ExperienceAddResponse", &config, &mut schemas)?;
+    export::<ExperienceDeleteRequest>("ExperienceDeleteRequest", &config, &mut schemas)?;
+    export::<ApiResponse<Vec<ExperienceEntry>>>("ExperienceDeleteResponse", &config, &mut schemas)?;
+    export::<ExperiencePruneRequest>("ExperiencePruneRequest", &config, &mut schemas)?;
+    export::<ApiResponse<Vec<ExperienceEntry>>>("ExperiencePruneResponse", &config, &mut schemas)?;
     export::<DevelopmentModelImportRequest>(
         "DevelopmentModelImportRequest",
         &config,

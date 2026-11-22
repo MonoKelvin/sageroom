@@ -23,8 +23,8 @@ function withRuntime(props: ReturnType<typeof pageProps>, runtime: AgentRuntimeS
 }
 function configuredProps(runtime?: AgentRuntimeState) {
   const data = mockConfigurationIpc()
-  const { id, name, protocol, base_url, model_name, parameters, revision } = data.global.model_profiles[0]
-  data.agents[0].model = { source_profile_id: id, source_profile_revision: revision, profile: { id, name, protocol, base_url, model_name, parameters: { ...parameters } } }
+  const { id, name, protocol, base_url, model_name, revision } = data.global.model_profiles[0]
+  data.agents[0].model = { source_profile_id: id, source_profile_revision: revision, profile: { id, name, protocol, base_url, model_name } }
   return withRuntime(pageProps(), runtime)
 }
 
@@ -38,14 +38,14 @@ describe("持久资源智能体页面", () => {
     const aside = screen.getByRole("complementary", { name: "智能体列表" })
     expect(aside.querySelectorAll(".list-entry")[0]).toHaveAccessibleName("全局配置")
     expect(aside.querySelectorAll(".list-entry")[0]).toHaveAttribute("data-active", "true")
-    fireEvent.change(screen.getByLabelText("模型标识", { selector: "input" }), { target: { value: "全局局部草稿" } })
+    fireEvent.change(screen.getByLabelText("模型名称", { selector: "input" }), { target: { value: "全局局部草稿" } })
     await openSage()
     fireEvent.change(detail("Sage").getByLabelText("名称", { selector: "input" }), { target: { value: "成员局部草稿" } })
     await userEvent.click(sidebar().getByRole("button", { name: /第二位.*待配置/ }))
     await userEvent.click(sidebar().getByRole("button", { name: /Sage.*待配置/ }))
     expect(detail("Sage").getByLabelText("名称", { selector: "input" })).toHaveValue("成员局部草稿")
     await userEvent.click(sidebar().getByRole("button", { name: "全局配置" }))
-    expect(screen.getByLabelText("模型标识", { selector: "input" })).toHaveValue("全局局部草稿")
+    expect(screen.getByLabelText("模型名称", { selector: "input" })).toHaveValue("全局局部草稿")
     expect(ipc.listAgents).toHaveBeenCalledTimes(1)
     expect(ipc.getGlobalConfiguration).toHaveBeenCalledTimes(1)
     expect(ipc.saveAgent).not.toHaveBeenCalled()
@@ -114,7 +114,7 @@ describe("持久资源智能体页面", () => {
     await select("采用模型预设", "常用模型")
     await waitFor(() => expect(ipc.saveAgent).toHaveBeenCalledTimes(1))
     const sage = detail("Sage")
-    expect(sage.getByLabelText("模型标识", { selector: "input" })).toHaveValue("test-model")
+    expect(sage.getByLabelText("模型名称", { selector: "input" })).toHaveValue("test-model")
     expect(sage.getByText(/来源版本 1/)).toBeInTheDocument()
     expect(sage.queryByLabelText("API Key", { selector: "input" })).not.toBeInTheDocument()
     expect(sage.getByLabelText("API 地址", { selector: "input" })).toHaveAttribute("readonly")
@@ -135,15 +135,15 @@ describe("持久资源智能体页面", () => {
     await waitFor(() => expect(ipc.saveAgent).toHaveBeenCalledTimes(2))
     expect(detail("Sage").getByLabelText("语言风格", { selector: "textarea" })).toHaveValue("自然友善")
     await userEvent.click(sidebar().getByRole("button", { name: "全局配置" }))
-    const modelName = detail("全局配置").getByLabelText("模型标识", { selector: "input" })
+    const modelName = detail("全局配置").getByLabelText("模型名称", { selector: "input" })
     fireEvent.change(modelName, { target: { value: "新的全局模型" } })
     fireEvent.blur(modelName)
     await waitFor(() => expect(ipc.saveGlobalConfiguration).toHaveBeenCalledTimes(1))
     await userEvent.click(sidebar().getByRole("button", { name: /Sage.*已配置/ }))
-    expect(detail("Sage").getByLabelText("模型标识", { selector: "input" })).toHaveValue("test-model")
+    expect(detail("Sage").getByLabelText("模型名称", { selector: "input" })).toHaveValue("test-model")
     await userEvent.click(sidebar().getByRole("button", { name: /第二位.*待配置/ }))
     await select("采用模型预设", "常用模型")
-    await waitFor(() => expect(detail("第二位").getByLabelText("模型标识", { selector: "input" })).toHaveValue("新的全局模型"))
+    await waitFor(() => expect(detail("第二位").getByLabelText("模型名称", { selector: "input" })).toHaveValue("新的全局模型"))
     expect(detail("第二位").getByText(/来源版本 2/)).toBeInTheDocument()
   }, 10000)
   it("未配置模型 option 禁用，类型选择和头像成功即时应用", async () => {
@@ -191,8 +191,8 @@ describe("智能体实时运行状态", () => {
     await userEvent.click(await sidebar().findByRole("button", { name: /Sage.*已配置.*正在思考/ }))
     expect(detail("Sage").getByRole("status")).toHaveTextContent("正在思考")
     expect(detail("Sage").getByText("正在判断是否接话")).toBeInTheDocument()
-    const introduction = detail("Sage").getByLabelText("简介", { selector: "textarea" })
-    fireEvent.change(introduction, { target: { value: "尚未失焦的局部草稿" } })
+    const style = detail("Sage").getByLabelText("语言风格", { selector: "textarea" })
+    fireEvent.change(style, { target: { value: "尚未失焦的局部草稿" } })
     const updated = withRuntime(props, runtimeState("observing", { detail: "等待新消息", config_revision: "2", next_wake_at: nextWake, requests_today: 5 }))
     view.rerender(page({ ...updated, active: false }))
     view.rerender(page(updated))
@@ -202,7 +202,7 @@ describe("智能体实时运行状态", () => {
     expect(detail("Sage").getByText("等待新消息")).toBeInTheDocument()
     expect(detail("Sage").getByText("今日请求：5 次 · 配置版本：2")).toBeInTheDocument()
     expect(detail("Sage").getByText(`下次唤醒：${new Date(nextWake).toLocaleString("zh-CN", { hour12: false })}`)).toBeInTheDocument()
-    expect(detail("Sage").getByLabelText("简介", { selector: "textarea" })).toHaveValue("尚未失焦的局部草稿")
+    expect(detail("Sage").getByLabelText("语言风格", { selector: "textarea" })).toHaveValue("尚未失焦的局部草稿")
     expect(ipc.listAgents).toHaveBeenCalledTimes(1)
     expect(ipc.saveAgent).not.toHaveBeenCalled()
   })

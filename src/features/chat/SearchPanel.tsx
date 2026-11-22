@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useEffectEvent, useRef, useState, type FormEvent } from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { IconCornerDownRight, IconSearch, IconX } from "@tabler/icons-react"
 import type { Participant, SearchPage } from "@/contracts/generated"
@@ -143,24 +143,26 @@ function SearchForm({ generation, participants, enabled, onLocate, onClose }: Fo
   return <>
     <ChatSearchInput value={query} pending={pending && enabled} onValueChange={changeQuery} onSubmit={submit} onCancel={() => void cancel()} onCompositionStart={() => { stopPrevious(); setComposing(true); setPending(false) }} onCompositionEnd={(value) => { setComposing(false); changeQuery(value) }} />
     {hasSearchContent && <aside className="chat-search-results" aria-label="搜索结果面板">
-      <div className="chat-search-summary" aria-live="polite">{pending ? "正在搜索全部历史…" : notice || (result ? `当前 ${result.items.length} 条匹配` : "搜索聊天")}</div>
-      {error && <p role="alert" className="chat-search-feedback">{error}</p>}
-      {result && !pending && !notice && result.items.length === 0 && <p className="chat-search-empty">没有匹配的消息。</p>}
-      <ul aria-label="搜索结果" className="chat-search-list">
-        {result?.items.map((hit) => {
-          const participant = participants.get(hit.sender_id)!
-          return <li key={hit.message_id}>
-            <button type="button" className="chat-search-result" onClick={() => void locate(hit.seq, hit.message_id)} aria-label={`定位${participant.display_name}的消息`}>
-              <span className="chat-search-sender"><Avatar name={participant.display_name} avatarId={participant.avatar_id} colorId={participant.kind === "agent" ? participant.id : undefined} generation={generation} size={28} /><span className="chat-search-author">{participant.display_name}</span><time dateTime={new Date(hit.created_at).toISOString()}>{formatter.format(hit.created_at)}</time></span>
-              <span className="chat-search-body">
-                <span className="chat-search-snippet"><Highlight text={hit.snippet} query={result!.query} /></span>
-                <span className="chat-search-locate" aria-hidden="true"><IconCornerDownRight size={18} /></span>
-              </span>
-            </button>
-          </li>
-        })}
-      </ul>
-      {result?.has_more && <Button className="chat-search-more" variant="ghost" size="sm" disabled={pending} onClick={() => void search(result.next_cursor)}>加载更早的匹配</Button>}
+      <div className="chat-search-results-scroll">
+        <div className="chat-search-summary" aria-live="polite">{pending ? "正在搜索全部历史…" : notice || (result ? `当前 ${result.items.length} 条匹配` : "搜索聊天")}</div>
+        {error && <p role="alert" className="chat-search-feedback">{error}</p>}
+        {result && !pending && !notice && result.items.length === 0 && <p className="chat-search-empty">没有匹配的消息。</p>}
+        <ul aria-label="搜索结果" className="chat-search-list">
+          {result?.items.map((hit) => {
+            const participant = participants.get(hit.sender_id)!
+            return <li key={hit.message_id}>
+              <button type="button" className="chat-search-result" onClick={() => void locate(hit.seq, hit.message_id)} aria-label={`定位${participant.display_name}的消息`}>
+                <span className="chat-search-sender"><Avatar name={participant.display_name} avatarId={participant.avatar_id} colorId={participant.kind === "agent" ? participant.id : undefined} generation={generation} size={28} /><span className="chat-search-author">{participant.display_name}</span><time dateTime={new Date(hit.created_at).toISOString()}>{formatter.format(hit.created_at)}</time></span>
+                <span className="chat-search-body">
+                  <span className="chat-search-snippet"><Highlight text={hit.snippet} query={result!.query} /></span>
+                  <span className="chat-search-locate" aria-hidden="true"><IconCornerDownRight size={18} /></span>
+                </span>
+              </button>
+            </li>
+          })}
+        </ul>
+        {result?.has_more && <Button className="chat-search-more" variant="ghost" size="sm" disabled={pending} onClick={() => void search(result.next_cursor)}>加载更早的匹配</Button>}
+      </div>
     </aside>}
   </>
 }
@@ -173,9 +175,14 @@ export function SearchPanel({ open, onOpenChange, generation, participants, onLo
   onLocate: (seq: string, messageId: string) => Promise<void>
   onReturnFocus?: () => void
 }) {
+  const initializeMotion = useCallback((node: HTMLDivElement | null) => {
+    if (node) node.dataset.motion = document.documentElement.dataset.inputModality === "keyboard" ? "instant" : "animated"
+  }, [])
+
   return <DialogPrimitive.Root open={open} onOpenChange={onOpenChange} modal={false}>
     <div className="chat-search" data-open={open}>
       <DialogPrimitive.Content
+        ref={initializeMotion}
         className="chat-search-content"
         aria-describedby={undefined}
         inert={!open}

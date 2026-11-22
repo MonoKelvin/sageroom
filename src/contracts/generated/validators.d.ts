@@ -1,5 +1,5 @@
 import type { ValidateFunction } from "ajv"
-import type { AgentConfiguration, AgentListRequest, AgentModelSnapshot, AgentPreferences, AgentRuntimeControlRequest, AgentRuntimeState, AgentRuntimeStatus, AgentSaveRequest, AgentType, ApiFailure, ApiResponse, ApiSuccess, AppError, AppLifecycleEvent, AppLifecyclePayload, AppSnapshot, AppSnapshotRequest, Appearance, AppearanceSaveRequest, AvatarData, AvatarImportRequest, AvatarObject, AvatarReadRequest, CancelSearchRequest, CancelSearchResult, ChatListRequest, ChatMessage, ChatSearchRequest, ChatSendRequest, ChatSendResult, DataUsage, DecimalString, DevelopmentModelImportRequest, DomainEvent, ErrorCode, EventPayload, ExitReadyRequest, ExitRequest, ExitResult, GlobalConfiguration, GlobalConfigurationGetRequest, GlobalConfigurationSaveRequest, MessagePage, MessagePart, MessageState, ModelParameters, ModelProfile, ModelProfileInput, ModelProfileTestRequest, ModelProtocol, ModelTestResult, Participant, ParticipantKind, ParticipantStatus, PersonaDimensions, PersonaPreset, ReasoningMode, Retryability, Room, RoomSaveRequest, SchemaVersion, SearchHit, SearchPage, SearchSemantics, SecretDeleteRequest, SecretSetRequest, SecretStatus, SecretStatusRequest, Theme, UserProfile, UserProfileGetRequest, UserProfileSaveRequest } from "./index"
+import type { AgentConfiguration, AgentListRequest, AgentModelSnapshot, AgentRuntimeControlRequest, AgentRuntimeState, AgentRuntimeStatus, AgentSaveRequest, AgentType, ApiFailure, ApiResponse, ApiSuccess, AppError, AppLifecycleEvent, AppLifecyclePayload, AppSnapshot, AppSnapshotRequest, Appearance, AppearanceSaveRequest, AvatarData, AvatarImportRequest, AvatarObject, AvatarReadRequest, CancelSearchRequest, CancelSearchResult, ChatListRequest, ChatMessage, ChatSearchRequest, ChatSendRequest, ChatSendResult, DataUsage, DecimalString, DevelopmentModelImportRequest, DomainEvent, ErrorCode, EventPayload, ExitReadyRequest, ExitRequest, ExitResult, ExperienceAddRequest, ExperienceAgentRequest, ExperienceDeleteRequest, ExperienceEntry, ExperiencePruneRequest, GlobalConfiguration, GlobalConfigurationGetRequest, GlobalConfigurationSaveRequest, MessagePage, MessagePart, MessageState, ModelListRequest, ModelListResult, ModelProfile, ModelProfileInput, ModelProfileTestRequest, ModelProtocol, ModelTestResult, Participant, ParticipantKind, ParticipantStatus, PersonaDimensions, PersonaPreset, Retryability, Room, RoomSaveRequest, SchemaVersion, SearchHit, SearchPage, SearchSemantics, SecretSetRequest, SecretStatus, SecretStatusRequest, Theme, UserProfile, UserProfileGetRequest, UserProfileSaveRequest } from "./index"
 export const validateAgentListRequest: ValidateFunction<AgentListRequest>
 export const validateAgentListResponse: ValidateFunction<ApiResponse<AgentConfiguration[]>>
 export const validateAgentRuntimeControlRequest: ValidateFunction<AgentRuntimeControlRequest>
@@ -30,16 +30,24 @@ export const validateExitReadyRequest: ValidateFunction<ExitReadyRequest>
 export const validateExitReadyResponse: ValidateFunction<ApiResponse<ExitResult>>
 export const validateExitRequest: ValidateFunction<ExitRequest>
 export const validateExitResponse: ValidateFunction<ApiResponse<ExitResult>>
+export const validateExperienceAddRequest: ValidateFunction<ExperienceAddRequest>
+export const validateExperienceAddResponse: ValidateFunction<ApiResponse<undefined>>
+export const validateExperienceAgentRequest: ValidateFunction<ExperienceAgentRequest>
+export const validateExperienceDeleteRequest: ValidateFunction<ExperienceDeleteRequest>
+export const validateExperienceDeleteResponse: ValidateFunction<ApiResponse<undefined>>
+export const validateExperienceListResponse: ValidateFunction<ApiResponse<undefined>>
+export const validateExperiencePruneRequest: ValidateFunction<ExperiencePruneRequest>
+export const validateExperiencePruneResponse: ValidateFunction<ApiResponse<undefined>>
 export const validateGlobalConfigurationGetRequest: ValidateFunction<GlobalConfigurationGetRequest>
 export const validateGlobalConfigurationGetResponse: ValidateFunction<ApiResponse<GlobalConfiguration>>
 export const validateGlobalConfigurationSaveRequest: ValidateFunction<GlobalConfigurationSaveRequest>
 export const validateGlobalConfigurationSaveResponse: ValidateFunction<ApiResponse<GlobalConfiguration>>
+export const validateModelListRequest: ValidateFunction<ModelListRequest>
+export const validateModelListResponse: ValidateFunction<ApiResponse<undefined>>
 export const validateModelProfileTestRequest: ValidateFunction<ModelProfileTestRequest>
 export const validateModelProfileTestResponse: ValidateFunction<ApiResponse<ModelTestResult>>
 export const validateRoomSaveRequest: ValidateFunction<RoomSaveRequest>
 export const validateRoomSaveResponse: ValidateFunction<ApiResponse<Room>>
-export const validateSecretDeleteRequest: ValidateFunction<SecretDeleteRequest>
-export const validateSecretDeleteResponse: ValidateFunction<ApiResponse<SecretStatus>>
 export const validateSecretSetRequest: ValidateFunction<SecretSetRequest>
 export const validateSecretSetResponse: ValidateFunction<ApiResponse<SecretStatus>>
 export const validateSecretStatusRequest: ValidateFunction<SecretStatusRequest>

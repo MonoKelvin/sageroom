@@ -29,7 +29,7 @@ export function ConfigurationProvider({ snapshot, children }: { snapshot: AppSna
   useEffect(() => {
     if (!store || !snapshot) return
     store.appearance.ingest(snapshot.appearance)
-    store.user.ingest({ participant_id: snapshot.local_user.id, display_name: snapshot.local_user.display_name, introduction: snapshot.local_user.introduction, avatar_id: snapshot.local_user.avatar_id, revision: snapshot.local_user.profile_revision })
+    store.user.ingest({ participant_id: snapshot.local_user.id, display_name: snapshot.local_user.display_name, avatar_id: snapshot.local_user.avatar_id, revision: snapshot.local_user.profile_revision })
   }, [store, snapshot])
 
   useEffect(() => {

@@ -64,13 +64,6 @@ fn model_profile() -> ModelProfileInput {
         protocol: ModelProtocol::OpenaiChatCompletions,
         base_url: "https://model.example.invalid/v1".into(),
         model_name: "fixture-model-name".into(),
-        parameters: ModelParameters {
-            temperature: 0.5,
-            top_p: 0.9,
-            max_output_tokens: 1024,
-            input_budget: 4096,
-            reasoning: ReasoningMode::Off,
-        },
     }
 }
 
@@ -89,7 +82,6 @@ fn global_request(
             .map(ModelProfile::input)
             .collect(),
         persona_presets: current.persona_presets.clone(),
-        runtime_defaults: current.runtime_defaults.clone(),
     }
 }
 
@@ -100,7 +92,6 @@ fn install_presets(database: &mut Database) -> GlobalConfiguration {
     let mut request = global_request(database, "install-presets", &current);
     request.model_profiles = vec![model_profile()];
     request.persona_presets[0].language_style = "原始人格语言风格".into();
-    request.persona_presets[0].address_terms = vec!["朋友".into()];
     request.persona_presets[0].skill = "原始人格技能".into();
     request.persona_presets[0].dimensions.humor = 25;
     database.save_global_configuration(request).unwrap().0
@@ -113,7 +104,6 @@ fn agent_with_snapshot(database: &Database, global: &GlobalConfiguration) -> Age
         .remove(0);
     let persona = &global.persona_presets[0];
     agent.language_style = persona.language_style.clone();
-    agent.address_terms = persona.address_terms.clone();
     agent.skill = persona.skill.clone();
     agent.dimensions = persona.dimensions.clone();
     agent.model = Some(AgentModelSnapshot {
@@ -195,8 +185,9 @@ fn latest_schema_initializes_current_metadata_and_runtime_tables_once() {
         manifest,
         json!({"format_version":1,"root_id":root_id(&database.conn),"schema_version":CURRENT_SCHEMA})
     );
-    assert_eq!(count(&database.conn, "agent_runtime_states"), 1);
-    assert_eq!(count(&database.conn, "agent_config_versions"), 1);
+    let expected_agents = super::configuration::default_agent_specs().len() as i64;
+    assert_eq!(count(&database.conn, "agent_runtime_states"), expected_agents);
+    assert_eq!(count(&database.conn, "agent_config_versions"), expected_agents);
     for table in [
         "runtime_plans",
         "runtime_request_counts",
@@ -214,7 +205,7 @@ fn configuration_seed_participates_in_latest_schema_transaction_rollback_and_com
     let mut conn = Connection::open_in_memory().unwrap();
     configure_connection(&conn).unwrap();
     conn.execute_batch(SCHEMA).unwrap();
-    conn.execute("INSERT INTO participants(id,kind,display_name,introduction,status,builtin_key,created_at) VALUES ('seed-agent','agent','Sage','','needs_configuration','sage',1000)", []).unwrap();
+    conn.execute("INSERT INTO participants(id,kind,display_name,status,builtin_key,created_at) VALUES ('seed-agent','agent','小墨','needs_configuration','xiaomo',1000)", []).unwrap();
     {
         let transaction = conn.transaction().unwrap();
         seed_configuration(&transaction).unwrap();
@@ -397,19 +388,23 @@ fn current_schema_reopen_preserves_idle_sleep_pause_protection_and_wake_plans() 
 }
 
 #[test]
-fn new_database_seeds_eight_high_sage_dimensions_and_general_activity_default() {
+fn new_database_seeds_two_default_agents_with_eight_dimensions_and_general_activity_default() {
     let (_directory, database) = database();
-    let agent = database.list_agents(GENERATION).unwrap().remove(0);
-    assert_eq!(agent.display_name, "Sage");
-    assert_eq!(agent.dimensions, super::configuration::sage_dimensions());
+    let specs = super::configuration::default_agent_specs();
+    let agents = database.list_agents(GENERATION).unwrap();
+    assert_eq!(agents.len(), specs.len());
+    let names: Vec<_> = agents.iter().map(|agent| agent.display_name.clone()).collect();
+    for spec in &specs {
+        assert!(names.contains(&spec.display_name));
+    }
+    let agent = agents.into_iter().find(|agent| agent.display_name == specs[1].display_name).unwrap();
+    assert_eq!(agent.dimensions, specs[1].dimensions);
+    assert_eq!(agent.gender_description, Some(specs[1].gender_description.clone()));
+    assert_eq!(agent.language_style, specs[1].language_style);
+    assert!(agent.skill.is_empty(), "通用角色指令不写入用户可编辑的 skill");
     let dimensions = value(&agent.dimensions);
     let dimensions = dimensions.as_object().unwrap();
     assert_eq!(dimensions.len(), 8);
-    assert!(
-        dimensions
-            .values()
-            .all(|dimension| dimension.as_u64().unwrap() >= 80)
-    );
     assert_eq!(super::configuration::default_dimensions().activity, 50);
     let global = database.get_global_configuration(GENERATION).unwrap();
     assert!(
@@ -579,7 +574,7 @@ fn incomplete_presets_still_reject_invalid_nonempty_urls_and_strict_values() {
         profile.model_name.clear();
         match case {
             0 => profile.name.clear(),
-            1 => profile.parameters.top_p = 0.0,
+            1 => profile.base_url = "ftp://invalid".into(),
             _ => request.persona_presets[0].dimensions.humor = 101,
         }
         request.model_profiles.push(profile);
@@ -652,7 +647,6 @@ fn global_revision_conflict_rolls_back_and_restart_reads_committed_value() {
     conflict.expected_revision = 1_i64.into();
     conflict.model_profiles[0].name = "不能提交的新名称".into();
     conflict.persona_presets[0].skill = "不能提交的新技能".into();
-    conflict.runtime_defaults.request_limit_daily = 50;
     assert_code(
         database.save_global_configuration(conflict),
         ErrorCode::ConfigConflict,
@@ -695,26 +689,16 @@ fn copied_agents_and_model_persona_snapshots_are_independent_of_global_edits() {
     let copy = save_agent(&mut database, "copy-agent", copy, None);
     let mut edited = copy.clone();
     edited.language_style = "副本独立语言风格".into();
-    edited.address_terms = vec!["同伴".into()];
     edited.skill = "副本独立技能".into();
     edited.dimensions.humor = 90;
     edited.model.as_mut().unwrap().profile.model_name = "copy-specific-model".into();
-    edited
-        .model
-        .as_mut()
-        .unwrap()
-        .profile
-        .parameters
-        .temperature = 0.8;
     let copy = save_agent(&mut database, "edit-copy", edited, Some(copy.revision));
     let mut update = global_request(&database, "edit-global-after-copy", &global);
     update.model_profiles[0].model_name = "new-global-model".into();
     update.model_profiles[0].base_url = "https://new-global.example.invalid/v1".into();
-    update.model_profiles[0].parameters.temperature = 0.1;
     update.persona_presets[0].language_style = "新的全局人格风格".into();
     update.persona_presets[0].skill = "新的全局人格技能".into();
     update.persona_presets[0].dimensions.humor = 5;
-    update.runtime_defaults.request_limit_daily = 10;
     let updated = database.save_global_configuration(update).unwrap().0;
     assert_eq!(updated.model_profiles[0].revision.0, "2");
     let agents = database.list_agents(GENERATION).unwrap();
@@ -782,7 +766,7 @@ fn forged_source_endpoint_protocol_identity_and_revision_are_rejected_atomically
             }),
             ErrorCode::InvalidInput,
         );
-        assert_eq!(count(&database.conn, "participants"), 2);
+        assert_eq!(count(&database.conn, "participants"), 1 + super::configuration::default_agent_specs().len() as i64);
         assert_eq!(
             count(&database.conn, "agent_config_versions"),
             versions_before
@@ -790,7 +774,7 @@ fn forged_source_endpoint_protocol_identity_and_revision_are_rejected_atomically
         assert_eq!(count(&database.conn, "domain_events"), events_before);
         assert_eq!(count(&database.conn, "request_records"), requests_before);
     }
-    assert_eq!(database.list_agents(GENERATION).unwrap().len(), 1);
+    assert_eq!(database.list_agents(GENERATION).unwrap().len(), super::configuration::default_agent_specs().len());
 }
 
 #[test]
@@ -819,8 +803,10 @@ fn agent_save_replay_and_revision_conflict_preserve_active_and_historical_versio
         }),
         ErrorCode::ConfigConflict,
     );
-    assert_eq!(database.list_agents(GENERATION).unwrap(), vec![saved]);
-    assert_eq!(count(&database.conn, "agent_config_versions"), 2);
+    let listed = database.list_agents(GENERATION).unwrap();
+    assert!(listed.contains(&saved));
+    assert_eq!(listed.len(), super::configuration::default_agent_specs().len());
+    assert_eq!(count(&database.conn, "agent_config_versions"), super::configuration::default_agent_specs().len() as i64 + 1);
     assert_eq!(count(&database.conn, "domain_events"), 1);
     assert_eq!(count(&database.conn, "request_records"), 1);
 }
@@ -835,7 +821,6 @@ fn user_profile_rename_updates_historical_sender_and_survives_restart() {
         client_request_id: "rename-user".into(),
         expected_revision: before_profile.revision.clone(),
         display_name: "改名后的用户".into(),
-        introduction: "新资料".into(),
         avatar_id: None,
     };
     let (saved, event) = database.save_user_profile(request.clone()).unwrap();

@@ -4,4 +4,4 @@ import type { DecimalString } from "./DecimalString";
 import type { ParticipantKind } from "./ParticipantKind";
 import type { ParticipantStatus } from "./ParticipantStatus";
 
-export type Participant = { id: string, kind: ParticipantKind, display_name: string, introduction: string, status: ParticipantStatus, is_builtin: boolean, avatar_id: string | null, profile_revision: DecimalString, runtime?: AgentRuntimeState, };
+export type Participant = { id: string, kind: ParticipantKind, display_name: string, status: ParticipantStatus, is_builtin: boolean, avatar_id: string | null, profile_revision: DecimalString, runtime?: AgentRuntimeState, };

@@ -11,7 +11,7 @@ use std::{
 
 use genai::{
     Client, ModelIden, ServiceTarget,
-    chat::{ChatMessage, ChatRequest, ChatResponse, ContentPart, StopReason},
+    chat::{ChatMessage, ChatRequest, ChatResponse, ContentPart, ReasoningEffort, StopReason},
     resolver::{AuthData, Endpoint},
 };
 use tokio::sync::Semaphore;
@@ -66,6 +66,8 @@ impl std::fmt::Debug for ChatReply {
 
 pub struct ModelGateway {
     client: Client,
+    /// 仅用于模型列表这类 SDK 未覆盖的简单 GET 请求。
+    http: reqwest::Client,
     limits: Arc<Limits>,
     deadline: Duration,
     chat_deadline: Duration,
@@ -98,17 +100,19 @@ impl ModelGateway {
             .build()
             .map_err(|_| safe_error(ErrorCode::InternalError, "无法初始化模型连接。", false))?;
         let client = Client::builder()
-            .with_reqwest(transport)
+            .with_reqwest(transport.clone())
             .build()
             .map_err(|_| safe_error(ErrorCode::InternalError, "无法初始化模型 SDK。", false))?;
         Ok(Self {
             client,
+            http: transport,
             limits,
             deadline,
             chat_deadline: CHAT_DEADLINE,
         })
     }
 
+    /// 默认关闭思考，供连接测试与普通调用使用。
     pub async fn chat(
         &self,
         profile: ModelProfile,
@@ -117,10 +121,23 @@ impl ModelGateway {
         context: String,
         cancellation: CancellationToken,
     ) -> AppResult<ChatReply> {
+        self.chat_with_reasoning(profile, api_key, system, context, ReasoningEffort::Zero, cancellation).await
+    }
+
+    /// 按智能体类型决定是否开启思考：工具型开启，社交型关闭。
+    pub async fn chat_with_reasoning(
+        &self,
+        profile: ModelProfile,
+        api_key: String,
+        system: String,
+        context: String,
+        reasoning: ReasoningEffort,
+        cancellation: CancellationToken,
+    ) -> AppResult<ChatReply> {
         if cancellation.is_cancelled() {
             return Err(chat_cancelled(false));
         }
-        let (endpoint, options) = prepare_chat(&profile, &api_key, &system, &context)?;
+        let (endpoint, options) = prepare_chat(&profile, &api_key, &system, &context, reasoning)?;
         let _permit = tokio::select! {
             biased;
             _ = cancellation.cancelled() => return Err(chat_cancelled(false)),
@@ -161,6 +178,89 @@ impl ModelGateway {
             usage_input_tokens: usage_counter(response.usage.prompt_tokens),
             usage_output_tokens: usage_counter(response.usage.completion_tokens),
         })
+    }
+
+    /// 通过已配置凭据调用服务端的模型列表接口，返回可用的模型名称。
+    ///
+    /// OpenAI Chat Completions / Responses：`GET {base_url}/models`，Bearer 认证。
+    /// Anthropic Messages：`GET {base_url}/models`，x-api-key + anthropic-version，
+    /// 并按 `has_more` / `last_id` 翻页（`after_id`）。不读取或回显密钥。
+    pub async fn list_models(
+        &self,
+        profile: ModelProfile,
+        api_key: String,
+        cancellation: CancellationToken,
+    ) -> AppResult<Vec<String>> {
+        use crate::domain::contracts::ModelProtocol;
+
+        if cancellation.is_cancelled() {
+            return Err(chat_cancelled(false));
+        }
+        // endpoint() 已校验协议/主机并保证以 '/' 结尾。
+        let base = super::protocols::endpoint(&profile.base_url)?;
+        let url = format!("{base}models");
+        let is_anthropic = matches!(profile.protocol, ModelProtocol::AnthropicMessages);
+        let mut models: Vec<String> = Vec::new();
+        let mut after: Option<String> = None;
+
+        loop {
+            let mut url = url::Url::parse(&url)
+                .map_err(|_| list_error("模型列表地址无效。"))?;
+            if let Some(cursor) = &after {
+                url.query_pairs_mut().append_pair("after_id", cursor);
+            }
+            let mut request = self.http.get(url).timeout(self.deadline);
+            if is_anthropic {
+                request = request.header("x-api-key", &api_key)
+                    .header("anthropic-version", "2023-06-01");
+            } else {
+                request = request.bearer_auth(&api_key);
+            }
+            let response = tokio::select! {
+                _ = cancellation.cancelled() => return Err(chat_cancelled(false)),
+                result = request.send() => result.map_err(|error| {
+                    list_error(&format!("连接模型服务失败：{error}"))
+                })?,
+            };
+            let status = response.status();
+            if !status.is_success() {
+                return Err(list_error(&format!(
+                    "模型服务拒绝了列表请求（HTTP {}），请检查服务地址与凭据。",
+                    status.as_u16()
+                )));
+            }
+            let body: serde_json::Value = response.json().await
+                .map_err(|_| list_error("模型列表响应格式无效。"))?;
+            let values = body.get("data").and_then(|value| value.as_array())
+                .ok_or_else(|| list_error("模型列表响应缺少 data 字段。"))?;
+            for item in values {
+                if let Some(id) = item.get("id").and_then(|value| value.as_str()) {
+                    let id = id.trim();
+                    // 过滤空值与疑似密钥的回显，避免把敏感信息带到界面。
+                    if !id.is_empty() && id != api_key && !id.contains(&api_key) {
+                        models.push(id.to_owned());
+                    }
+                }
+            }
+            let has_more = body.get("has_more").and_then(|value| value.as_bool())
+                .unwrap_or(false);
+            let next = body.get("last_id").and_then(|value| value.as_str())
+                .map(str::to_owned);
+            if !is_anthropic || !has_more {
+                break;
+            }
+            match next {
+                Some(cursor) if cursor != after.as_deref().unwrap_or_default() => after = Some(cursor),
+                _ => break,
+            }
+        }
+
+        models.sort();
+        models.dedup();
+        if models.is_empty() {
+            return Err(list_error("当前服务未返回任何可用模型。"));
+        }
+        Ok(models)
     }
 
     pub async fn test(
@@ -340,6 +440,14 @@ fn safe_error(code: ErrorCode, message: &'static str, charged: bool) -> AppError
     let mut error = AppError::new(code, message);
     error.retryability = Retryability::Never;
     error.may_have_been_charged = charged;
+    error
+}
+
+/// 模型列表读取失败：允许动态消息（调用方需自行避免包含密钥），不产生费用。
+fn list_error(message: &str) -> AppError {
+    let mut error = AppError::new(ErrorCode::CapabilityUnsupported, message);
+    error.retryability = Retryability::Never;
+    error.may_have_been_charged = false;
     error
 }
 

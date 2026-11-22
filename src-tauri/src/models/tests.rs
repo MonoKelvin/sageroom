@@ -7,7 +7,7 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use crate::domain::contracts::{DecimalString, ModelParameters, ModelProtocol, ReasoningMode};
+use crate::domain::contracts::{DecimalString, MODEL_MAX_OUTPUT_TOKENS, MODEL_TEMPERATURE, MODEL_TOP_P, ModelProtocol};
 use serde_json::{Value, json};
 use tokio::sync::oneshot;
 
@@ -147,13 +147,6 @@ fn profile(protocol: ModelProtocol, base_url: String) -> ModelProfile {
         protocol,
         base_url,
         model_name: "unrecognized-test-model".into(),
-        parameters: ModelParameters {
-            temperature: 0.4,
-            top_p: 0.8,
-            max_output_tokens: 4096,
-            input_budget: 2048,
-            reasoning: ReasoningMode::Off,
-        },
         revision: DecimalString("7".into()),
         credential_configured: true,
     }
@@ -204,7 +197,7 @@ async fn three_sdk_protocols_preserve_routes_auth_parameters_and_usage() {
             .test(
                 profile(protocol.clone(), fixture.url.clone()),
                 KEY.into(),
-                CancellationToken::new(),
+                                CancellationToken::new(),
             )
             .await
             .unwrap();
@@ -238,15 +231,12 @@ async fn three_sdk_protocols_preserve_routes_auth_parameters_and_usage() {
         }
         assert_eq!(request.body["model"], "unrecognized-test-model");
         assert_eq!(request.body[tokens_key], 64);
-        assert_eq!(request.body["temperature"], 0.4);
-        assert_eq!(request.body["top_p"], 0.8);
+        assert_eq!(request.body["temperature"], MODEL_TEMPERATURE);
+        assert_eq!(request.body["top_p"], MODEL_TOP_P);
         assert_eq!(request.body["stream"], false);
         for key in [
             "tools",
             "tool_choice",
-            "thinking",
-            "reasoning",
-            "reasoning_effort",
             "previous_response_id",
         ] {
             assert!(request.body.get(key).is_none());
@@ -274,71 +264,6 @@ async fn three_sdk_protocols_preserve_routes_auth_parameters_and_usage() {
 }
 
 #[tokio::test]
-async fn configured_output_limit_is_not_increased() {
-    let protocol = ModelProtocol::OpenaiChatCompletions;
-    let mut fixture = Fixture::new("200 OK", success(&protocol, "OK"), Duration::ZERO, "");
-    let mut p = profile(protocol, fixture.url.clone());
-    p.parameters.max_output_tokens = 1;
-    test_gateway(DEADLINE)
-        .test(p, KEY.into(), CancellationToken::new())
-        .await
-        .unwrap();
-    assert_eq!(fixture.received().await.body["max_tokens"], 1);
-}
-
-#[tokio::test]
-async fn unsupported_reasoning_and_invalid_inputs_never_consume_budget() {
-    let gateway = test_gateway(DEADLINE);
-    for protocol in protocols() {
-        let mut p = profile(protocol, "http://127.0.0.1:1/v1".into());
-        p.parameters.reasoning = ReasoningMode::Enabled;
-        let error = gateway
-            .test(p, KEY.into(), CancellationToken::new())
-            .await
-            .unwrap_err();
-        assert_eq!(error.code, ErrorCode::CapabilityUnsupported);
-        assert!(!error.may_have_been_charged);
-    }
-    for name in ["openai::gpt-4o", "unrecognized-high", "unrecognized-none"] {
-        let mut p = profile(
-            ModelProtocol::OpenaiChatCompletions,
-            "http://127.0.0.1:1/v1".into(),
-        );
-        p.model_name = name.into();
-        assert!(
-            gateway
-                .test(p, KEY.into(), CancellationToken::new())
-                .await
-                .is_err()
-        );
-    }
-    for key in ["", "invalid\r\nheader", "invalid key"] {
-        let p = profile(
-            ModelProtocol::OpenaiChatCompletions,
-            "http://127.0.0.1:1/v1".into(),
-        );
-        let error = gateway
-            .test(p, key.into(), CancellationToken::new())
-            .await
-            .unwrap_err();
-        assert_eq!(error.field_path.as_deref(), Some("api_key"));
-    }
-    let mut p = profile(
-        ModelProtocol::OpenaiChatCompletions,
-        "http://127.0.0.1:1/v1".into(),
-    );
-    p.parameters.input_budget = 1;
-    assert!(
-        gateway
-            .test(p, KEY.into(), CancellationToken::new())
-            .await
-            .is_err()
-    );
-    assert_eq!(gateway.limits.calls.load(Ordering::Relaxed), 0);
-    assert_eq!(gateway.limits.permits.available_permits(), 2);
-}
-
-#[tokio::test]
 async fn deadlines_and_shutdown_release_permits_without_retry() {
     for protocol in protocols() {
         let mut fixture = Fixture::new(
@@ -352,7 +277,7 @@ async fn deadlines_and_shutdown_release_permits_without_retry() {
             .test(
                 profile(protocol.clone(), fixture.url.clone()),
                 KEY.into(),
-                CancellationToken::new(),
+                                CancellationToken::new(),
             )
             .await
             .unwrap_err();
@@ -482,7 +407,7 @@ async fn sdk_errors_and_echoed_secrets_are_not_exposed_or_logged() {
             let mut test = pin!(gateway.test(
                 profile(protocol.clone(), fixture.url.clone()),
                 KEY.into(),
-                CancellationToken::new(),
+                                CancellationToken::new(),
             ));
             let error = poll_fn(|cx| {
                 tracing::dispatcher::with_default(&dispatch, || test.as_mut().poll(cx))
@@ -518,7 +443,7 @@ async fn successful_echo_is_private_and_missing_usage_stays_nullable() {
         let mut test = pin!(gateway.test(
             profile(protocol, fixture.url.clone()),
             KEY.into(),
-            CancellationToken::new(),
+                        CancellationToken::new(),
         ));
         let result =
             poll_fn(|cx| tracing::dispatcher::with_default(&dispatch, || test.as_mut().poll(cx)))
@@ -548,7 +473,7 @@ async fn redirect_is_not_followed() {
         .test(
             profile(protocol, fixture.url.clone()),
             KEY.into(),
-            CancellationToken::new(),
+                        CancellationToken::new(),
         )
         .await
         .unwrap_err();
@@ -575,7 +500,7 @@ async fn failed_responses_and_tool_calls_do_not_report_available() {
         .test(
             profile(protocol, fixture.url.clone()),
             KEY.into(),
-            CancellationToken::new(),
+                        CancellationToken::new(),
         )
         .await
         .unwrap_err();
@@ -594,7 +519,7 @@ async fn failed_responses_and_tool_calls_do_not_report_available() {
         .test(
             profile(protocol, fixture.url.clone()),
             KEY.into(),
-            CancellationToken::new(),
+                        CancellationToken::new(),
         )
         .await
         .unwrap_err();
@@ -642,9 +567,9 @@ async fn chat_three_protocols_send_system_and_context_and_keep_internal_text() {
         };
         assert_eq!(request.path, format!("/proxy/v1/{suffix}"));
         assert_eq!(request.body["model"], "unrecognized-test-model");
-        assert_eq!(request.body[tokens_key], 4096);
-        assert_eq!(request.body["temperature"], 0.4);
-        assert_eq!(request.body["top_p"], 0.8);
+        assert_eq!(request.body[tokens_key], MODEL_MAX_OUTPUT_TOKENS);
+        assert_eq!(request.body["temperature"], MODEL_TEMPERATURE);
+        assert_eq!(request.body["top_p"], MODEL_TOP_P);
         assert_eq!(request.body["stream"], false);
         match protocol {
             ModelProtocol::AnthropicMessages => {
@@ -678,9 +603,6 @@ async fn chat_three_protocols_send_system_and_context_and_keep_internal_text() {
         for key in [
             "tools",
             "tool_choice",
-            "thinking",
-            "reasoning",
-            "reasoning_effort",
             "previous_response_id",
             "response_format",
         ] {
@@ -703,108 +625,6 @@ async fn chat_three_protocols_send_system_and_context_and_keep_internal_text() {
             MAX_CHAT_CONCURRENT
         );
     }
-}
-
-#[tokio::test]
-async fn chat_output_limits_follow_configuration_without_the_test_64_token_cap() {
-    for protocol in protocols() {
-        for limit in [1, 96, 1024, 4096, 32768] {
-            let mut fixture =
-                Fixture::new("200 OK", success(&protocol, CHAT_JSON), Duration::ZERO, "");
-            let mut p = profile(protocol.clone(), fixture.url.clone());
-            p.parameters.max_output_tokens = limit;
-            test_gateway(DEADLINE)
-                .chat(
-                    p,
-                    KEY.into(),
-                    CHAT_SYSTEM.into(),
-                    CHAT_CONTEXT.into(),
-                    CancellationToken::new(),
-                )
-                .await
-                .unwrap();
-            let key = if protocol == ModelProtocol::OpenaiResponses {
-                "max_output_tokens"
-            } else {
-                "max_tokens"
-            };
-            assert_eq!(fixture.received().await.body[key], limit.min(4096));
-        }
-    }
-}
-
-#[tokio::test]
-async fn chat_rejects_unsupported_reasoning_and_out_of_budget_utf8_before_a_request() {
-    let gateway = test_gateway(DEADLINE);
-    for protocol in protocols() {
-        let mut fixture = Fixture::new("200 OK", success(&protocol, CHAT_JSON), Duration::ZERO, "");
-        let mut p = profile(protocol.clone(), fixture.url.clone());
-        p.parameters.reasoning = ReasoningMode::Enabled;
-        let error = gateway
-            .chat(
-                p,
-                KEY.into(),
-                CHAT_SYSTEM.into(),
-                CHAT_CONTEXT.into(),
-                CancellationToken::new(),
-            )
-            .await
-            .unwrap_err();
-        assert_eq!(error.code, ErrorCode::CapabilityUnsupported);
-        assert!(!error.may_have_been_charged);
-        assert!(!error.message.contains("连接测试"));
-        assert_eq!(fixture.hits.load(Ordering::Relaxed), 0);
-        let mut p = profile(protocol, fixture.url.clone());
-        p.parameters.input_budget = 256;
-        // 171 Chinese characters are 513 UTF-8 bytes: byte budgeting, not chars.
-        let error = gateway
-            .chat(
-                p.clone(),
-                KEY.into(),
-                "s".into(),
-                "中".repeat(171),
-                CancellationToken::new(),
-            )
-            .await
-            .unwrap_err();
-        assert_eq!(error.field_path.as_deref(), Some("context"));
-        assert!(!error.may_have_been_charged);
-        assert_eq!(fixture.hits.load(Ordering::Relaxed), 0);
-        let reply = gateway
-            .chat(
-                p,
-                KEY.into(),
-                "s".into(),
-                "x".repeat(511),
-                CancellationToken::new(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(reply.text, CHAT_JSON);
-        fixture.received().await;
-    }
-    for (system, context) in [("", "context"), ("system", " \n")] {
-        let error = gateway
-            .chat(
-                profile(
-                    ModelProtocol::OpenaiChatCompletions,
-                    "http://127.0.0.1:1/v1".into(),
-                ),
-                KEY.into(),
-                system.into(),
-                context.into(),
-                CancellationToken::new(),
-            )
-            .await
-            .unwrap_err();
-        assert_eq!(error.code, ErrorCode::InvalidInput);
-        assert!(!error.may_have_been_charged);
-    }
-    assert_eq!(gateway.limits.calls.load(Ordering::Relaxed), 0);
-    assert_eq!(
-        gateway.limits.chat_permits.available_permits(),
-        MAX_CHAT_CONCURRENT
-    );
 }
 
 #[tokio::test]

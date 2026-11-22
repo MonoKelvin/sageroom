@@ -1,13 +1,13 @@
-import type { AgentConfiguration, AgentModelSnapshot, Appearance, AppSnapshot, GlobalConfiguration, ModelParameters, ModelProfile, ModelProfileInput, PersonaPreset, SecretStatus, UserProfile } from "@/contracts/generated"
-import { defaultDimensions, defaultParameters } from "@/features/settings/configurationDefaults"
+import type { AgentConfiguration, AgentModelSnapshot, Appearance, AppSnapshot, ExperienceEntry, GlobalConfiguration, ModelListResult, ModelProfile, ModelProfileInput, PersonaPreset, SecretStatus, UserProfile } from "@/contracts/generated"
+import { defaultDimensions } from "@/features/settings/configurationDefaults"
 import { AppliedResource, type ApplicationState } from "./appliedResource"
 import { errorMessage, ipc } from "./ipc"
 
 export type AgentListState = { resources: AppliedResource<AgentConfiguration>[]; loading: boolean; error: string | null }
 
 function profileInput(profile: ModelProfile): ModelProfileInput {
-  const { id, name, protocol, base_url, model_name, parameters } = profile
-  return { id, name: name.trim(), protocol, base_url: base_url.trim(), model_name: model_name.trim(), parameters }
+  const { id, name, protocol, base_url, model_name } = profile
+  return { id, name: name.trim(), protocol, base_url: base_url.trim(), model_name: model_name.trim() }
 }
 
 export function modelIsComplete(profile: ModelProfileInput) { return Boolean(profile.base_url.trim() && profile.model_name.trim()) }
@@ -28,11 +28,11 @@ export class ConfigurationStore {
     const generation = snapshot.data_generation_id
     this.global = new AppliedResource({
       load: () => ipc.getGlobalConfiguration({ data_generation_id: generation }),
-      write: (value, revision, requestId) => ipc.saveGlobalConfiguration({ data_generation_id: generation, client_request_id: requestId, expected_revision: revision, model_profiles: value.model_profiles.map(profileInput), persona_presets: value.persona_presets.map((persona) => ({ ...persona, name: persona.name.trim(), address_terms: persona.address_terms.map((term) => term.trim()).filter(Boolean) })), runtime_defaults: value.runtime_defaults }),
+      write: (value, revision, requestId) => ipc.saveGlobalConfiguration({ data_generation_id: generation, client_request_id: requestId, expected_revision: revision, model_profiles: value.model_profiles.map(profileInput), persona_presets: value.persona_presets.map((persona) => ({ ...persona, name: persona.name.trim() })) }),
     })
     this.user = new AppliedResource({
       load: () => ipc.getUserProfile({ data_generation_id: generation }),
-      write: (value, revision, requestId) => ipc.saveUserProfile({ data_generation_id: generation, client_request_id: requestId, expected_revision: revision, display_name: value.display_name.trim(), introduction: value.introduction, avatar_id: value.avatar_id }),
+      write: (value, revision, requestId) => ipc.saveUserProfile({ data_generation_id: generation, client_request_id: requestId, expected_revision: revision, display_name: value.display_name.trim(), avatar_id: value.avatar_id }),
     })
     this.appearance = new AppliedResource({
       initial: snapshot.appearance,
@@ -58,7 +58,7 @@ export class ConfigurationStore {
         if (!current) throw new Error("成员配置不存在。")
         return current
       },
-      write: (value, revision, requestId) => ipc.saveAgent({ data_generation_id: generation, client_request_id: requestId, expected_revision: revision === "0" ? null : revision, configuration: { ...value, display_name: value.display_name.trim(), address_terms: value.address_terms.map((term) => term.trim()).filter(Boolean) } }),
+      write: (value, revision, requestId) => ipc.saveAgent({ data_generation_id: generation, client_request_id: requestId, expected_revision: revision === "0" ? null : revision, configuration: { ...value, display_name: value.display_name.trim() } }),
     })
     resource.freeze(this.frozen)
     resource.subscribe(() => this.publishAgents())
@@ -87,8 +87,7 @@ export class ConfigurationStore {
 
   async createAgent(source?: AgentConfiguration) {
     await this.global.ensureLoaded()
-    const defaults = this.global.getSnapshot().value!.runtime_defaults
-    const agent: AgentConfiguration = source ? { ...structuredClone(source), agent_id: crypto.randomUUID(), revision: "0", display_name: `${source.display_name} 副本`.slice(0, 80) } : { agent_id: crypto.randomUUID(), revision: "0", display_name: "新智能体", introduction: "", gender_description: null, address_terms: [], language_style: "自然、清晰", skill: "", dimensions: { ...defaultDimensions }, avatar_id: null, agent_type: "social", model: null, preferences: { ...defaults } }
+    const agent: AgentConfiguration = source ? { ...structuredClone(source), agent_id: crypto.randomUUID(), revision: "0", display_name: `${source.display_name} 副本`.slice(0, 80) } : { agent_id: crypto.randomUUID(), revision: "0", display_name: "新智能体", gender_description: null, language_style: "自然、清晰", skill: "", dimensions: { ...defaultDimensions }, avatar_id: null, agent_type: "social", model: null }
     const resource = this.registerAgent(agent)
     const applied = resource.persistInitial()
     applied.catch(() => {})
@@ -103,25 +102,19 @@ export class ConfigurationStore {
     return this.global.change((current) => ({ ...current, model_profiles: current.model_profiles.map((profile) => profile.id === id ? { ...profile, ...patch } : profile) }))
   }
 
-  updateModelParameter<K extends keyof ModelParameters>(id: string, key: K, value: ModelParameters[K]) {
-    return this.global.change((current) => ({ ...current, model_profiles: current.model_profiles.map((profile) => profile.id === id ? { ...profile, parameters: { ...profile.parameters, [key]: value } } : profile) }))
-  }
 
   updateAgentModel(id: string, patch: Partial<ModelProfileInput>) {
     return this.agent(id).change((current) => current.model ? { ...current, model: { ...current.model, profile: { ...current.model.profile, ...patch } } } : current)
   }
 
-  updateAgentModelParameter<K extends keyof ModelParameters>(id: string, key: K, value: ModelParameters[K]) {
-    return this.agent(id).change((current) => current.model ? { ...current, model: { ...current.model, profile: { ...current.model.profile, parameters: { ...current.model.profile.parameters, [key]: value } } } } : current)
-  }
 
   createModel(source?: ModelProfile) {
-    const profile: ModelProfile = source ? { ...structuredClone(source), id: crypto.randomUUID(), revision: "0", name: `${source.name} 副本`.slice(0, 80), credential_configured: false } : { id: crypto.randomUUID(), name: "新模型预设", protocol: "openai_chat_completions", base_url: "", model_name: "", parameters: { ...defaultParameters }, revision: "0", credential_configured: false }
+    const profile: ModelProfile = source ? { ...structuredClone(source), id: crypto.randomUUID(), revision: "0", name: `${source.name} 副本`.slice(0, 80), credential_configured: false } : { id: crypto.randomUUID(), name: "新模型预设", protocol: "openai_chat_completions", base_url: "", model_name: "", revision: "0", credential_configured: false }
     return this.global.change((current) => ({ ...current, model_profiles: [...current.model_profiles, profile] }))
   }
 
   createPersona(source?: PersonaPreset) {
-    const persona: PersonaPreset = source ? { ...structuredClone(source), id: crypto.randomUUID(), revision: "0", name: `${source.name} 副本`.slice(0, 80) } : { id: crypto.randomUUID(), name: "新人格预设", language_style: "自然、清晰", address_terms: [], skill: "", dimensions: { ...defaultDimensions }, revision: "0" }
+    const persona: PersonaPreset = source ? { ...structuredClone(source), id: crypto.randomUUID(), revision: "0", name: `${source.name} 副本`.slice(0, 80) } : { id: crypto.randomUUID(), name: "新人格预设", language_style: "自然、清晰", skill: "", dimensions: { ...defaultDimensions }, revision: "0" }
     return this.global.change((current) => ({ ...current, persona_presets: [...current.persona_presets, persona] }))
   }
 
@@ -143,7 +136,7 @@ export class ConfigurationStore {
   async applyPersona(id: string, personaId: string) {
     await this.global.flush()
     const persona = this.global.getSnapshot().confirmed!.persona_presets.find((persona) => persona.id === personaId)!
-    await this.updateAgent(id, { language_style: persona.language_style, address_terms: [...persona.address_terms], skill: persona.skill, dimensions: { ...persona.dimensions } })
+    await this.updateAgent(id, { language_style: persona.language_style, skill: persona.skill, dimensions: { ...persona.dimensions } })
   }
 
   setSecret(profileId: string, apiKey: string): Promise<SecretStatus> {
@@ -153,12 +146,6 @@ export class ConfigurationStore {
     })
   }
 
-  deleteSecret(profileId: string): Promise<SecretStatus> {
-    return this.global.exclusive((current) => {
-      const profile = current.model_profiles.find((profile) => profile.id === profileId)!
-      return ipc.deleteSecret({ data_generation_id: this.snapshot.data_generation_id, profile_id: profileId, expected_revision: profile.revision })
-    })
-  }
 
   async testModel(profileId: string) {
     await this.global.flush()
@@ -166,6 +153,29 @@ export class ConfigurationStore {
     return ipc.testModel({ data_generation_id: this.snapshot.data_generation_id, profile_id: profileId, expected_revision: profile.revision })
   }
 
+
+  async listModelNames(profileId: string): Promise<ModelListResult> {
+    // 只读操作，不走写 barrier，避免触发「正在应用到本机」的 pending 状态。
+    await this.global.flush()
+    const profile = this.global.getSnapshot().confirmed!.model_profiles.find((profile) => profile.id === profileId)!
+    return ipc.listModels({ data_generation_id: this.snapshot.data_generation_id, profile_id: profileId, expected_revision: profile.revision })
+  }
+
+  listExperience(agentId: string): Promise<ExperienceEntry[]> {
+    return ipc.experienceList({ data_generation_id: this.snapshot.data_generation_id, agent_id: agentId })
+  }
+
+  addExperience(agentId: string, content: string, score: number): Promise<ExperienceEntry> {
+    return ipc.experienceAdd({ data_generation_id: this.snapshot.data_generation_id, agent_id: agentId, content, score })
+  }
+
+  deleteExperience(agentId: string, entryId: string): Promise<ExperienceEntry[]> {
+    return ipc.experienceDelete({ data_generation_id: this.snapshot.data_generation_id, agent_id: agentId, entry_id: entryId })
+  }
+
+  pruneExperience(agentId: string, maxEntries: number): Promise<ExperienceEntry[]> {
+    return ipc.experiencePrune({ data_generation_id: this.snapshot.data_generation_id, agent_id: agentId, max_entries: maxEntries })
+  }
   importDevelopmentModel() { return this.global.exclusive(() => ipc.importDevelopmentModel({ data_generation_id: this.snapshot.data_generation_id })) }
 
   freeze(value: boolean) {

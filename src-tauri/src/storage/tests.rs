@@ -186,7 +186,7 @@ fn initialization_retries_after_its_staging_path_is_unblocked() {
     assert_eq!(fs::read(&staging).unwrap(), obstacle);
     fs::remove_file(&staging).unwrap();
     let mut reopened = Database::open(directory.path(), "retried-initialization".into()).unwrap();
-    assert_eq!(snapshot(&mut reopened).participants.len(), 2);
+    assert_eq!(snapshot(&mut reopened).participants.len(), 1 + super::configuration::default_agent_specs().len());
     assert_eq!(count(&reopened.conn, "messages"), 0);
 }
 
@@ -203,7 +203,7 @@ fn unpublished_failed_staging_database_is_not_activated_or_removed() {
     drop(partial);
     let before = fs::read(&abandoned).unwrap();
     let mut opened = Database::open(directory.path(), "fresh-initialization".into()).unwrap();
-    assert_eq!(snapshot(&mut opened).participants.len(), 2);
+    assert_eq!(snapshot(&mut opened).participants.len(), 1 + super::configuration::default_agent_specs().len());
     assert_eq!(count(&opened.conn, "messages"), 0);
     let foreign_table: bool = opened
         .conn
@@ -384,19 +384,23 @@ fn room_save_request_rejects_forged_actor_fields() {
 }
 
 #[test]
-fn first_start_has_one_user_and_unconfigured_sage_without_fake_chat() {
+fn first_start_has_one_user_and_two_unconfigured_default_agents_without_fake_chat() {
     let (_directory, mut database) = database();
     let snapshot = snapshot(&mut database);
-    assert_eq!(snapshot.participants.len(), 2);
+    let specs = super::configuration::default_agent_specs();
+    assert_eq!(snapshot.participants.len(), 1 + specs.len());
     assert_eq!(snapshot.local_user.kind, ParticipantKind::User);
-    let sage = snapshot
+    let agents: Vec<_> = snapshot
         .participants
         .iter()
-        .find(|participant| participant.kind == ParticipantKind::Agent)
-        .unwrap();
-    assert_eq!(sage.display_name, "Sage");
-    assert_eq!(sage.status, ParticipantStatus::NeedsConfiguration);
-    assert!(sage.is_builtin);
+        .filter(|participant| participant.kind == ParticipantKind::Agent)
+        .collect();
+    assert_eq!(agents.len(), specs.len());
+    for spec in &specs {
+        let agent = agents.iter().find(|agent| agent.display_name == spec.display_name).unwrap();
+        assert_eq!(agent.status, ParticipantStatus::NeedsConfiguration);
+        assert!(agent.is_builtin);
+    }
     assert_eq!(snapshot.room.owner_participant_id, snapshot.local_user.id);
     assert_eq!(snapshot.latest_message_seq.0, "0");
     assert!(snapshot.events.is_empty());

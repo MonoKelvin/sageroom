@@ -45,13 +45,18 @@ commands.allow = ["global_configuration_save", "agent_save", "agent_runtime_cont
 
 [[permission]]
 identifier = "credentials-manage"
-description = "写入或解绑模型凭据，只返回是否配置"
-commands.allow = ["secret_set", "secret_delete", "secret_status"]
+description = "写入模型凭据，只返回是否配置"
+commands.allow = ["secret_set", "secret_status"]
 
 [[permission]]
 identifier = "model-test"
-description = "受限模型连通测试与仅开发版本的临时模型导入"
-commands.allow = ["model_profile_test", "development_model_import"]
+description = "受限模型连通测试、模型列表读取与仅开发版本的临时模型导入"
+commands.allow = ["model_profile_test", "model_profile_list", "development_model_import"]
+
+[[permission]]
+identifier = "experience-manage"
+description = "读取与维护每个智能体独立的经历文件"
+commands.allow = ["experience_list", "experience_add", "experience_delete", "experience_prune"]
 
 [[permission]]
 identifier = "avatar-manage"

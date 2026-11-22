@@ -6,16 +6,16 @@ import { ipc } from "@/app/ipc"
 import * as ipcModule from "@/app/ipc"
 import type { ApplicationPageProps } from "@/app/navigation"
 import { snapshot } from "@/features/chat/chat.test-fixtures"
-import { defaultDimensions, defaultParameters, defaultPreferences } from "./configurationDefaults"
+import { defaultDimensions } from "./configurationDefaults"
 
 export function globalConfiguration(): GlobalConfiguration {
-  return { revision: "1", model_profiles: [{ id: "model-a", name: "常用模型", protocol: "openai_chat_completions", base_url: "https://example.com/v1", model_name: "test-model", parameters: { ...defaultParameters }, revision: "1", credential_configured: false }], persona_presets: [{ id: "persona-a", name: "自然交流", language_style: "自然友善", address_terms: ["朋友"], skill: "整理资料", dimensions: { ...defaultDimensions }, revision: "1" }], runtime_defaults: { ...defaultPreferences } }
+  return { revision: "1", model_profiles: [{ id: "model-a", name: "常用模型", protocol: "openai_chat_completions", base_url: "https://example.com/v1", model_name: "test-model",revision: "1", credential_configured: false }], persona_presets: [{ id: "persona-a", name: "自然交流", language_style: "自然友善",skill: "整理资料", dimensions: { ...defaultDimensions }, revision: "1" }], }
 }
 export function agentConfiguration(id = "sage-test", name = "Sage"): AgentConfiguration {
-  return { agent_id: id, revision: "1", display_name: name, introduction: "群聊成员", gender_description: null, address_terms: [], language_style: "自然", skill: "", dimensions: { ...defaultDimensions }, avatar_id: null, agent_type: "social", model: null, preferences: { ...defaultPreferences } }
+  return { agent_id: id, revision: "1", display_name: name, gender_description: null,language_style: "自然", skill: "", dimensions: { ...defaultDimensions }, avatar_id: null, agent_type: "social", model: null, }
 }
 export function userProfile(): UserProfile {
-  return { participant_id: "user-test", display_name: "我", introduction: "本地用户", avatar_id: null, revision: "1" }
+  return { participant_id: "user-test", display_name: "我", avatar_id: null, revision: "1" }
 }
 export function pageProps(active = true): ApplicationPageProps {
   const base = snapshot()
@@ -56,7 +56,7 @@ export function mockConfigurationIpc() {
   vi.spyOn(ipc, "snapshot").mockImplementation(async () => ({ ...pageProps().session.snapshot!, appearance: structuredClone(data.appearance) }))
   vi.spyOn(ipc, "saveGlobalConfiguration").mockImplementation(async (request) => {
     data.global = {
-      revision: nextRevision(data.global.revision), runtime_defaults: request.runtime_defaults,
+      revision: nextRevision(data.global.revision),
       model_profiles: request.model_profiles.map((profile) => ({ ...profile, revision: nextRevision(data.global.model_profiles.find((item) => item.id === profile.id)?.revision ?? "0"), credential_configured: data.global.model_profiles.find((item) => item.id === profile.id)?.credential_configured ?? false })),
       persona_presets: request.persona_presets.map((persona) => ({ ...persona, revision: nextRevision(data.global.persona_presets.find((item) => item.id === persona.id)?.revision ?? "0") })),
     }
@@ -76,7 +76,7 @@ export function mockConfigurationIpc() {
     requests_today: 0,
   }))
   vi.spyOn(ipc, "saveUserProfile").mockImplementation(async (request) => {
-    data.user = { participant_id: data.user.participant_id, display_name: request.display_name, introduction: request.introduction, avatar_id: request.avatar_id, revision: nextRevision(request.expected_revision) }
+    data.user = { participant_id: data.user.participant_id, display_name: request.display_name, avatar_id: request.avatar_id, revision: nextRevision(request.expected_revision) }
     return structuredClone(data.user)
   })
   vi.spyOn(ipc, "saveAppearance").mockImplementation(async (request) => {
@@ -92,13 +92,6 @@ export function mockConfigurationIpc() {
     profile.revision = nextRevision(profile.revision)
     data.global.revision = nextRevision(data.global.revision)
     return { profile_id: profile.id, configured: true }
-  })
-  vi.spyOn(ipc, "deleteSecret").mockImplementation(async (request) => {
-    const profile = data.global.model_profiles.find((item) => item.id === request.profile_id)!
-    profile.credential_configured = false
-    profile.revision = nextRevision(profile.revision)
-    data.global.revision = nextRevision(data.global.revision)
-    return { profile_id: profile.id, configured: false }
   })
   vi.spyOn(ipc, "testModel").mockResolvedValue({ profile_id: "model-a", revision: "1", protocol: "openai_chat_completions", available: true, usage_input_tokens: 12, usage_output_tokens: 1, elapsed_ms: 80 })
   vi.spyOn(ipc, "importDevelopmentModel").mockImplementation(async () => structuredClone(data.global))

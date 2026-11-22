@@ -16,7 +16,7 @@ use crate::domain::{
 };
 
 pub const SCHEMA: &str = include_str!("schema.sql");
-pub const CURRENT_SCHEMA: u32 = 5;
+pub const CURRENT_SCHEMA: u32 = 6;
 
 pub struct Database {
     pub(crate) conn: Connection,
@@ -188,7 +188,6 @@ fn initialize_new_database(root: &Path, destination: &Path) -> AppResult<()> {
             conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         transaction.execute_batch(SCHEMA)?;
         let user_id = Uuid::now_v7().to_string();
-        let sage_id = Uuid::now_v7().to_string();
         let room_id = Uuid::now_v7().to_string();
         transaction.execute(
             "INSERT INTO app_meta VALUES (1, ?1, ?2, ?3)",
@@ -199,13 +198,15 @@ fn initialize_new_database(root: &Path, destination: &Path) -> AppResult<()> {
             ],
         )?;
         transaction.execute(
-            "INSERT INTO participants(id,kind,display_name,introduction,status,builtin_key,created_at) VALUES (?1,'user','我','','present',NULL,?2)",
+            "INSERT INTO participants(id,kind,display_name,status,builtin_key,created_at) VALUES (?1,'user','我','present',NULL,?2)",
             params![user_id, now_ms()],
         )?;
-        transaction.execute(
-            "INSERT INTO participants(id,kind,display_name,introduction,status,builtin_key,created_at) VALUES (?1,'agent','Sage','一位平等的群聊成员。当前尚未接入模型，不会自动发言。','needs_configuration','sage',?2)",
-            params![sage_id, now_ms()],
-        )?;
+        for spec in super::configuration::default_agent_specs() {
+            transaction.execute(
+                "INSERT INTO participants(id,kind,display_name,status,builtin_key,created_at) VALUES (?1,'agent',?2,'needs_configuration',?3,?4)",
+                params![Uuid::now_v7().to_string(), spec.display_name, spec.key, now_ms()],
+            )?;
+        }
         transaction.execute(
             "INSERT INTO room VALUES (1, ?1, 'Sageroom', ?2, 1, 0)",
             params![room_id, user_id],

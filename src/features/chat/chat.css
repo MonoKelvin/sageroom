@@ -10,7 +10,7 @@
 .chat-list-footer { height: var(--space-3); }
 .chat-time-divider { margin: 0; padding: var(--space-3) var(--space-3) var(--space-1); color: var(--text-secondary); font-size: var(--font-body); text-align: center; }
 .chat-message { position: relative; padding: var(--space-2) var(--space-4); border-radius: var(--control-radius); transition: background-color var(--motion-duration) ease; }
-.chat-message-highlight { background: var(--accent); }
+.chat-message-highlight { border-radius: 0; background: var(--accent); }
 .chat-message-row { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; }
 .chat-message-row[data-self="true"] { flex-direction: row-reverse; }
 .chat-message-avatar { flex: 0 0 auto; }
@@ -44,7 +44,8 @@
 .chat-search-text { width: 100%; min-width: 0; padding: 0; border: 0; outline: none; box-shadow: none; background: transparent; color: var(--text-primary); font-size: var(--font-body); }
 .chat-search-text::placeholder { color: var(--text-secondary); }
 .chat-search-toggle[aria-expanded="true"] { background: var(--control-bg); color: var(--text-primary); }
-.chat-search-results { position: absolute; top: calc(100% + var(--space-3)); right: 0; z-index: 10; width: min(calc(var(--size-unit) * 105), calc(100cqw - 2 * var(--space-5) - var(--size-unit) * 22)); max-height: min(calc(var(--size-unit) * 105), calc(100dvh - var(--size-unit) * 50)); padding: var(--space-2); overflow: auto; border: var(--stroke-width) solid var(--border); border-radius: var(--radius-card); background: var(--surface-chrome); backdrop-filter: blur(calc(var(--glass-blur) * 1.5)) saturate(140%); -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 1.5)) saturate(140%); box-shadow: var(--floating-shadow); animation: chat-results-enter var(--motion-duration) var(--motion-ease); }
+.chat-search-results { position: absolute; top: calc(100% + var(--space-3)); right: 0; z-index: 10; display: flex; flex-direction: column; width: min(calc(var(--size-unit) * 105), calc(100cqw - 2 * var(--space-5) - var(--size-unit) * 22)); max-height: min(calc(var(--size-unit) * 105), calc(100dvh - var(--size-unit) * 50)); overflow: clip; border: var(--stroke-width) solid var(--border); border-radius: var(--radius-card); background: var(--surface-chrome); backdrop-filter: blur(calc(var(--glass-blur) * 1.5)) saturate(140%); -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 1.5)) saturate(140%); box-shadow: var(--floating-shadow); animation: chat-results-enter var(--motion-duration) var(--motion-ease); }
+.chat-search-results-scroll { min-height: 0; padding: var(--space-2); overflow: auto; }
 .chat-search-summary { padding: var(--space-2) calc(var(--size-unit) * 2.5); color: var(--text-secondary); font-size: var(--font-body); }
 .chat-search-feedback { margin: 0; padding: var(--space-2) calc(var(--size-unit) * 2.5); color: var(--status-error); font-size: var(--font-body); }
 .chat-search-empty { margin: 0; padding: calc(var(--size-unit) * 7) var(--space-3); text-align: center; color: var(--text-secondary); font-size: var(--font-body); }
@@ -99,4 +100,5 @@
 @keyframes chat-search-exit { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(calc(var(--size-unit) * 1.5)); } }
 @keyframes chat-search-field-enter { from { clip-path: inset(0 0 0 100% round var(--control-radius)); } to { clip-path: inset(0 0 0 0 round var(--control-radius)); } }
 @keyframes chat-results-enter { from { opacity: 0; transform: translateY(calc(var(--space-1) * -1)); } to { opacity: 1; transform: translateY(0); } }
-html[data-input-modality="keyboard"] :is(.chat-search-content, .chat-search-input, .chat-search-results, .chat-search-locate, .group-info-drawer, .group-info-overlay) { animation: none !important; transition-duration: 0ms !important; }
+.chat-search-content[data-motion="instant"], .chat-search-content[data-motion="instant"] :is(.chat-search-input, .chat-search-results) { animation: none !important; transition-duration: 0ms !important; }
+html[data-input-modality="keyboard"] :is(.chat-search-locate, .group-info-drawer, .group-info-overlay) { animation: none !important; transition-duration: 0ms !important; }

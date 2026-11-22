@@ -13,8 +13,8 @@ import { EditableInput } from "@/components/ui/editable-input"
 import { EditableTextarea } from "@/components/ui/editable-textarea"
 import { SettingSection } from "@/components/ui/setting-row"
 import { SettingsSelect } from "@/components/ui/settings-select"
-import { normalizeTerms, validateTerms, validateText } from "@/features/settings/configurationDefaults"
-import { DimensionsFields, Field, ModelFields, PreferencesFields, ResourceFeedback } from "@/features/settings/ConfigurationFields"
+import { validateText } from "@/features/settings/configurationDefaults"
+import { DimensionsFields, Field, ModelFields, ResourceFeedback } from "@/features/settings/ConfigurationFields"
 import { usePageActivation } from "@/features/settings/useLocalEditor"
 import { GlobalConfiguration as GlobalConfigurationPanel } from "./GlobalConfiguration"
 import "@/features/settings/configuration.css"
@@ -120,27 +120,21 @@ function AgentEditor({ resource, global, active, session, onCopy, onOpenGlobal }
         <SettingSection title="基本资料">
           <Field label="名称"><EditableInput label="名称" active={active} maxLength={80} value={agent.display_name} normalize={(next) => next.trim()} validate={(next) => validateText(next, 80, true)} onApply={(display_name) => update({ display_name })} /></Field>
           <Field label="智能体类型"><SettingsSelect label="智能体类型" value={agent.agent_type} options={[{ value: "social", label: "社交成员" }, { value: "tool", label: "工具助手" }]} onValueChange={(agent_type) => update({ agent_type: agent_type as AgentConfiguration["agent_type"] })} /></Field>
-          <Field label="简介"><EditableTextarea label="简介" active={active} rows={3} maxLength={2000} value={agent.introduction} validate={(next) => validateText(next, 2000)} onApply={(introduction) => update({ introduction })} /></Field>
-          <details className="config-disclosure"><summary>性别描述与称呼</summary><div className="config-stack">
-            <Field label="性别描述（可选）"><EditableInput label="性别描述（可选）" active={active} maxLength={80} value={agent.gender_description ?? ""} validate={(next) => validateText(next, 80)} onApply={(next) => update({ gender_description: next || null })} /></Field>
-            <Field label="称呼用语" caption="每行一个，最多 16 个称呼。"><EditableTextarea label="称呼用语" active={active} rows={2} value={agent.address_terms.join("\n")} normalize={normalizeTerms} validate={validateTerms} onApply={(next) => update({ address_terms: next ? next.split("\n") : [] })} /></Field>
-          </div></details>
+          <Field label="性别描述（可选）"><EditableInput label="性别描述（可选）" active={active} maxLength={80} value={agent.gender_description ?? ""} validate={(next) => validateText(next, 80)} onApply={(next) => update({ gender_description: next || null })} /></Field>
         </SettingSection>
         <SettingSection title="人格与表达">
           <Field label="采用人格预设" caption="复制普通参数，之后与全局预设独立。"><SettingsSelect label="采用人格预设" value={personaId} options={[{ value: "", label: "独立编辑" }, ...global.persona_presets.map((persona) => ({ value: persona.id, label: persona.name }))]} onValueChange={(id) => selectTemplate("persona", id)} /></Field>
           <Field label="语言风格"><EditableTextarea label="语言风格" active={active} rows={2} maxLength={2000} value={agent.language_style} validate={(next) => validateText(next, 2000)} onApply={(language_style) => update({ language_style })} /></Field>
-          <Field label="角色指令（SKILL）"><EditableTextarea label="角色指令（SKILL）" className="settings-textarea-long" active={active} rows={7} maxLength={4000} value={agent.skill} validate={(next) => validateText(next, 4000)} onApply={(skill) => update({ skill })} /></Field>
           <details className="config-disclosure"><summary>八个人格维度（0–100）</summary><DimensionsFields value={agent.dimensions} onChange={(key, next) => resource.change((current) => ({ ...current, dimensions: { ...current.dimensions, [key]: next } }))} /></details>
         </SettingSection>
         <SettingSection title="模型配置">
           <Field label="采用模型预设" caption="密钥不复制，来源 ID 与版本保留；普通参数独立。"><SettingsSelect label="采用模型预设" value={agent.model?.source_profile_id ?? ""} options={[{ value: "", label: "不配置模型" }, ...global.model_profiles.map((profile) => ({ value: profile.id, label: `${profile.name}${modelIsComplete(profile) ? "" : "（未配置）"}`, disabled: !modelIsComplete(profile) }))]} onValueChange={(id) => selectTemplate("model", id)} /></Field>
-          {agent.model && <><p className="form-caption">来源版本 {agent.model.source_profile_revision}；当前参数属于这份智能体配置。</p><ModelFields value={agent.model.profile} active={active} sourceReadOnly onChange={(patch) => store.updateAgentModel(agent.agent_id, patch)} onParameterChange={(key, next) => store.updateAgentModelParameter(agent.agent_id, key, next)} /></>}
+          {agent.model && <><p className="form-caption">来源版本 {agent.model.source_profile_revision}；当前参数属于这份智能体配置。</p><ModelFields value={agent.model.profile} active={active} sourceReadOnly onChange={(patch) => store.updateAgentModel(agent.agent_id, patch)} /></>}
           {!global.model_profiles.length && <p className="form-caption">请先在全局配置中添加模型预设。</p>}
           <Button variant="ghost" size="sm" className="self-start" onClick={onOpenGlobal}>打开全局配置</Button>
         </SettingSection>
-        <SettingSection title="运行偏好"><PreferencesFields value={agent.preferences} onChange={(patch) => resource.change((current) => ({ ...current, preferences: { ...current.preferences, ...patch } }))} /></SettingSection>
       </fieldset>
-      {applyTarget && <div className="config-notice" role="alert"><p>{applyTarget.kind === "model" ? "采用预设会替换当前独立模型参数；选择不配置模型会清除模型参数。" : "采用人格预设会替换当前语言风格、称呼、角色指令和人格维度。"}</p><div className="config-actions"><Button size="sm" disabled={runtime.exiting} onClick={() => void applyTemplate(applyTarget.kind, applyTarget.id)}>确认采用</Button><Button variant="ghost" size="sm" onClick={() => setApplyTarget(null)}>保留当前参数</Button></div></div>}
+      {applyTarget && <div className="config-notice" role="alert"><p>{applyTarget.kind === "model" ? "采用预设会替换当前独立模型参数；选择不配置模型会清除模型参数。" : "采用人格预设会替换当前语言风格和人格维度。"}</p><div className="config-actions"><Button size="sm" disabled={runtime.exiting} onClick={() => void applyTemplate(applyTarget.kind, applyTarget.id)}>确认采用</Button><Button variant="ghost" size="sm" onClick={() => setApplyTarget(null)}>保留当前参数</Button></div></div>}
       {operationError && state.status !== "error" && <p role="alert">{operationError}</p>}
       <ResourceFeedback resource={resource} state={state} />
     </div>

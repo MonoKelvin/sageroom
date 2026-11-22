@@ -28,14 +28,17 @@ export function SettingRow({ title, description, children, htmlFor, error, pendi
   )
 }
 
-export interface SettingSectionProps { title: string; description?: string; children: ReactNode }
+export interface SettingSectionProps { title: string; description?: string; actions?: ReactNode; children: ReactNode }
 
-export function SettingSection({ title, description, children }: SettingSectionProps) {
+export function SettingSection({ title, description, actions, children }: SettingSectionProps) {
   const id = useId()
   return (
     <section className="setting-section" aria-labelledby={id}>
       <header className="setting-section-header">
-        <h2 id={id}>{title}</h2>
+        <div className="setting-section-heading-row">
+          <h2 id={id}>{title}</h2>
+          {actions && <div className="setting-section-actions">{actions}</div>}
+        </div>
         {description && <p>{description}</p>}
       </header>
       <div className="setting-section-body">{children}</div>

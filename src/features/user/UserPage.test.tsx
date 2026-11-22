@@ -24,7 +24,7 @@ describe("直接应用用户资料", () => {
     expect(ipc.saveUserProfile).not.toHaveBeenCalled()
     expect(screen.queryByRole("button", { name: /保存|重新读取|丢弃/ })).not.toBeInTheDocument()
   })
-  it("昵称失焦应用，简介 cross 取消/check 应用且不触发 session 重新读取", async () => {
+  it("昵称失焦直接应用且不触发 session 重新读取", async () => {
     const props = pageProps()
     render(page(props))
     const name = await screen.findByLabelText("昵称", { selector: "input" })
@@ -32,16 +32,6 @@ describe("直接应用用户资料", () => {
     fireEvent.blur(name)
     await waitFor(() => expect(ipc.saveUserProfile).toHaveBeenCalledTimes(1))
     expect(vi.mocked(ipc.saveUserProfile).mock.calls[0][0].display_name).toBe("新昵称")
-    const intro = screen.getByLabelText("简介", { selector: "textarea" })
-    await userEvent.click(intro)
-    fireEvent.change(intro, { target: { value: "取消的简介" } })
-    await userEvent.click(screen.getByRole("button", { name: "撤销简介" }))
-    expect(intro).toHaveValue("本地用户")
-    expect(ipc.saveUserProfile).toHaveBeenCalledTimes(1)
-    fireEvent.change(intro, { target: { value: "应用的简介" } })
-    await userEvent.click(screen.getByRole("button", { name: "应用简介" }))
-    await waitFor(() => expect(ipc.saveUserProfile).toHaveBeenCalledTimes(2))
-    expect(vi.mocked(ipc.saveUserProfile).mock.lastCall?.[0]).toMatchObject({ display_name: "新昵称", introduction: "应用的简介" })
     expect(props.session.reload).not.toHaveBeenCalled()
   })
   it("确认较晚返回不覆盖新的内部编辑", async () => {
@@ -52,7 +42,7 @@ describe("直接应用用户资料", () => {
     fireEvent.change(name, { target: { value: "已交出昵称" } })
     fireEvent.blur(name)
     fireEvent.change(name, { target: { value: "新的编辑" } })
-    await act(async () => finish({ participant_id: "user-test", display_name: "已交出昵称", introduction: "本地用户", avatar_id: null, revision: "2" }))
+    await act(async () => finish({ participant_id: "user-test", display_name: "已交出昵称", avatar_id: null, revision: "2" }))
     expect(name).toHaveValue("新的编辑")
   })
   it("应用失败可局部重试，并保留 applied 昵称与同一请求 ID", async () => {
@@ -99,7 +89,7 @@ describe("直接应用用户资料", () => {
     const view = render(page(props))
     view.rerender(page({ ...props, session: { ...props.session, snapshot: { ...props.session.snapshot!, data_generation_id: "new-generation" } } }))
     await screen.findByLabelText("昵称", { selector: "input" })
-    await act(async () => finish({ participant_id: "old", display_name: "旧世代昵称", introduction: "", avatar_id: null, revision: "1" }))
+    await act(async () => finish({ participant_id: "old", display_name: "旧世代昵称", avatar_id: null, revision: "1" }))
     expect(screen.getByLabelText("昵称", { selector: "input" })).toHaveValue("我")
   })
 })

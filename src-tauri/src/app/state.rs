@@ -21,6 +21,7 @@ use crate::{
 
 pub struct AppState {
     pub generation: String,
+    data_directory: Option<PathBuf>,
     storage: Mutex<AppResult<Arc<DbWorker>>>,
     storage_initialized: bool,
     secrets: AppResult<Arc<SecretStore>>,
@@ -42,6 +43,7 @@ impl AppState {
         let models = ModelGateway::new().map(Arc::new);
         let runtime = RuntimeSupervisor::new();
         let event_runtime = runtime.clone();
+        let data_directory = directory.as_ref().ok().map(|path| path.join("data"));
         let storage = directory
             .map_err(|_| {
                 AppError::new(
@@ -64,6 +66,7 @@ impl AppState {
         }
         Self {
             generation,
+            data_directory,
             storage_initialized: storage.is_ok(),
             storage: Mutex::new(storage),
             secrets,
@@ -87,6 +90,52 @@ impl AppState {
             ));
         }
         self.storage.lock().expect("存储锁被污染").clone()
+    }
+
+    fn experience_root(&self, generation: &str) -> AppResult<PathBuf> {
+        if generation != self.generation {
+            return Err(AppError::new(
+                ErrorCode::ConfigConflict,
+                "数据版本已改变，请重新读取后再操作。",
+            ));
+        }
+        self.data_directory.clone().ok_or_else(|| {
+            AppError::new(ErrorCode::IoError, "无法获取应用数据目录。")
+        })
+    }
+
+    async fn ensure_agent(&self, generation: &str, agent_id: &str) -> AppResult<()> {
+        let agents = self.worker()?.list_agents(AgentListRequest {
+            data_generation_id: generation.to_owned(),
+        }).await?;
+        if !agents.iter().any(|agent| agent.agent_id == agent_id) {
+            return Err(AppError::invalid("agent_id", "智能体不存在。"));
+        }
+        Ok(())
+    }
+
+    pub async fn experience_list(&self, request: ExperienceAgentRequest) -> AppResult<Vec<ExperienceEntry>> {
+        let root = self.experience_root(&request.data_generation_id)?;
+        self.ensure_agent(&request.data_generation_id, &request.agent_id).await?;
+        crate::storage::experience::list(&root, &request.agent_id)
+    }
+
+    pub async fn experience_add(&self, request: ExperienceAddRequest) -> AppResult<ExperienceEntry> {
+        let root = self.experience_root(&request.data_generation_id)?;
+        self.ensure_agent(&request.data_generation_id, &request.agent_id).await?;
+        crate::storage::experience::add(&root, &request.agent_id, &request.content, request.score)
+    }
+
+    pub async fn experience_delete(&self, request: ExperienceDeleteRequest) -> AppResult<Vec<ExperienceEntry>> {
+        let root = self.experience_root(&request.data_generation_id)?;
+        self.ensure_agent(&request.data_generation_id, &request.agent_id).await?;
+        crate::storage::experience::delete(&root, &request.agent_id, &request.entry_id)
+    }
+
+    pub async fn experience_prune(&self, request: ExperiencePruneRequest) -> AppResult<Vec<ExperienceEntry>> {
+        let root = self.experience_root(&request.data_generation_id)?;
+        self.ensure_agent(&request.data_generation_id, &request.agent_id).await?;
+        crate::storage::experience::prune(&root, &request.agent_id, request.max_entries as usize)
     }
 
     pub async fn global_configuration(
@@ -220,27 +269,6 @@ impl AppState {
         })
     }
 
-    pub async fn delete_secret(&self, request: SecretDeleteRequest) -> AppResult<SecretStatus> {
-        self.checked_profile(
-            request.data_generation_id.clone(),
-            request.profile_id.clone(),
-            request.expected_revision.clone(),
-        )
-        .await?;
-        self.worker()?
-            .set_credential_reference(
-                request.data_generation_id,
-                request.profile_id.clone(),
-                request.expected_revision,
-                None,
-            )
-            .await?;
-        Ok(SecretStatus {
-            profile_id: request.profile_id,
-            configured: false,
-        })
-    }
-
     pub async fn test_model(&self, request: ModelProfileTestRequest) -> AppResult<ModelTestResult> {
         let (profile, reference) = self
             .checked_profile(
@@ -269,6 +297,35 @@ impl AppState {
             .reserve_runtime_request(format!("test:{}", profile.id), 20)
             .await?;
         self.models.clone()?.test(profile, key, cancellation).await
+    }
+
+    pub async fn list_models(&self, request: ModelListRequest) -> AppResult<ModelListResult> {
+        let (profile, reference) = self
+            .checked_profile(
+                request.data_generation_id,
+                request.profile_id,
+                request.expected_revision,
+            )
+            .await?;
+        crate::storage::configuration::require_configured_profile(&profile.input())?;
+        let reference = reference.ok_or_else(|| {
+            AppError::new(
+                ErrorCode::CapabilityUnsupported,
+                "请先设置此模型的 API 凭据。",
+            )
+        })?;
+        let secrets = self.secrets.clone()?;
+        let endpoint = profile.base_url.clone();
+        let protocol = profile.protocol.clone();
+        let key = tauri::async_runtime::spawn_blocking(move || {
+            secrets.read(&reference, &endpoint, &protocol)
+        })
+        .await
+        .map_err(|_| AppError::new(ErrorCode::InternalError, "读取模型凭据未完成。"))??;
+        let profile_id = profile.id.clone();
+        let cancellation = self.model_shutdown.lock().expect("模型锁被污染").clone();
+        let models = self.models.clone()?.list_models(profile, key, cancellation).await?;
+        Ok(ModelListResult { profile_id, models })
     }
 
     pub async fn import_development_model(
@@ -315,7 +372,6 @@ impl AppState {
                 expected_revision: current.revision,
                 model_profiles: profiles,
                 persona_presets: current.persona_presets,
-                runtime_defaults: current.runtime_defaults,
             })
             .await?;
         let revision = current
@@ -441,6 +497,7 @@ mod tests {
     fn fixture(worker: AppResult<Arc<DbWorker>>) -> AppState {
         AppState {
             generation: "state-tests".into(),
+            data_directory: None,
             storage_initialized: worker.is_ok(),
             storage: Mutex::new(worker),
             secrets: Err(AppError::new(
@@ -490,16 +547,8 @@ mod tests {
                         protocol: ModelProtocol::OpenaiChatCompletions,
                         base_url: url.into(),
                         model_name: model.into(),
-                        parameters: ModelParameters {
-                            temperature: 0.5,
-                            top_p: 1.0,
-                            max_output_tokens: 1024,
-                            input_budget: 4096,
-                            reasoning: ReasoningMode::Off,
-                        },
                     }],
                     persona_presets: current.persona_presets,
-                    runtime_defaults: current.runtime_defaults,
                 },
             ))
             .unwrap();

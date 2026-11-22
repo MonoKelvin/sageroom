@@ -18,13 +18,6 @@ fn configured(database: &mut Database) -> AgentConfiguration {
         protocol: ModelProtocol::OpenaiChatCompletions,
         base_url: "https://runtime.example.invalid/v1".into(),
         model_name: "fixture".into(),
-        parameters: ModelParameters {
-            temperature: 0.5,
-            top_p: 1.0,
-            max_output_tokens: 1024,
-            input_budget: 4096,
-            reasoning: ReasoningMode::Off,
-        },
     };
     let global = database
         .save_global_configuration(GlobalConfigurationSaveRequest {
@@ -33,7 +26,6 @@ fn configured(database: &mut Database) -> AgentConfiguration {
             expected_revision: global.revision,
             model_profiles: vec![profile],
             persona_presets: global.persona_presets,
-            runtime_defaults: global.runtime_defaults,
         })
         .unwrap()
         .0;
@@ -202,7 +194,6 @@ fn input_uses_member_snapshot_current_credential_and_thirty_visible_messages() {
             expected_revision: current.revision,
             model_profiles: vec![changed.clone()],
             persona_presets: current.persona_presets.clone(),
-            runtime_defaults: current.runtime_defaults.clone(),
         })
         .unwrap();
     assert_eq!(
@@ -227,7 +218,6 @@ fn input_uses_member_snapshot_current_credential_and_thirty_visible_messages() {
             expected_revision: current.revision,
             model_profiles: vec![changed],
             persona_presets: current.persona_presets,
-            runtime_defaults: current.runtime_defaults,
         })
         .unwrap()
         .0;
@@ -315,11 +305,10 @@ fn runtime_snapshot_status_and_events_are_truthful_and_unchanged_states_do_not_b
 #[test]
 fn request_quota_counts_silence_failures_and_survives_restart_and_utc_day_change() {
     let (directory, mut database, mut agent) = fixture();
-    agent.preferences.request_limit_daily = 3;
     let agent = save_agent(&mut database, agent);
     assert_eq!(
         database
-            .reserve_runtime_request(&agent.agent_id, 500)
+            .reserve_runtime_request(&agent.agent_id, 3)
             .unwrap(),
         1
     );
@@ -331,24 +320,24 @@ fn request_quota_counts_silence_failures_and_survives_restart_and_utc_day_change
     assert_eq!(restarted.runtime_states().unwrap()[0].requests_today, 1);
     assert_eq!(
         restarted
-            .reserve_runtime_request(&agent.agent_id, 500)
+            .reserve_runtime_request(&agent.agent_id, 3)
             .unwrap(),
         2
     );
     assert_eq!(
         restarted
-            .reserve_runtime_request(&agent.agent_id, 500)
+            .reserve_runtime_request(&agent.agent_id, 3)
             .unwrap(),
         3
     );
     code(
-        restarted.reserve_runtime_request(&agent.agent_id, 500),
+        restarted.reserve_runtime_request(&agent.agent_id, 3),
         ErrorCode::Backpressure,
     );
     let tomorrow = (now_ms().div_euclid(UTC_DAY_MS) + 1) * UTC_DAY_MS;
     assert_eq!(
         restarted
-            .reserve_runtime_request_at(&agent.agent_id, 500, tomorrow)
+            .reserve_runtime_request_at(&agent.agent_id, 3, tomorrow)
             .unwrap(),
         1
     );
@@ -469,7 +458,7 @@ fn sender_identity_mentions_indexes_and_chain_commit_in_one_transaction() {
         .unwrap();
     let stored = page.items.last().unwrap();
     assert_eq!(stored.sender_id, agent.agent_id);
-    let participant = super::chat::participants(&database.conn)
+    let participant = crate::storage::chat::participants(&database.conn)
         .unwrap()
         .into_iter()
         .find(|participant| participant.id == stored.sender_id)
@@ -511,7 +500,7 @@ fn sender_identity_mentions_indexes_and_chain_commit_in_one_transaction() {
     let mut renamed = agent;
     renamed.display_name = "之后改名".into();
     let renamed = save_agent(&mut database, renamed);
-    let participant = super::chat::participants(&database.conn)
+    let participant = crate::storage::chat::participants(&database.conn)
         .unwrap()
         .into_iter()
         .find(|participant| participant.id == stored.sender_id)

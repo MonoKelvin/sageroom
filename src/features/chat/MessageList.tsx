@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react"
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Virtuoso, type StateSnapshot, type VirtuosoHandle } from "react-virtuoso"
 import { IconArrowDown } from "@tabler/icons-react"
 import type { ChatMessage, MessagePage, Participant } from "@/contracts/generated"
@@ -65,14 +65,16 @@ type Props = {
 }
 
 type ViewportProps = Props & {
-  saved: RefObject<SavedScroll | null>
-  consumedSignal: RefObject<number>
+  initialSaved: SavedScroll | null
 }
 
 function MessageViewport({
   generation, page, participants, localUserId, firstItemIndex, targetMessageId, restoreAnchor, followLatest,
-  scrollToBottomSignal = 0, loadingMore, onLoadOlder, onLoadNewer, onAtBottomChange, onRenderedAnchorChange, saved, consumedSignal,
+  scrollToBottomSignal = 0, loadingMore, onLoadOlder, onLoadNewer, onAtBottomChange, onRenderedAnchorChange, initialSaved,
 }: ViewportProps) {
+  // 滚动恢复状态由本组件独占；卸载后由 restoreAnchor/targetMessageId 重新定位。
+  const saved = useRef<SavedScroll | null>(initialSaved)
+  const consumedSignal = useRef(scrollToBottomSignal)
   const list = useRef<VirtuosoHandle>(null)
   const userScrolling = useRef(false)
   const ready = useRef(false)
@@ -80,7 +82,7 @@ function MessageViewport({
   const captureStateOnFrame = useRef(false)
   const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null)
   const [settled, setSettled] = useState(false)
-  const [initialState] = useState(() => saved.current)
+  const [initialState] = useState(initialSaved)
   const [initialLocation] = useState(() => {
     const id = restoreAnchor?.id ?? targetMessageId
     return id ? { index: Math.max(0, page.items.findIndex((message) => message.id === id)), align: "start" as const } : { index: "LAST" as const, align: "end" as const }
@@ -210,17 +212,12 @@ function MessageViewport({
 }
 
 export function MessageList(props: Props) {
-  const saved = useRef<SavedScroll | null>(null)
-  const consumedSignal = useRef(props.scrollToBottomSignal ?? 0)
-  useLayoutEffect(() => {
-    if (props.active === false) consumedSignal.current = props.scrollToBottomSignal ?? 0
-  }, [props.active, props.scrollToBottomSignal])
   return <section aria-label="聊天记录" className="relative flex min-h-0 flex-1 flex-col">
     {props.page.items.length === 0 ? <div className="chat-empty-state">
       <div aria-hidden="true" className="chat-empty-mark">S</div>
       <p className="chat-empty-title">这里还很安静</p>
       <p className="chat-empty-description">先说点什么。消息保存在本机，智能体的运行任务尚未启用。</p>
-    </div> : (props.active ?? true) && <MessageViewport {...props} saved={saved} consumedSignal={consumedSignal} />}
+    </div> : (props.active ?? true) && <MessageViewport {...props} initialSaved={null} />}
     {(props.hasNewMessages || props.page.has_more_after) && <div className="chat-latest-position">
       <Button size="sm" variant="secondary" className="chat-latest-button" onClick={() => void props.onGoToLatest()}>
         <IconArrowDown size={16} aria-hidden="true" />

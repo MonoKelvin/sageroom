@@ -1,15 +1,17 @@
-import { cloneElement, isValidElement, useId, useState, type ReactNode } from "react"
-import type { AgentPreferences, ModelParameters, ModelProfileInput, PersonaDimensions } from "@/contracts/generated"
+import { cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react"
+import { createPortal } from "react-dom"
+import { IconList, IconLoader2, IconPhoto } from "@tabler/icons-react"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useToast } from "@/components/ui/toast-context"
+import type { ModelProfileInput, PersonaDimensions } from "@/contracts/generated"
 import type { AppliedResource, ApplicationState, Versioned } from "@/app/appliedResource"
 import { useConfigurationRuntime } from "@/app/configurationContext"
 import { errorMessage, IpcError } from "@/app/ipc"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { EditableInput } from "@/components/ui/editable-input"
 import { NumberInput } from "@/components/ui/number-input"
 import { SettingRow } from "@/components/ui/setting-row"
 import { SettingsSelect } from "@/components/ui/settings-select"
-import { Switch } from "@/components/ui/switch"
 import { validateModelUrl, validateText } from "./configurationDefaults"
 
 export function Field({ label, children, caption, htmlFor }: { label: string; children: ReactNode; caption?: string; htmlFor?: string }) {
@@ -30,36 +32,124 @@ export function DimensionsFields({ value, onChange }: { value: PersonaDimensions
   </Field>)}</div>
 }
 
-export function PreferencesFields({ value, onChange }: { value: AgentPreferences; onChange: (patch: Partial<AgentPreferences>) => Promise<void> }) {
-  return <div className="config-stack">
-    <Field label="每日请求上限" caption="失败与格式修复也计数；全局最多 500 次/UTC 日。"><NumberInput label="每日请求上限" min={1} max={5000} step={1} value={value.request_limit_daily} onValueChange={(next) => applyInteger(next, (request_limit_daily) => onChange({ request_limit_daily }))} /></Field>
-    <Field label="允许持久记忆" caption="作为偏好保存在本机。"><Checkbox label="允许持久记忆" checked={value.persistent_memory} onCheckedChange={(persistent_memory) => onChange({ persistent_memory })} /></Field>
-    <Field label="允许自主唤醒" caption="允许成员提出稍后检查计划，不使用固定轮询。"><Switch label="允许自主唤醒" checked={value.allow_autonomous_wake} onCheckedChange={(allow_autonomous_wake) => onChange({ allow_autonomous_wake })} /></Field>
+function ModelNameField({ value, onChange, active, readOnly, onListModels }: {
+  value: string
+  onChange: (next: string) => Promise<void>
+  active: boolean
+  readOnly?: boolean
+  onListModels?: () => Promise<string[]>
+}) {
+  const [open, setOpen] = useState(false)
+  const [models, setModels] = useState<string[]>([])
+  const [loading, setLoading] = useState(false)
+  const [position, setPosition] = useState({ top: 0, left: 0 })
+  const box = useRef<HTMLDivElement>(null)
+  const list = useRef<HTMLDivElement>(null)
+  const toast = useToast()
+
+  // 下拉渲染到 body 并使用 fixed 定位，避开祖先的 overflow: clip 剪裁；
+  // 同时按视口边界收缩，避免溢出窗口。
+  useLayoutEffect(() => {
+    if (!open) return
+    const place = () => {
+      const anchor = box.current
+      const panel = list.current
+      if (!anchor || !panel) return
+      const rect = anchor.getBoundingClientRect()
+      const margin = 8
+      // 面板宽度由 CSS max-content 按内容自适应，此处只读取以夹紧到视口内。
+      const width = Math.min(Math.max(rect.width, panel.offsetWidth), window.innerWidth - margin * 2)
+      const height = panel.offsetHeight
+      const spaceBelow = window.innerHeight - rect.bottom - margin
+      const spaceAbove = rect.top - margin
+      const top = spaceBelow >= height || spaceBelow >= spaceAbove
+        ? rect.bottom + 4
+        : Math.max(margin, rect.top - height - 4)
+      setPosition({
+        top: Math.min(top, Math.max(margin, window.innerHeight - height - margin)),
+        left: Math.min(Math.max(margin, rect.left), window.innerWidth - width - margin),
+      })
+    }
+    place()
+    window.addEventListener("resize", place)
+    window.addEventListener("scroll", place, true)
+    return () => {
+      window.removeEventListener("resize", place)
+      window.removeEventListener("scroll", place, true)
+    }
+  }, [open, models.length])
+
+  useEffect(() => {
+    if (!open) return
+    const dismiss = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (box.current?.contains(target) || list.current?.contains(target)) return
+      setOpen(false)
+    }
+    document.addEventListener("mousedown", dismiss)
+    return () => document.removeEventListener("mousedown", dismiss)
+  }, [open])
+
+  async function toggle() {
+    if (open) { setOpen(false); return }
+    setOpen(true)
+    if (!onListModels) return
+    setLoading(true)
+    try {
+      const result = await onListModels()
+      setModels(result)
+      if (!result.length) toast.warning("当前服务未返回可用模型。")
+    } catch (cause) {
+      toast.error(`获取模型列表失败：${errorMessage(cause)}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return <div className="model-name-field" ref={box}>
+    <EditableInput label="模型名称" active={active} maxLength={200} value={value} readOnly={readOnly} placeholder="服务提供的模型名称" normalize={(next) => next.trim()} validate={(next) => validateText(next, 200, readOnly)} onApply={onChange} />
+    {onListModels && <Button variant="ghost" size="icon" className="model-name-list" aria-label="获取模型列表" disabled={readOnly || !active || loading} onClick={() => void toggle()}>
+      {loading ? <IconLoader2 size={16} className="spin" aria-hidden="true" /> : <IconList size={16} aria-hidden="true" />}
+    </Button>}
+    {open && models.length > 0 && createPortal(
+      <div
+        ref={list}
+        className="model-name-options"
+        role="listbox"
+        aria-label="可用模型"
+        style={{ top: position.top, left: position.left }}
+      >
+        {models.map((model) => {
+          const imageModel = /image|img|生图|绘图|画/i.test(model)
+          const option = <button key={model} type="button" role="option" aria-selected={model === value} className="model-name-option" onClick={() => { void onChange(model); setOpen(false) }}>
+            <span className="model-name-option-label">{model}</span>
+            {imageModel && <span className="model-name-option-mark" aria-label="可能是生图模型"><IconPhoto size={15} aria-hidden="true" /></span>}
+          </button>
+          return imageModel ? <Tooltip key={model}>
+            <TooltipTrigger asChild>{option}</TooltipTrigger>
+            <TooltipContent>当前模型可能是生图大模型，可能无法进行对话</TooltipContent>
+          </Tooltip> : option
+        })}
+      </div>,
+      document.body,
+    )}
   </div>
 }
 
-export function ModelFields({ value, onChange, onParameterChange, sourceReadOnly = false, active = true }: {
+export function ModelFields({ value, onChange, sourceReadOnly = false, active = true, onListModels }: {
   value: ModelProfileInput
   onChange: (patch: Partial<ModelProfileInput>) => Promise<void>
-  onParameterChange: <K extends keyof ModelParameters>(key: K, value: ModelParameters[K]) => Promise<void>
   sourceReadOnly?: boolean
   active?: boolean
+  onListModels?: () => Promise<string[]>
 }) {
-  const params = value.parameters
   return <div className="config-stack">
     <Field label="模型预设名称"><EditableInput label="模型预设名称" active={active} maxLength={80} readOnly={sourceReadOnly} value={value.name} normalize={(next) => next.trim()} validate={(next) => validateText(next, 80, true)} onApply={(name) => onChange({ name })} /></Field>
     <Field label="协议"><SettingsSelect label="协议" value={value.protocol} disabled={sourceReadOnly} options={[
       { value: "openai_chat_completions", label: "OpenAI Chat Completions" }, { value: "anthropic_messages", label: "Anthropic Messages" }, { value: "openai_responses", label: "OpenAI Responses" },
     ]} onValueChange={(protocol) => onChange({ protocol: protocol as ModelProfileInput["protocol"] })} /></Field>
     <Field label="API 地址" caption={sourceReadOnly ? "来源地址只读；更换服务请创建独立全局预设。" : "可留空；地址中不能包含密钥。"}><EditableInput label="API 地址" active={active} maxLength={2048} readOnly={sourceReadOnly} value={value.base_url} placeholder="https://api.example.com/v1" normalize={(next) => next.trim()} validate={validateModelUrl} onApply={(base_url) => onChange({ base_url })} /></Field>
-    <Field label="模型标识" caption={sourceReadOnly ? "智能体的模型标识不能为空。" : "可留空；未配置完整的预设不能采用或测试。"}><EditableInput label="模型标识" active={active} maxLength={200} value={value.model_name} placeholder="服务提供的模型名称" normalize={(next) => next.trim()} validate={(next) => validateText(next, 200, sourceReadOnly)} onApply={(model_name) => onChange({ model_name })} /></Field>
-    <details className="config-disclosure"><summary>生成参数与预算</summary><div className="config-stack">
-      <Field label="Temperature"><NumberInput label="Temperature" min={0} max={2} step={0.1} value={params.temperature} onValueChange={(next) => onParameterChange("temperature", next)} /></Field>
-      <Field label="Top P" caption="大于 0，且不超过 1。"><NumberInput label="Top P" min={Number.MIN_VALUE} max={1} step={0.01} value={params.top_p} onValueChange={(next) => onParameterChange("top_p", next)} /></Field>
-      <Field label="最大输出 tokens"><NumberInput label="最大输出 tokens" min={1} max={32768} step={1} value={params.max_output_tokens} onValueChange={(next) => applyInteger(next, (value) => onParameterChange("max_output_tokens", value))} /></Field>
-      <Field label="输入预算 tokens"><NumberInput label="输入预算 tokens" min={256} max={128000} step={1} value={params.input_budget} onValueChange={(next) => applyInteger(next, (value) => onParameterChange("input_budget", value))} /></Field>
-      <Field label="推理模式" caption="聊天与连接测试均不支持 enabled；off 仅表示不请求额外推理。"><SettingsSelect label="推理模式" value={params.reasoning} options={[{ value: "off", label: "不请求额外推理" }, { value: "enabled", label: "启用" }]} onValueChange={(next) => onParameterChange("reasoning", next as ModelParameters["reasoning"])} /></Field>
-    </div></details>
+    <Field label="模型名称" caption={sourceReadOnly ? "智能体的模型名称不能为空。" : "可留空；未配置完整的预设不能采用或测试。"}><ModelNameField value={value.model_name} active={active} readOnly={sourceReadOnly} onChange={(model_name) => onChange({ model_name })} onListModels={onListModels} /></Field>
   </div>
 }
 

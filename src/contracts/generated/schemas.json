@@ -18,12 +18,6 @@
       "AgentConfiguration": {
         "additionalProperties": false,
         "properties": {
-          "address_terms": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "agent_id": {
             "type": "string"
           },
@@ -48,9 +42,6 @@
               "null"
             ]
           },
-          "introduction": {
-            "type": "string"
-          },
           "language_style": {
             "type": "string"
           },
@@ -64,9 +55,6 @@
               }
             ]
           },
-          "preferences": {
-            "$ref": "#/$defs/AgentPreferences"
-          },
           "revision": {
             "$ref": "#/$defs/DecimalString"
           },
@@ -78,16 +66,13 @@
           "agent_id",
           "revision",
           "display_name",
-          "introduction",
           "gender_description",
-          "address_terms",
           "language_style",
           "skill",
           "dimensions",
           "avatar_id",
           "agent_type",
-          "model",
-          "preferences"
+          "model"
         ],
         "type": "object"
       },
@@ -108,29 +93,6 @@
           "source_profile_id",
           "source_profile_revision",
           "profile"
-        ],
-        "type": "object"
-      },
-      "AgentPreferences": {
-        "additionalProperties": false,
-        "properties": {
-          "allow_autonomous_wake": {
-            "type": "boolean"
-          },
-          "persistent_memory": {
-            "type": "boolean"
-          },
-          "request_limit_daily": {
-            "format": "uint32",
-            "maximum": 5000,
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "request_limit_daily",
-          "persistent_memory",
-          "allow_autonomous_wake"
         ],
         "type": "object"
       },
@@ -239,46 +201,6 @@
         ],
         "type": "string"
       },
-      "ModelParameters": {
-        "additionalProperties": false,
-        "properties": {
-          "input_budget": {
-            "format": "uint32",
-            "maximum": 128000,
-            "minimum": 256,
-            "type": "integer"
-          },
-          "max_output_tokens": {
-            "format": "uint32",
-            "maximum": 32768,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "reasoning": {
-            "$ref": "#/$defs/ReasoningMode"
-          },
-          "temperature": {
-            "format": "double",
-            "maximum": 2.0,
-            "minimum": 0.0,
-            "type": "number"
-          },
-          "top_p": {
-            "format": "double",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "type": "number"
-          }
-        },
-        "required": [
-          "temperature",
-          "top_p",
-          "max_output_tokens",
-          "input_budget",
-          "reasoning"
-        ],
-        "type": "object"
-      },
       "ModelProfileInput": {
         "additionalProperties": false,
         "properties": {
@@ -298,9 +220,6 @@
             "minLength": 1,
             "type": "string"
           },
-          "parameters": {
-            "$ref": "#/$defs/ModelParameters"
-          },
           "protocol": {
             "$ref": "#/$defs/ModelProtocol"
           }
@@ -310,8 +229,7 @@
           "name",
           "protocol",
           "base_url",
-          "model_name",
-          "parameters"
+          "model_name"
         ],
         "type": "object"
       },
@@ -386,13 +304,6 @@
           "activity"
         ],
         "type": "object"
-      },
-      "ReasoningMode": {
-        "enum": [
-          "off",
-          "enabled"
-        ],
-        "type": "string"
       },
       "Retryability": {
         "enum": [
@@ -624,12 +535,6 @@
       "AgentConfiguration": {
         "additionalProperties": false,
         "properties": {
-          "address_terms": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "agent_id": {
             "type": "string"
           },
@@ -654,9 +559,6 @@
               "null"
             ]
           },
-          "introduction": {
-            "type": "string"
-          },
           "language_style": {
             "type": "string"
           },
@@ -670,9 +572,6 @@
               }
             ]
           },
-          "preferences": {
-            "$ref": "#/$defs/AgentPreferences"
-          },
           "revision": {
             "$ref": "#/$defs/DecimalString"
           },
@@ -684,13 +583,10 @@
           "agent_id",
           "revision",
           "display_name",
-          "introduction",
-          "address_terms",
           "language_style",
           "skill",
           "dimensions",
-          "agent_type",
-          "preferences"
+          "agent_type"
         ],
         "type": "object"
       },
@@ -714,29 +610,6 @@
         ],
         "type": "object"
       },
-      "AgentPreferences": {
-        "additionalProperties": false,
-        "properties": {
-          "allow_autonomous_wake": {
-            "type": "boolean"
-          },
-          "persistent_memory": {
-            "type": "boolean"
-          },
-          "request_limit_daily": {
-            "format": "uint32",
-            "maximum": 5000,
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "request_limit_daily",
-          "persistent_memory",
-          "allow_autonomous_wake"
-        ],
-        "type": "object"
-      },
       "AgentType": {
         "enum": [
           "social",
@@ -748,46 +621,6 @@
         "maxLength": 19,
         "pattern": "^(0|[1-9][0-9]*)$",
         "type": "string"
-      },
-      "ModelParameters": {
-        "additionalProperties": false,
-        "properties": {
-          "input_budget": {
-            "format": "uint32",
-            "maximum": 128000,
-            "minimum": 256,
-            "type": "integer"
-          },
-          "max_output_tokens": {
-            "format": "uint32",
-            "maximum": 32768,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "reasoning": {
-            "$ref": "#/$defs/ReasoningMode"
-          },
-          "temperature": {
-            "format": "double",
-            "maximum": 2.0,
-            "minimum": 0.0,
-            "type": "number"
-          },
-          "top_p": {
-            "format": "double",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "type": "number"
-          }
-        },
-        "required": [
-          "temperature",
-          "top_p",
-          "max_output_tokens",
-          "input_budget",
-          "reasoning"
-        ],
-        "type": "object"
       },
       "ModelProfileInput": {
         "additionalProperties": false,
@@ -808,9 +641,6 @@
             "minLength": 1,
             "type": "string"
           },
-          "parameters": {
-            "$ref": "#/$defs/ModelParameters"
-          },
           "protocol": {
             "$ref": "#/$defs/ModelProtocol"
           }
@@ -820,8 +650,7 @@
           "name",
           "protocol",
           "base_url",
-          "model_name",
-          "parameters"
+          "model_name"
         ],
         "type": "object"
       },
@@ -896,13 +725,6 @@
           "activity"
         ],
         "type": "object"
-      },
-      "ReasoningMode": {
-        "enum": [
-          "off",
-          "enabled"
-        ],
-        "type": "string"
       }
     },
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -941,12 +763,6 @@
       "AgentConfiguration": {
         "additionalProperties": false,
         "properties": {
-          "address_terms": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "agent_id": {
             "type": "string"
           },
@@ -971,9 +787,6 @@
               "null"
             ]
           },
-          "introduction": {
-            "type": "string"
-          },
           "language_style": {
             "type": "string"
           },
@@ -987,9 +800,6 @@
               }
             ]
           },
-          "preferences": {
-            "$ref": "#/$defs/AgentPreferences"
-          },
           "revision": {
             "$ref": "#/$defs/DecimalString"
           },
@@ -1001,16 +811,13 @@
           "agent_id",
           "revision",
           "display_name",
-          "introduction",
           "gender_description",
-          "address_terms",
           "language_style",
           "skill",
           "dimensions",
           "avatar_id",
           "agent_type",
-          "model",
-          "preferences"
+          "model"
         ],
         "type": "object"
       },
@@ -1031,29 +838,6 @@
           "source_profile_id",
           "source_profile_revision",
           "profile"
-        ],
-        "type": "object"
-      },
-      "AgentPreferences": {
-        "additionalProperties": false,
-        "properties": {
-          "allow_autonomous_wake": {
-            "type": "boolean"
-          },
-          "persistent_memory": {
-            "type": "boolean"
-          },
-          "request_limit_daily": {
-            "format": "uint32",
-            "maximum": 5000,
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "request_limit_daily",
-          "persistent_memory",
-          "allow_autonomous_wake"
         ],
         "type": "object"
       },
@@ -1159,46 +943,6 @@
         ],
         "type": "string"
       },
-      "ModelParameters": {
-        "additionalProperties": false,
-        "properties": {
-          "input_budget": {
-            "format": "uint32",
-            "maximum": 128000,
-            "minimum": 256,
-            "type": "integer"
-          },
-          "max_output_tokens": {
-            "format": "uint32",
-            "maximum": 32768,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "reasoning": {
-            "$ref": "#/$defs/ReasoningMode"
-          },
-          "temperature": {
-            "format": "double",
-            "maximum": 2.0,
-            "minimum": 0.0,
-            "type": "number"
-          },
-          "top_p": {
-            "format": "double",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "type": "number"
-          }
-        },
-        "required": [
-          "temperature",
-          "top_p",
-          "max_output_tokens",
-          "input_budget",
-          "reasoning"
-        ],
-        "type": "object"
-      },
       "ModelProfileInput": {
         "additionalProperties": false,
         "properties": {
@@ -1218,9 +962,6 @@
             "minLength": 1,
             "type": "string"
           },
-          "parameters": {
-            "$ref": "#/$defs/ModelParameters"
-          },
           "protocol": {
             "$ref": "#/$defs/ModelProtocol"
           }
@@ -1230,8 +971,7 @@
           "name",
           "protocol",
           "base_url",
-          "model_name",
-          "parameters"
+          "model_name"
         ],
         "type": "object"
       },
@@ -1306,13 +1046,6 @@
           "activity"
         ],
         "type": "object"
-      },
-      "ReasoningMode": {
-        "enum": [
-          "off",
-          "enabled"
-        ],
-        "type": "string"
       },
       "Retryability": {
         "enum": [
@@ -1933,9 +1666,6 @@
           "id": {
             "type": "string"
           },
-          "introduction": {
-            "type": "string"
-          },
           "is_builtin": {
             "type": "boolean"
           },
@@ -1964,7 +1694,6 @@
           "id",
           "kind",
           "display_name",
-          "introduction",
           "status",
           "is_builtin",
           "avatar_id",
@@ -3588,29 +3317,6 @@
   },
   "DevelopmentModelImportResponse": {
     "$defs": {
-      "AgentPreferences": {
-        "additionalProperties": false,
-        "properties": {
-          "allow_autonomous_wake": {
-            "type": "boolean"
-          },
-          "persistent_memory": {
-            "type": "boolean"
-          },
-          "request_limit_daily": {
-            "format": "uint32",
-            "maximum": 5000,
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "request_limit_daily",
-          "persistent_memory",
-          "allow_autonomous_wake"
-        ],
-        "type": "object"
-      },
       "ApiFailure": {
         "additionalProperties": false,
         "properties": {
@@ -3723,56 +3429,12 @@
           },
           "revision": {
             "$ref": "#/$defs/DecimalString"
-          },
-          "runtime_defaults": {
-            "$ref": "#/$defs/AgentPreferences"
           }
         },
         "required": [
           "revision",
           "model_profiles",
-          "persona_presets",
-          "runtime_defaults"
-        ],
-        "type": "object"
-      },
-      "ModelParameters": {
-        "additionalProperties": false,
-        "properties": {
-          "input_budget": {
-            "format": "uint32",
-            "maximum": 128000,
-            "minimum": 256,
-            "type": "integer"
-          },
-          "max_output_tokens": {
-            "format": "uint32",
-            "maximum": 32768,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "reasoning": {
-            "$ref": "#/$defs/ReasoningMode"
-          },
-          "temperature": {
-            "format": "double",
-            "maximum": 2.0,
-            "minimum": 0.0,
-            "type": "number"
-          },
-          "top_p": {
-            "format": "double",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "type": "number"
-          }
-        },
-        "required": [
-          "temperature",
-          "top_p",
-          "max_output_tokens",
-          "input_budget",
-          "reasoning"
+          "persona_presets"
         ],
         "type": "object"
       },
@@ -3794,9 +3456,6 @@
           "name": {
             "type": "string"
           },
-          "parameters": {
-            "$ref": "#/$defs/ModelParameters"
-          },
           "protocol": {
             "$ref": "#/$defs/ModelProtocol"
           },
@@ -3810,7 +3469,6 @@
           "protocol",
           "base_url",
           "model_name",
-          "parameters",
           "revision",
           "credential_configured"
         ],
@@ -3891,12 +3549,6 @@
       "PersonaPreset": {
         "additionalProperties": false,
         "properties": {
-          "address_terms": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "dimensions": {
             "$ref": "#/$defs/PersonaDimensions"
           },
@@ -3920,19 +3572,11 @@
           "id",
           "name",
           "language_style",
-          "address_terms",
           "skill",
           "dimensions",
           "revision"
         ],
         "type": "object"
-      },
-      "ReasoningMode": {
-        "enum": [
-          "off",
-          "enabled"
-        ],
-        "type": "string"
       },
       "Retryability": {
         "enum": [
@@ -4175,9 +3819,6 @@
           "id": {
             "type": "string"
           },
-          "introduction": {
-            "type": "string"
-          },
           "is_builtin": {
             "type": "boolean"
           },
@@ -4206,7 +3847,6 @@
           "id",
           "kind",
           "display_name",
-          "introduction",
           "status",
           "is_builtin",
           "avatar_id",
@@ -4604,6 +4244,699 @@
     ],
     "title": "ApiResponse"
   },
+  "ExperienceAddRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "agent_id": {
+        "type": "string"
+      },
+      "content": {
+        "maxLength": 2000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "data_generation_id": {
+        "type": "string"
+      },
+      "score": {
+        "format": "uint8",
+        "maximum": 100,
+        "minimum": 0,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "agent_id",
+      "content",
+      "score"
+    ],
+    "title": "ExperienceAddRequest",
+    "type": "object"
+  },
+  "ExperienceAddResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/ExperienceEntry"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ],
+        "type": "string"
+      },
+      "ExperienceEntry": {
+        "additionalProperties": false,
+        "description": "一条经历记录：时间由后端按本地时间格式化，评分为 0–100。",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "recorded_at": {
+            "description": "`YYYY/MM/DD HH:mm`",
+            "type": "string"
+          },
+          "score": {
+            "format": "uint8",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "recorded_at",
+          "score",
+          "content"
+        ],
+        "type": "object"
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "ExperienceAgentRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "agent_id": {
+        "type": "string"
+      },
+      "data_generation_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "agent_id"
+    ],
+    "title": "ExperienceAgentRequest",
+    "type": "object"
+  },
+  "ExperienceDeleteRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "agent_id": {
+        "type": "string"
+      },
+      "data_generation_id": {
+        "type": "string"
+      },
+      "entry_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "agent_id",
+      "entry_id"
+    ],
+    "title": "ExperienceDeleteRequest",
+    "type": "object"
+  },
+  "ExperienceDeleteResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/$defs/ExperienceEntry"
+            },
+            "type": "array"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ],
+        "type": "string"
+      },
+      "ExperienceEntry": {
+        "additionalProperties": false,
+        "description": "一条经历记录：时间由后端按本地时间格式化，评分为 0–100。",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "recorded_at": {
+            "description": "`YYYY/MM/DD HH:mm`",
+            "type": "string"
+          },
+          "score": {
+            "format": "uint8",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "recorded_at",
+          "score",
+          "content"
+        ],
+        "type": "object"
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "ExperienceListResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/$defs/ExperienceEntry"
+            },
+            "type": "array"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ],
+        "type": "string"
+      },
+      "ExperienceEntry": {
+        "additionalProperties": false,
+        "description": "一条经历记录：时间由后端按本地时间格式化，评分为 0–100。",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "recorded_at": {
+            "description": "`YYYY/MM/DD HH:mm`",
+            "type": "string"
+          },
+          "score": {
+            "format": "uint8",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "recorded_at",
+          "score",
+          "content"
+        ],
+        "type": "object"
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "ExperiencePruneRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "agent_id": {
+        "type": "string"
+      },
+      "data_generation_id": {
+        "type": "string"
+      },
+      "max_entries": {
+        "format": "uint32",
+        "maximum": 1000,
+        "minimum": 1,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "agent_id",
+      "max_entries"
+    ],
+    "title": "ExperiencePruneRequest",
+    "type": "object"
+  },
+  "ExperiencePruneResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/$defs/ExperienceEntry"
+            },
+            "type": "array"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ],
+        "type": "string"
+      },
+      "ExperienceEntry": {
+        "additionalProperties": false,
+        "description": "一条经历记录：时间由后端按本地时间格式化，评分为 0–100。",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "recorded_at": {
+            "description": "`YYYY/MM/DD HH:mm`",
+            "type": "string"
+          },
+          "score": {
+            "format": "uint8",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "recorded_at",
+          "score",
+          "content"
+        ],
+        "type": "object"
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
   "GlobalConfigurationGetRequest": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
@@ -4620,29 +4953,6 @@
   },
   "GlobalConfigurationGetResponse": {
     "$defs": {
-      "AgentPreferences": {
-        "additionalProperties": false,
-        "properties": {
-          "allow_autonomous_wake": {
-            "type": "boolean"
-          },
-          "persistent_memory": {
-            "type": "boolean"
-          },
-          "request_limit_daily": {
-            "format": "uint32",
-            "maximum": 5000,
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "request_limit_daily",
-          "persistent_memory",
-          "allow_autonomous_wake"
-        ],
-        "type": "object"
-      },
       "ApiFailure": {
         "additionalProperties": false,
         "properties": {
@@ -4755,56 +5065,12 @@
           },
           "revision": {
             "$ref": "#/$defs/DecimalString"
-          },
-          "runtime_defaults": {
-            "$ref": "#/$defs/AgentPreferences"
           }
         },
         "required": [
           "revision",
           "model_profiles",
-          "persona_presets",
-          "runtime_defaults"
-        ],
-        "type": "object"
-      },
-      "ModelParameters": {
-        "additionalProperties": false,
-        "properties": {
-          "input_budget": {
-            "format": "uint32",
-            "maximum": 128000,
-            "minimum": 256,
-            "type": "integer"
-          },
-          "max_output_tokens": {
-            "format": "uint32",
-            "maximum": 32768,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "reasoning": {
-            "$ref": "#/$defs/ReasoningMode"
-          },
-          "temperature": {
-            "format": "double",
-            "maximum": 2.0,
-            "minimum": 0.0,
-            "type": "number"
-          },
-          "top_p": {
-            "format": "double",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "type": "number"
-          }
-        },
-        "required": [
-          "temperature",
-          "top_p",
-          "max_output_tokens",
-          "input_budget",
-          "reasoning"
+          "persona_presets"
         ],
         "type": "object"
       },
@@ -4826,9 +5092,6 @@
           "name": {
             "type": "string"
           },
-          "parameters": {
-            "$ref": "#/$defs/ModelParameters"
-          },
           "protocol": {
             "$ref": "#/$defs/ModelProtocol"
           },
@@ -4842,7 +5105,6 @@
           "protocol",
           "base_url",
           "model_name",
-          "parameters",
           "revision",
           "credential_configured"
         ],
@@ -4923,12 +5185,6 @@
       "PersonaPreset": {
         "additionalProperties": false,
         "properties": {
-          "address_terms": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "dimensions": {
             "$ref": "#/$defs/PersonaDimensions"
           },
@@ -4952,19 +5208,11 @@
           "id",
           "name",
           "language_style",
-          "address_terms",
           "skill",
           "dimensions",
           "revision"
         ],
         "type": "object"
-      },
-      "ReasoningMode": {
-        "enum": [
-          "off",
-          "enabled"
-        ],
-        "type": "string"
       },
       "Retryability": {
         "enum": [
@@ -4994,73 +5242,10 @@
   },
   "GlobalConfigurationSaveRequest": {
     "$defs": {
-      "AgentPreferences": {
-        "additionalProperties": false,
-        "properties": {
-          "allow_autonomous_wake": {
-            "type": "boolean"
-          },
-          "persistent_memory": {
-            "type": "boolean"
-          },
-          "request_limit_daily": {
-            "format": "uint32",
-            "maximum": 5000,
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "request_limit_daily",
-          "persistent_memory",
-          "allow_autonomous_wake"
-        ],
-        "type": "object"
-      },
       "DecimalString": {
         "maxLength": 19,
         "pattern": "^(0|[1-9][0-9]*)$",
         "type": "string"
-      },
-      "ModelParameters": {
-        "additionalProperties": false,
-        "properties": {
-          "input_budget": {
-            "format": "uint32",
-            "maximum": 128000,
-            "minimum": 256,
-            "type": "integer"
-          },
-          "max_output_tokens": {
-            "format": "uint32",
-            "maximum": 32768,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "reasoning": {
-            "$ref": "#/$defs/ReasoningMode"
-          },
-          "temperature": {
-            "format": "double",
-            "maximum": 2.0,
-            "minimum": 0.0,
-            "type": "number"
-          },
-          "top_p": {
-            "format": "double",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "type": "number"
-          }
-        },
-        "required": [
-          "temperature",
-          "top_p",
-          "max_output_tokens",
-          "input_budget",
-          "reasoning"
-        ],
-        "type": "object"
       },
       "ModelProfileInput": {
         "additionalProperties": false,
@@ -5081,9 +5266,6 @@
             "minLength": 1,
             "type": "string"
           },
-          "parameters": {
-            "$ref": "#/$defs/ModelParameters"
-          },
           "protocol": {
             "$ref": "#/$defs/ModelProtocol"
           }
@@ -5093,8 +5275,7 @@
           "name",
           "protocol",
           "base_url",
-          "model_name",
-          "parameters"
+          "model_name"
         ],
         "type": "object"
       },
@@ -5173,12 +5354,6 @@
       "PersonaPreset": {
         "additionalProperties": false,
         "properties": {
-          "address_terms": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "dimensions": {
             "$ref": "#/$defs/PersonaDimensions"
           },
@@ -5202,19 +5377,11 @@
           "id",
           "name",
           "language_style",
-          "address_terms",
           "skill",
           "dimensions",
           "revision"
         ],
         "type": "object"
-      },
-      "ReasoningMode": {
-        "enum": [
-          "off",
-          "enabled"
-        ],
-        "type": "string"
       }
     },
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -5240,9 +5407,6 @@
           "$ref": "#/$defs/PersonaPreset"
         },
         "type": "array"
-      },
-      "runtime_defaults": {
-        "$ref": "#/$defs/AgentPreferences"
       }
     },
     "required": [
@@ -5250,37 +5414,13 @@
       "client_request_id",
       "expected_revision",
       "model_profiles",
-      "persona_presets",
-      "runtime_defaults"
+      "persona_presets"
     ],
     "title": "GlobalConfigurationSaveRequest",
     "type": "object"
   },
   "GlobalConfigurationSaveResponse": {
     "$defs": {
-      "AgentPreferences": {
-        "additionalProperties": false,
-        "properties": {
-          "allow_autonomous_wake": {
-            "type": "boolean"
-          },
-          "persistent_memory": {
-            "type": "boolean"
-          },
-          "request_limit_daily": {
-            "format": "uint32",
-            "maximum": 5000,
-            "minimum": 1,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "request_limit_daily",
-          "persistent_memory",
-          "allow_autonomous_wake"
-        ],
-        "type": "object"
-      },
       "ApiFailure": {
         "additionalProperties": false,
         "properties": {
@@ -5393,56 +5533,12 @@
           },
           "revision": {
             "$ref": "#/$defs/DecimalString"
-          },
-          "runtime_defaults": {
-            "$ref": "#/$defs/AgentPreferences"
           }
         },
         "required": [
           "revision",
           "model_profiles",
-          "persona_presets",
-          "runtime_defaults"
-        ],
-        "type": "object"
-      },
-      "ModelParameters": {
-        "additionalProperties": false,
-        "properties": {
-          "input_budget": {
-            "format": "uint32",
-            "maximum": 128000,
-            "minimum": 256,
-            "type": "integer"
-          },
-          "max_output_tokens": {
-            "format": "uint32",
-            "maximum": 32768,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "reasoning": {
-            "$ref": "#/$defs/ReasoningMode"
-          },
-          "temperature": {
-            "format": "double",
-            "maximum": 2.0,
-            "minimum": 0.0,
-            "type": "number"
-          },
-          "top_p": {
-            "format": "double",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "type": "number"
-          }
-        },
-        "required": [
-          "temperature",
-          "top_p",
-          "max_output_tokens",
-          "input_budget",
-          "reasoning"
+          "persona_presets"
         ],
         "type": "object"
       },
@@ -5464,9 +5560,6 @@
           "name": {
             "type": "string"
           },
-          "parameters": {
-            "$ref": "#/$defs/ModelParameters"
-          },
           "protocol": {
             "$ref": "#/$defs/ModelProtocol"
           },
@@ -5480,7 +5573,6 @@
           "protocol",
           "base_url",
           "model_name",
-          "parameters",
           "revision",
           "credential_configured"
         ],
@@ -5561,12 +5653,6 @@
       "PersonaPreset": {
         "additionalProperties": false,
         "properties": {
-          "address_terms": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "dimensions": {
             "$ref": "#/$defs/PersonaDimensions"
           },
@@ -5590,19 +5676,178 @@
           "id",
           "name",
           "language_style",
-          "address_terms",
           "skill",
           "dimensions",
           "revision"
         ],
         "type": "object"
       },
-      "ReasoningMode": {
+      "Retryability": {
         "enum": [
-          "off",
-          "enabled"
+          "never",
+          "retry",
+          "after_user_action"
         ],
         "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "ModelListRequest": {
+    "$defs": {
+      "DecimalString": {
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$",
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "模型列表查询：复用已配置凭据，通过服务端的模型列表接口获取。",
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      },
+      "expected_revision": {
+        "$ref": "#/$defs/DecimalString"
+      },
+      "profile_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "profile_id",
+      "expected_revision"
+    ],
+    "title": "ModelListRequest",
+    "type": "object"
+  },
+  "ModelListResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/ModelListResult"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ],
+        "type": "string"
+      },
+      "ModelListResult": {
+        "additionalProperties": false,
+        "properties": {
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "profile_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_id",
+          "models"
+        ],
+        "type": "object"
       },
       "Retryability": {
         "enum": [
@@ -6009,169 +6254,6 @@
           "0.3"
         ],
         "type": "string"
-      }
-    },
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "anyOf": [
-      {
-        "$ref": "#/$defs/ApiSuccess"
-      },
-      {
-        "$ref": "#/$defs/ApiFailure"
-      }
-    ],
-    "title": "ApiResponse"
-  },
-  "SecretDeleteRequest": {
-    "$defs": {
-      "DecimalString": {
-        "maxLength": 19,
-        "pattern": "^(0|[1-9][0-9]*)$",
-        "type": "string"
-      }
-    },
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "additionalProperties": false,
-    "properties": {
-      "data_generation_id": {
-        "type": "string"
-      },
-      "expected_revision": {
-        "$ref": "#/$defs/DecimalString"
-      },
-      "profile_id": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "data_generation_id",
-      "profile_id",
-      "expected_revision"
-    ],
-    "title": "SecretDeleteRequest",
-    "type": "object"
-  },
-  "SecretDeleteResponse": {
-    "$defs": {
-      "ApiFailure": {
-        "additionalProperties": false,
-        "properties": {
-          "error": {
-            "$ref": "#/$defs/AppError"
-          },
-          "schema_version": {
-            "$ref": "#/$defs/SchemaVersion"
-          }
-        },
-        "required": [
-          "schema_version",
-          "error"
-        ],
-        "type": "object"
-      },
-      "ApiSuccess": {
-        "additionalProperties": false,
-        "properties": {
-          "data": {
-            "$ref": "#/$defs/SecretStatus"
-          },
-          "schema_version": {
-            "$ref": "#/$defs/SchemaVersion"
-          }
-        },
-        "required": [
-          "schema_version",
-          "data"
-        ],
-        "type": "object"
-      },
-      "AppError": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "$ref": "#/$defs/ErrorCode"
-          },
-          "field_path": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "may_have_been_charged": {
-            "type": "boolean"
-          },
-          "message": {
-            "type": "string"
-          },
-          "retryability": {
-            "$ref": "#/$defs/Retryability"
-          },
-          "trace_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "code",
-          "message",
-          "retryability",
-          "field_path",
-          "trace_id",
-          "may_have_been_charged"
-        ],
-        "type": "object"
-      },
-      "ErrorCode": {
-        "enum": [
-          "INVALID_INPUT",
-          "PERMISSION_DENIED",
-          "DATA_GENERATION_CHANGED",
-          "IDEMPOTENCY_CONFLICT",
-          "CONFIG_CONFLICT",
-          "BACKPRESSURE",
-          "SHUTTING_DOWN",
-          "DB_BUSY",
-          "DB_CORRUPT",
-          "DISK_FULL",
-          "IO_ERROR",
-          "SCHEMA_UNSUPPORTED",
-          "DATA_ROOT_INVALID",
-          "MESSAGE_NOT_FOUND",
-          "SEARCH_CANCELLED",
-          "SEARCH_TIMEOUT",
-          "CAPABILITY_UNSUPPORTED",
-          "INTERNAL_ERROR"
-        ],
-        "type": "string"
-      },
-      "Retryability": {
-        "enum": [
-          "never",
-          "retry",
-          "after_user_action"
-        ],
-        "type": "string"
-      },
-      "SchemaVersion": {
-        "enum": [
-          "0.3"
-        ],
-        "type": "string"
-      },
-      "SecretStatus": {
-        "additionalProperties": false,
-        "properties": {
-          "configured": {
-            "type": "boolean"
-          },
-          "profile_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "profile_id",
-          "configured"
-        ],
-        "type": "object"
       }
     },
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -6652,9 +6734,6 @@
           "display_name": {
             "type": "string"
           },
-          "introduction": {
-            "type": "string"
-          },
           "participant_id": {
             "type": "string"
           },
@@ -6665,7 +6744,6 @@
         "required": [
           "participant_id",
           "display_name",
-          "introduction",
           "avatar_id",
           "revision"
         ],
@@ -6711,17 +6789,13 @@
       },
       "expected_revision": {
         "$ref": "#/$defs/DecimalString"
-      },
-      "introduction": {
-        "type": "string"
       }
     },
     "required": [
       "data_generation_id",
       "client_request_id",
       "expected_revision",
-      "display_name",
-      "introduction"
+      "display_name"
     ],
     "title": "UserProfileSaveRequest",
     "type": "object"
@@ -6849,9 +6923,6 @@
           "display_name": {
             "type": "string"
           },
-          "introduction": {
-            "type": "string"
-          },
           "participant_id": {
             "type": "string"
           },
@@ -6862,7 +6933,6 @@
         "required": [
           "participant_id",
           "display_name",
-          "introduction",
           "avatar_id",
           "revision"
         ],

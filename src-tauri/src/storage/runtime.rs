@@ -161,11 +161,11 @@ fn state_event(
     // A state update needs one participant, not another read of every agent's
     // full configuration and credential binding in a potentially large room.
     let participant = transaction.query_row(
-        "SELECT id,display_name,introduction,builtin_key IS NOT NULL,avatar_id,profile_revision FROM participants WHERE id=?1 AND kind='agent'",
+        "SELECT id,display_name,builtin_key IS NOT NULL,avatar_id,profile_revision FROM participants WHERE id=?1 AND kind='agent'",
         [&state.agent_id], |row| Ok(Participant {
-            id: row.get(0)?, kind: ParticipantKind::Agent, display_name: row.get(1)?, introduction: row.get(2)?,
-            status: participant_status(&state.status), is_builtin: row.get(3)?, avatar_id: row.get(4)?,
-            profile_revision: row.get::<_,i64>(5)?.into(), runtime: Some(state.clone()),
+            id: row.get(0)?, kind: ParticipantKind::Agent, display_name: row.get(1)?,
+            status: participant_status(&state.status), is_builtin: row.get(2)?, avatar_id: row.get(3)?,
+            profile_revision: row.get::<_,i64>(4)?.into(), runtime: Some(state.clone()),
         }),
     )?;
     record_event(
@@ -408,11 +408,7 @@ impl Database {
             }
             daily_limit.min(20)
         } else {
-            daily_limit.min(
-                read_agent(&transaction, owner)?
-                    .preferences
-                    .request_limit_daily,
-            )
+            daily_limit.min(DAILY_REQUEST_LIMIT)
         };
         let day = now.div_euclid(UTC_DAY_MS);
         let total: u32 = transaction.query_row(

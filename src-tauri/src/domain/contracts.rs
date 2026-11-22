@@ -7,6 +7,14 @@ pub const TEXT_BYTE_LIMIT: usize = 32 * 1024;
 pub const PAGE_LIMIT: u32 = 200;
 pub const DEFAULT_PAGE_SIZE: u32 = 50;
 
+/// 模型调用固定参数：参数编辑入口已移除，统一由运行时按此约束执行。
+pub const MODEL_INPUT_BUDGET: u32 = 16_000;
+pub const MODEL_MAX_OUTPUT_TOKENS: u32 = 4_096;
+pub const MODEL_TEMPERATURE: f64 = 0.8;
+pub const MODEL_TOP_P: f64 = 1.0;
+/// 每日请求配额固定为 500（全局上限），不再按智能体配置。
+pub const DAILY_REQUEST_LIMIT: u32 = 500;
+
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 pub enum SchemaVersion {
     #[serde(rename = "0.3")]
@@ -155,7 +163,6 @@ pub struct Participant {
     pub id: String,
     pub kind: ParticipantKind,
     pub display_name: String,
-    pub introduction: String,
     pub status: ParticipantStatus,
     pub is_builtin: bool,
     #[serde(default)]
@@ -470,27 +477,6 @@ pub enum ModelProtocol {
     OpenaiResponses,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ReasoningMode {
-    Off,
-    Enabled,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct ModelParameters {
-    #[schemars(range(min = 0.0, max = 2.0))]
-    pub temperature: f64,
-    #[schemars(range(min = 0.0, max = 1.0))]
-    pub top_p: f64,
-    #[schemars(range(min = 1, max = 32768))]
-    pub max_output_tokens: u32,
-    #[schemars(range(min = 256, max = 128000))]
-    pub input_budget: u32,
-    pub reasoning: ReasoningMode,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ModelProfileInput {
@@ -502,7 +488,6 @@ pub struct ModelProfileInput {
     pub base_url: String,
     #[schemars(length(max = 200))]
     pub model_name: String,
-    pub parameters: ModelParameters,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
@@ -513,7 +498,6 @@ pub struct ModelProfile {
     pub protocol: ModelProtocol,
     pub base_url: String,
     pub model_name: String,
-    pub parameters: ModelParameters,
     pub revision: DecimalString,
     pub credential_configured: bool,
 }
@@ -526,7 +510,6 @@ impl ModelProfile {
             protocol: self.protocol.clone(),
             base_url: self.base_url.clone(),
             model_name: self.model_name.clone(),
-            parameters: self.parameters.clone(),
         }
     }
 }
@@ -558,19 +541,9 @@ pub struct PersonaPreset {
     pub id: String,
     pub name: String,
     pub language_style: String,
-    pub address_terms: Vec<String>,
     pub skill: String,
     pub dimensions: PersonaDimensions,
     pub revision: DecimalString,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct AgentPreferences {
-    #[schemars(range(min = 1, max = 5000))]
-    pub request_limit_daily: u32,
-    pub persistent_memory: bool,
-    pub allow_autonomous_wake: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
@@ -579,7 +552,6 @@ pub struct GlobalConfiguration {
     pub revision: DecimalString,
     pub model_profiles: Vec<ModelProfile>,
     pub persona_presets: Vec<PersonaPreset>,
-    pub runtime_defaults: AgentPreferences,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
@@ -596,7 +568,6 @@ pub struct GlobalConfigurationSaveRequest {
     pub expected_revision: DecimalString,
     pub model_profiles: Vec<ModelProfileInput>,
     pub persona_presets: Vec<PersonaPreset>,
-    pub runtime_defaults: AgentPreferences,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
@@ -620,16 +591,13 @@ pub struct AgentConfiguration {
     pub agent_id: String,
     pub revision: DecimalString,
     pub display_name: String,
-    pub introduction: String,
     pub gender_description: Option<String>,
-    pub address_terms: Vec<String>,
     pub language_style: String,
     pub skill: String,
     pub dimensions: PersonaDimensions,
     pub avatar_id: Option<String>,
     pub agent_type: AgentType,
     pub model: Option<AgentModelSnapshot>,
-    pub preferences: AgentPreferences,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
@@ -652,7 +620,6 @@ pub struct AgentSaveRequest {
 pub struct UserProfile {
     pub participant_id: String,
     pub display_name: String,
-    pub introduction: String,
     pub avatar_id: Option<String>,
     pub revision: DecimalString,
 }
@@ -670,7 +637,6 @@ pub struct UserProfileSaveRequest {
     pub client_request_id: String,
     pub expected_revision: DecimalString,
     pub display_name: String,
-    pub introduction: String,
     pub avatar_id: Option<String>,
 }
 
@@ -686,6 +652,69 @@ pub struct ModelProfileTestRequest {
     pub data_generation_id: String,
     pub profile_id: String,
     pub expected_revision: DecimalString,
+}
+
+/// 一条经历记录：时间由后端按本地时间格式化，评分为 0–100。
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ExperienceEntry {
+    pub id: String,
+    /// `YYYY/MM/DD HH:mm`
+    pub recorded_at: String,
+    #[schemars(range(min = 0, max = 100))]
+    pub score: u8,
+    pub content: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ExperienceAgentRequest {
+    pub data_generation_id: String,
+    pub agent_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ExperienceAddRequest {
+    pub data_generation_id: String,
+    pub agent_id: String,
+    #[schemars(length(min = 1, max = 2000))]
+    pub content: String,
+    #[schemars(range(min = 0, max = 100))]
+    pub score: u8,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ExperienceDeleteRequest {
+    pub data_generation_id: String,
+    pub agent_id: String,
+    pub entry_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ExperiencePruneRequest {
+    pub data_generation_id: String,
+    pub agent_id: String,
+    #[schemars(range(min = 1, max = 1000))]
+    pub max_entries: u32,
+}
+
+/// 模型列表查询：复用已配置凭据，通过服务端的模型列表接口获取。
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ModelListRequest {
+    pub data_generation_id: String,
+    pub profile_id: String,
+    pub expected_revision: DecimalString,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ModelListResult {
+    pub profile_id: String,
+    pub models: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
@@ -707,14 +736,6 @@ pub struct SecretSetRequest {
     pub profile_id: String,
     pub expected_revision: DecimalString,
     pub api_key: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
-#[serde(deny_unknown_fields)]
-pub struct SecretDeleteRequest {
-    pub data_generation_id: String,
-    pub profile_id: String,
-    pub expected_revision: DecimalString,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]

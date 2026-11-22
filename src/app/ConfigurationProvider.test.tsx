@@ -12,7 +12,7 @@ vi.mock("./ipc", async (original) => {
   return { ...actual, isDesktopEnvironment: () => true, ipc: { ...actual.ipc, getUserProfile: vi.fn(), saveUserProfile: vi.fn(), subscribeLifecycle: vi.fn(), completeExit: vi.fn(), exit: vi.fn() } }
 })
 let receive: (event: AppLifecycleEvent) => void
-const initial: UserProfile = { participant_id: "user-test", display_name: "我", introduction: "", avatar_id: null, revision: "1" }
+const initial: UserProfile = { participant_id: "user-test", display_name: "我", avatar_id: null, revision: "1" }
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(ipc.getUserProfile).mockResolvedValue(initial)
