@@ -42,6 +42,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     export::<ApiResponse<AppSnapshot>>("AppSnapshotResponse", &config, &mut schemas)?;
     export::<ChatSendRequest>("ChatSendRequest", &config, &mut schemas)?;
     export::<ApiResponse<ChatSendResult>>("ChatSendResponse", &config, &mut schemas)?;
+    export::<ChatRecallRequest>("ChatRecallRequest", &config, &mut schemas)?;
+    export::<ApiResponse<ChatRecallResult>>("ChatRecallResponse", &config, &mut schemas)?;
+    export::<ChatResolveQuotesRequest>("ChatResolveQuotesRequest", &config, &mut schemas)?;
+    export::<ApiResponse<Vec<ChatMessage>>>("ChatResolveQuotesResponse", &config, &mut schemas)?;
     export::<ChatListRequest>("ChatListRequest", &config, &mut schemas)?;
     export::<ApiResponse<MessagePage>>("ChatListResponse", &config, &mut schemas)?;
     export::<ChatSearchRequest>("ChatSearchRequest", &config, &mut schemas)?;

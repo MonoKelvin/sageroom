@@ -1562,6 +1562,31 @@
           {
             "additionalProperties": false,
             "properties": {
+              "kind": {
+                "const": "message_changed",
+                "type": "string"
+              },
+              "message_id": {
+                "type": "string"
+              },
+              "message_seq": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "room": {
+                "$ref": "#/$defs/Room"
+              }
+            },
+            "required": [
+              "kind",
+              "message_id",
+              "message_seq",
+              "room"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
               "appearance": {
                 "$ref": "#/$defs/Appearance"
               },
@@ -2814,10 +2839,494 @@
     ],
     "title": "ApiResponse"
   },
+  "ChatRecallRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "client_request_id": {
+        "type": "string"
+      },
+      "data_generation_id": {
+        "type": "string"
+      },
+      "message_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "client_request_id",
+      "message_id"
+    ],
+    "title": "ChatRecallRequest",
+    "type": "object"
+  },
+  "ChatRecallResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/ChatRecallResult"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ChatRecallResult": {
+        "additionalProperties": false,
+        "properties": {
+          "data_generation_id": {
+            "type": "string"
+          },
+          "event_seq": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "message_id": {
+            "type": "string"
+          },
+          "room": {
+            "$ref": "#/$defs/Room"
+          }
+        },
+        "required": [
+          "data_generation_id",
+          "message_id",
+          "event_seq",
+          "room"
+        ],
+        "type": "object"
+      },
+      "DecimalString": {
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$",
+        "type": "string"
+      },
+      "ErrorCode": {
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ],
+        "type": "string"
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "Room": {
+        "additionalProperties": false,
+        "properties": {
+          "content_epoch": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner_participant_id": {
+            "type": "string"
+          },
+          "version": {
+            "$ref": "#/$defs/DecimalString"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "owner_participant_id",
+          "version",
+          "content_epoch"
+        ],
+        "type": "object"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "ChatResolveQuotesRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      },
+      "message_ids": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 32,
+        "type": "array"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "message_ids"
+    ],
+    "title": "ChatResolveQuotesRequest",
+    "type": "object"
+  },
+  "ChatResolveQuotesResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/$defs/ChatMessage"
+            },
+            "type": "array"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ChatMessage": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "mention_all": {
+            "type": "boolean"
+          },
+          "mention_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "parts": {
+            "items": {
+              "$ref": "#/$defs/MessagePart"
+            },
+            "type": "array"
+          },
+          "quote_message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sender_id": {
+            "type": "string"
+          },
+          "seq": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "state": {
+            "$ref": "#/$defs/MessageState"
+          }
+        },
+        "required": [
+          "id",
+          "seq",
+          "sender_id",
+          "created_at",
+          "state",
+          "parts",
+          "quote_message_id",
+          "mention_ids",
+          "mention_all"
+        ],
+        "type": "object"
+      },
+      "DecimalString": {
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$",
+        "type": "string"
+      },
+      "ErrorCode": {
+        "enum": [
+          "INVALID_INPUT",
+          "PERMISSION_DENIED",
+          "DATA_GENERATION_CHANGED",
+          "IDEMPOTENCY_CONFLICT",
+          "CONFIG_CONFLICT",
+          "BACKPRESSURE",
+          "SHUTTING_DOWN",
+          "DB_BUSY",
+          "DB_CORRUPT",
+          "DISK_FULL",
+          "IO_ERROR",
+          "SCHEMA_UNSUPPORTED",
+          "DATA_ROOT_INVALID",
+          "MESSAGE_NOT_FOUND",
+          "SEARCH_CANCELLED",
+          "SEARCH_TIMEOUT",
+          "CAPABILITY_UNSUPPORTED",
+          "INTERNAL_ERROR"
+        ],
+        "type": "string"
+      },
+      "MessagePart": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "text",
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "text"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "attachment_id": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "attachment",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "attachment_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "emote_id": {
+                "type": "string"
+              },
+              "kind": {
+                "const": "emote",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "emote_id"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "MessageState": {
+        "enum": [
+          "visible",
+          "recalled",
+          "deleted"
+        ],
+        "type": "string"
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
   "ChatSearchRequest": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
     "properties": {
+      "created_after": {
+        "default": null,
+        "format": "int64",
+        "maximum": 9007199254740991.0,
+        "minimum": -9007199254740991.0,
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "created_before": {
+        "default": null,
+        "format": "int64",
+        "maximum": 9007199254740991.0,
+        "minimum": -9007199254740991.0,
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
       "cursor": {
         "default": null,
         "type": [
@@ -2841,6 +3350,13 @@
       },
       "search_id": {
         "type": "string"
+      },
+      "sender_id": {
+        "default": null,
+        "type": [
+          "string",
+          "null"
+        ]
       }
     },
     "required": [
@@ -3709,6 +4225,31 @@
               "message_id",
               "message_seq",
               "sender_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "message_changed",
+                "type": "string"
+              },
+              "message_id": {
+                "type": "string"
+              },
+              "message_seq": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "room": {
+                "$ref": "#/$defs/Room"
+              }
+            },
+            "required": [
+              "kind",
+              "message_id",
+              "message_seq",
+              "room"
             ],
             "type": "object"
           },
@@ -4775,7 +5316,7 @@
       "max_entries": {
         "format": "uint32",
         "maximum": 1000,
-        "minimum": 1,
+        "minimum": 0,
         "type": "integer"
       }
     },

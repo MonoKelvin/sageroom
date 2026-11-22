@@ -9,6 +9,16 @@ description = "以本地用户身份提交聊天文本"
 commands.allow = ["chat_send"]
 
 [[permission]]
+identifier = "chat-recall"
+description = "在宿主身份与单调期限校验后撤回本地用户消息"
+commands.allow = ["chat_recall"]
+
+[[permission]]
+identifier = "chat-quotes"
+description = "有界只读解析仍有效的本地消息引用"
+commands.allow = ["chat_resolve_quotes"]
+
+[[permission]]
 identifier = "chat-list"
 description = "分页读取本地聊天"
 commands.allow = ["chat_list"]

@@ -31,7 +31,7 @@ export function AppDialog({ open, onOpenChange, title, children, actions = [], m
   return <DialogPrimitive.Root open={open} onOpenChange={onOpenChange} modal={modal}>
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="app-dialog-overlay" />
-      <DialogPrimitive.Content className={cn("app-dialog-content", className)} aria-describedby={undefined}>
+      <DialogPrimitive.Content className={cn("floating-surface app-dialog-content", className)} aria-describedby={undefined}>
         <header className="app-dialog-heading">
           <DialogPrimitive.Title className="app-dialog-title">{title}</DialogPrimitive.Title>
           {showClose && <DialogPrimitive.Close asChild>

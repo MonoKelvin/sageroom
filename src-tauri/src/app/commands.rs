@@ -68,6 +68,34 @@ pub async fn chat_send(
 }
 
 #[tauri::command]
+pub async fn chat_recall(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<ChatRecallResult>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.worker()?.recall_message(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn chat_resolve_quotes(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<Vec<ChatMessage>>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.worker()?.resolve_quotes(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
 pub async fn chat_list(
     window: WebviewWindow,
     state: State<'_, AppState>,

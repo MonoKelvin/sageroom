@@ -11,7 +11,7 @@ vi.mock("@/app/ipc", () => ({
     readonly detail: AppError
     constructor(detail: AppError) { super(detail.message); this.detail = detail }
   },
-  ipc: { snapshot: vi.fn(), list: vi.fn(), send: vi.fn(), subscribe: vi.fn() },
+  ipc: { snapshot: vi.fn(), list: vi.fn(), send: vi.fn(), recall: vi.fn(), subscribe: vi.fn() },
 }))
 
 let receiveEvent: (event: DomainEvent) => void
@@ -24,6 +24,49 @@ beforeEach(() => {
 })
 
 describe("聊天室数据与事件", () => {
+  it("发送贯穿引用与成员 ID，不从正文猜测提及", async () => {
+    const { result } = renderHook(() => useChatSession())
+    await waitFor(() => expect(result.current.page).not.toBeNull())
+    vi.mocked(ipc.send).mockResolvedValue({ data_generation_id: GENERATION, message_id: "message-1", message_seq: "1", event_seq: "1" })
+    await act(async () => { await result.current.send("@Sage 回应", "request-1", { quote_message_id: "message-0", mention_ids: ["sage-test"], mention_all: false }) })
+    expect(ipc.send).toHaveBeenCalledWith({ data_generation_id: GENERATION, client_request_id: "request-1", parts: [{ kind: "text", text: "@Sage 回应" }], quote_message_id: "message-0", mention_ids: ["sage-test"], mention_all: false })
+  })
+
+  it("撤回事件清除旧正文并恢复当前阅读锚点", async () => {
+    const original = snapshot({ latest_message_seq: "2", latest_event_seq: "2" })
+    vi.mocked(ipc.snapshot).mockResolvedValue(original)
+    vi.mocked(ipc.list).mockResolvedValue(page([1, 2]))
+    const { result } = renderHook(() => useChatSession())
+    await waitFor(() => expect(result.current.page?.items).toHaveLength(2))
+    act(() => { result.current.updateAtBottom(false); result.current.updateRenderedAnchor({ id: "message-1", seq: "1", offset: -9 }) })
+    const room = { ...original.room, content_epoch: "1" }
+    vi.mocked(ipc.snapshot).mockResolvedValue({ ...original, room, latest_event_seq: "3" })
+    const changed = page([1, 2])
+    changed.items[0] = { ...changed.items[0], state: "recalled", parts: [] }
+    vi.mocked(ipc.list).mockResolvedValue(changed)
+    act(() => receiveEvent({ ...event(3), payload: { kind: "message_changed", message_id: "message-1", message_seq: "1", room } }))
+    await waitFor(() => expect(result.current.page?.items[0].state).toBe("recalled"))
+    expect(ipc.list).toHaveBeenLastCalledWith(expect.objectContaining({ around_seq: "1" }))
+    expect(result.current.restoreAnchor).toEqual({ id: "message-1", seq: "1", offset: -9 })
+  })
+
+  it("撤回响应同步正文 epoch，不提前应用 room 掩盖刷新", async () => {
+    const original = snapshot({ latest_message_seq: "1", latest_event_seq: "1" })
+    vi.mocked(ipc.snapshot).mockResolvedValue(original)
+    vi.mocked(ipc.list).mockResolvedValue(page([1]))
+    const { result } = renderHook(() => useChatSession())
+    await waitFor(() => expect(result.current.page?.items).toHaveLength(1))
+    const room = { ...original.room, content_epoch: "1" }
+    vi.mocked(ipc.recall).mockResolvedValue({ data_generation_id: GENERATION, message_id: "message-1", event_seq: "2", room })
+    vi.mocked(ipc.snapshot).mockResolvedValue({ ...original, room, latest_event_seq: "2" })
+    const changed = page([1])
+    changed.items[0] = { ...changed.items[0], state: "recalled", parts: [] }
+    vi.mocked(ipc.list).mockResolvedValue(changed)
+    await act(async () => { await result.current.recall("message-1", "recall-request") })
+    expect(ipc.recall).toHaveBeenCalledWith({ data_generation_id: GENERATION, message_id: "message-1", client_request_id: "recall-request" })
+    expect(result.current.page?.items[0].parts).toEqual([])
+  })
+
   it("先建立监听，再取快照和消息页", async () => {
     const order: string[] = []
     vi.mocked(ipc.subscribe).mockImplementation(async (onEvent) => { receiveEvent = onEvent; order.push("subscribe"); return vi.fn<() => void>() })

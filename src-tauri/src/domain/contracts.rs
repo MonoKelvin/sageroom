@@ -253,6 +253,11 @@ pub enum EventPayload {
         message_seq: DecimalString,
         sender_id: String,
     },
+    MessageChanged {
+        message_id: String,
+        message_seq: DecimalString,
+        room: Room,
+    },
     AppearanceChanged {
         appearance: Appearance,
     },
@@ -341,6 +346,31 @@ pub struct ChatSendResult {
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(deny_unknown_fields)]
+pub struct ChatRecallRequest {
+    pub data_generation_id: String,
+    pub client_request_id: String,
+    pub message_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ChatRecallResult {
+    pub data_generation_id: String,
+    pub message_id: String,
+    pub event_seq: DecimalString,
+    pub room: Room,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ChatResolveQuotesRequest {
+    pub data_generation_id: String,
+    #[schemars(length(max = 32))]
+    pub message_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
 pub struct ChatListRequest {
     pub data_generation_id: String,
     #[serde(default)]
@@ -373,6 +403,17 @@ pub struct ChatSearchRequest {
     pub search_id: String,
     #[schemars(length(min = 1, max = 256))]
     pub query: String,
+    #[serde(default)]
+    #[ts(optional, type = "string | null")]
+    pub sender_id: Option<String>,
+    #[serde(default)]
+    #[ts(optional, type = "number | null")]
+    #[schemars(range(min = -9007199254740991.0, max = 9007199254740991.0))]
+    pub created_after: Option<i64>,
+    #[serde(default)]
+    #[ts(optional, type = "number | null")]
+    #[schemars(range(min = -9007199254740991.0, max = 9007199254740991.0))]
+    pub created_before: Option<i64>,
     #[serde(default)]
     pub cursor: Option<String>,
     #[schemars(range(min = 1, max = 200))]
@@ -697,7 +738,7 @@ pub struct ExperienceDeleteRequest {
 pub struct ExperiencePruneRequest {
     pub data_generation_id: String,
     pub agent_id: String,
-    #[schemars(range(min = 1, max = 1000))]
+    #[schemars(range(min = 0, max = 1000))]
     pub max_entries: u32,
 }
 

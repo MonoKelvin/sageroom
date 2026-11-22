@@ -92,6 +92,9 @@ fn search_request(generation: &str, id: &str, query: &str) -> ChatSearchRequest 
         data_generation_id: generation.into(),
         search_id: id.into(),
         query: query.into(),
+        sender_id: None,
+        created_after: None,
+        created_before: None,
         cursor: None,
         limit: 200,
     }
@@ -186,7 +189,10 @@ fn initialization_retries_after_its_staging_path_is_unblocked() {
     assert_eq!(fs::read(&staging).unwrap(), obstacle);
     fs::remove_file(&staging).unwrap();
     let mut reopened = Database::open(directory.path(), "retried-initialization".into()).unwrap();
-    assert_eq!(snapshot(&mut reopened).participants.len(), 1 + super::configuration::default_agent_specs().len());
+    assert_eq!(
+        snapshot(&mut reopened).participants.len(),
+        1 + super::configuration::default_agent_specs().len()
+    );
     assert_eq!(count(&reopened.conn, "messages"), 0);
 }
 
@@ -203,7 +209,10 @@ fn unpublished_failed_staging_database_is_not_activated_or_removed() {
     drop(partial);
     let before = fs::read(&abandoned).unwrap();
     let mut opened = Database::open(directory.path(), "fresh-initialization".into()).unwrap();
-    assert_eq!(snapshot(&mut opened).participants.len(), 1 + super::configuration::default_agent_specs().len());
+    assert_eq!(
+        snapshot(&mut opened).participants.len(),
+        1 + super::configuration::default_agent_specs().len()
+    );
     assert_eq!(count(&opened.conn, "messages"), 0);
     let foreign_table: bool = opened
         .conn
@@ -397,7 +406,10 @@ fn first_start_has_one_user_and_two_unconfigured_default_agents_without_fake_cha
         .collect();
     assert_eq!(agents.len(), specs.len());
     for spec in &specs {
-        let agent = agents.iter().find(|agent| agent.display_name == spec.display_name).unwrap();
+        let agent = agents
+            .iter()
+            .find(|agent| agent.display_name == spec.display_name)
+            .unwrap();
         assert_eq!(agent.status, ParticipantStatus::NeedsConfiguration);
         assert!(agent.is_builtin);
     }
@@ -1086,7 +1098,9 @@ fn active_large_search_cancels_in_its_window_without_waiting_for_writer_queue() 
     let mut cancelled_search = false;
     for attempt in 0..3 {
         let search_id = format!("large-cancel-{attempt}");
-        let request = search_request("cancel-generation", &search_id, "罕");
+        let mut request = search_request("cancel-generation", &search_id, "罕");
+        request.created_after = Some(0);
+        request.created_before = Some(9_007_199_254_740_991);
         let future = worker.search.search("main".into(), request);
         let mut future = pin!(future);
         let first = future.as_mut().poll(&mut Context::from_waker(waker));
@@ -1460,6 +1474,348 @@ fn shutdown_rejects_new_work_and_releases_writer_lock() {
     );
     let reopened = Database::open(directory.path(), "after-shutdown".into()).unwrap();
     assert_eq!(count(&reopened.conn, "messages"), 0);
+}
+
+fn recall_request(database: &Database, message_id: &str) -> ChatRecallRequest {
+    ChatRecallRequest {
+        data_generation_id: database.generation_id.clone(),
+        client_request_id: uuid::Uuid::now_v7().to_string(),
+        message_id: message_id.into(),
+    }
+}
+
+#[test]
+fn recall_before_deadline_clears_content_and_atomically_changes_epoch() {
+    let (_directory, mut database) = database();
+    let source = send(&mut database, "quote-source", "原消息仍可见");
+    let mut request = send_request("generation-test", "recall-mentions", "撤回正文与结构化提及");
+    request.quote_message_id = Some(source.message_id);
+    request.mention_all = true;
+    let message = database.send_message(request).unwrap().0;
+    let anchor = database.recall_anchors[&message.message_id];
+    let (result, event) = database
+        .recall_message_at(
+            recall_request(&database, &message.message_id),
+            anchor + Duration::from_millis(119_999),
+        )
+        .unwrap();
+    assert_eq!(result.room.content_epoch, 1.into());
+    assert_eq!(result.room.version, 1.into());
+    assert!(
+        matches!(event.unwrap().payload, EventPayload::MessageChanged { message_id, message_seq, room }
+        if message_id == message.message_id && message_seq == message.message_seq && room.content_epoch == 1.into())
+    );
+    let stored = list(&mut database, 50).items.pop().unwrap();
+    assert_eq!(stored.state, MessageState::Recalled);
+    assert!(stored.parts.is_empty());
+    assert!(stored.mention_ids.is_empty());
+    assert!(!stored.mention_all);
+    assert!(stored.quote_message_id.is_none());
+    let search = search_database(
+        &database.conn,
+        &search_request("generation-test", "recalled-search", "撤回正文"),
+    )
+    .unwrap();
+    assert!(search.items.is_empty());
+    assert_eq!(count(&database.conn, "message_parts"), 1);
+    assert_eq!(count(&database.conn, "mentions"), 0);
+    assert_eq!(count(&database.conn, "search_text"), 1);
+    assert_eq!(count(&database.conn, "runtime_message_activity"), 2);
+    assert_eq!(snapshot(&mut database).room.content_epoch, 1.into());
+}
+
+#[test]
+fn recall_at_deadline_fails_and_send_replay_does_not_refresh_anchor() {
+    let (_directory, mut database) = database();
+    let request = send_request("generation-test", "send-anchor", "发送幂等不能延长撤回");
+    let message = database.send_message(request.clone()).unwrap().0;
+    let anchor = database.recall_anchors[&message.message_id];
+    assert_code(
+        database.recall_message_at(
+            recall_request(&database, &message.message_id),
+            anchor + Duration::from_millis(120_000),
+        ),
+        ErrorCode::PermissionDenied,
+    );
+    database.send_message(request).unwrap();
+    assert_eq!(database.recall_anchors[&message.message_id], anchor);
+    assert_code(
+        database.recall_message_at(
+            recall_request(&database, &message.message_id),
+            anchor + Duration::from_millis(120_001),
+        ),
+        ErrorCode::PermissionDenied,
+    );
+    assert_eq!(
+        list(&mut database, 50).items[0].state,
+        MessageState::Visible
+    );
+    assert_eq!(snapshot(&mut database).room.content_epoch, 0.into());
+}
+
+#[test]
+fn recall_replay_is_durable_but_restart_never_recreates_old_time_anchors() {
+    let (directory, mut database) = database();
+    let recalled = send(&mut database, "durable-recall", "成功撤回的消息");
+    let old = send(&mut database, "old-visible", "上次运行中的消息");
+    let request = recall_request(&database, &recalled.message_id);
+    let (result, _) = database.recall_message(request.clone()).unwrap();
+    let (replay, event) = database
+        .recall_message_at(request.clone(), Instant::now() + Duration::from_secs(300))
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(&replay).unwrap(),
+        serde_json::to_value(&result).unwrap()
+    );
+    assert!(event.is_none());
+    assert_code(
+        database.recall_message(ChatRecallRequest {
+            message_id: old.message_id.clone(),
+            ..request.clone()
+        }),
+        ErrorCode::IdempotencyConflict,
+    );
+    drop(database);
+    let mut restarted = Database::open(directory.path(), "recall-restarted".into()).unwrap();
+    assert!(restarted.recall_anchors.is_empty());
+    assert_code(
+        restarted.recall_message(recall_request(&restarted, &old.message_id)),
+        ErrorCode::PermissionDenied,
+    );
+    let (replay, event) = restarted
+        .recall_message(ChatRecallRequest {
+            data_generation_id: "recall-restarted".into(),
+            ..request
+        })
+        .unwrap();
+    assert_eq!(replay.message_id, result.message_id);
+    assert_eq!(replay.event_seq, result.event_seq);
+    assert_eq!(replay.data_generation_id, "recall-restarted");
+    assert!(event.is_none());
+    assert_eq!(snapshot(&mut restarted).room.content_epoch, 1.into());
+}
+
+#[test]
+fn recall_permission_generation_and_unknown_message_are_checked_by_host() {
+    let (_directory, mut database) = database();
+    let message = send(&mut database, "other-sender", "他人消息");
+    let agent = snapshot(&mut database)
+        .participants
+        .into_iter()
+        .find(|p| p.kind == ParticipantKind::Agent)
+        .unwrap();
+    database
+        .conn
+        .execute(
+            "UPDATE messages SET sender_id=?1 WHERE id=?2",
+            params![agent.id, message.message_id],
+        )
+        .unwrap();
+    assert_code(
+        database.recall_message(recall_request(&database, &message.message_id)),
+        ErrorCode::PermissionDenied,
+    );
+    assert_code(
+        database.recall_message(ChatRecallRequest {
+            data_generation_id: "old-generation".into(),
+            ..recall_request(&database, &message.message_id)
+        }),
+        ErrorCode::DataGenerationChanged,
+    );
+    assert_code(
+        database.recall_message(recall_request(&database, "not-found-message")),
+        ErrorCode::MessageNotFound,
+    );
+    let forged = json!({"data_generation_id":"generation-test","client_request_id":"forged-recall","message_id":message.message_id,"sender_id":agent.id});
+    assert!(serde_json::from_value::<ChatRecallRequest>(forged).is_err());
+    assert_eq!(snapshot(&mut database).room.content_epoch, 0.into());
+}
+
+#[test]
+fn quotes_are_bounded_deduplicated_and_invalidated_for_user_and_internal_sends() {
+    let (_directory, mut database) = database();
+    let source = send(&mut database, "live-quote-source", "分页之外的可见原文");
+    let mut quoted = send_request("generation-test", "quote-committed", "引用正文");
+    quoted.quote_message_id = Some(source.message_id.clone());
+    database.send_message(quoted).unwrap();
+    let query = ChatResolveQuotesRequest {
+        data_generation_id: "generation-test".into(),
+        message_ids: vec![
+            source.message_id.clone(),
+            source.message_id.clone(),
+            "no-message".into(),
+        ],
+    };
+    let preview = database.resolve_quotes(query.clone()).unwrap();
+    assert_eq!(preview.len(), 1);
+    assert_eq!(preview[0].id, source.message_id);
+    assert_code(
+        database.resolve_quotes(ChatResolveQuotesRequest {
+            message_ids: vec![source.message_id.clone(); 33],
+            ..query.clone()
+        }),
+        ErrorCode::InvalidInput,
+    );
+    assert_code(
+        database.resolve_quotes(ChatResolveQuotesRequest {
+            data_generation_id: "different-generation".into(),
+            ..query.clone()
+        }),
+        ErrorCode::DataGenerationChanged,
+    );
+    database
+        .recall_message(recall_request(&database, &source.message_id))
+        .unwrap();
+    assert!(database.resolve_quotes(query).unwrap().is_empty());
+    for source_id in [source.message_id, "never-existed".into()] {
+        let mut request = send_request(
+            "generation-test",
+            &uuid::Uuid::now_v7().to_string(),
+            "不能引用失效正文",
+        );
+        request.quote_message_id = Some(source_id.clone());
+        assert_code(database.send_message(request), ErrorCode::MessageNotFound);
+        let room = database.room_id.clone();
+        let agent = snapshot(&mut database)
+            .participants
+            .into_iter()
+            .find(|p| p.kind == ParticipantKind::Agent)
+            .unwrap();
+        let transaction = database.conn.transaction().unwrap();
+        assert_code(
+            super::chat::insert_message(
+                &transaction,
+                "generation-test",
+                &room,
+                &agent.id,
+                &[MessagePart::Text {
+                    text: "内部发送也检查引用".into(),
+                }],
+                &Some(source_id),
+                &[],
+                false,
+                "内部发送也检查引用",
+            ),
+            ErrorCode::MessageNotFound,
+        );
+    }
+    assert_eq!(count(&database.conn, "messages"), 2);
+}
+
+#[test]
+fn recall_event_failure_rolls_back_content_search_epoch_and_request_record() {
+    let (_directory, mut database) = database();
+    let message = send(&mut database, "rollback-recall", "撤回失败必须保留正文");
+    let request = recall_request(&database, &message.message_id);
+    database.conn.execute_batch("CREATE TRIGGER fail_recall_event BEFORE INSERT ON domain_events WHEN json_extract(NEW.payload_json,'$.kind')='message_changed' BEGIN SELECT RAISE(ABORT,'test failure'); END;").unwrap();
+    assert!(database.recall_message(request.clone()).is_err());
+    assert_eq!(
+        list(&mut database, 50).items[0].state,
+        MessageState::Visible
+    );
+    assert_eq!(snapshot(&mut database).room.content_epoch, 0.into());
+    assert_eq!(count(&database.conn, "message_parts"), 1);
+    assert_eq!(count(&database.conn, "request_records"), 1);
+    assert_eq!(
+        search_database(
+            &database.conn,
+            &search_request("generation-test", "rollback-search", "保留正文")
+        )
+        .unwrap()
+        .items
+        .len(),
+        1
+    );
+    assert!(database.recall_anchors.contains_key(&message.message_id));
+    database
+        .conn
+        .execute_batch("DROP TRIGGER fail_recall_event")
+        .unwrap();
+    database.recall_message(request).unwrap();
+    assert_eq!(snapshot(&mut database).room.content_epoch, 1.into());
+}
+
+#[test]
+fn search_filters_have_half_open_dates_and_are_part_of_cursor_identity() {
+    let (_directory, mut database) = database();
+    populate_corpus(&mut database, 5);
+    let agent = snapshot(&mut database)
+        .participants
+        .into_iter()
+        .find(|p| p.kind == ParticipantKind::Agent)
+        .unwrap();
+    database
+        .conn
+        .execute(
+            "UPDATE messages SET sender_id=?1 WHERE seq IN (2,4)",
+            [&agent.id],
+        )
+        .unwrap();
+    let origin = 1_760_000_000_000_i64;
+    let mut request = search_request("generation-test", "filtered-search", "中文");
+    request.sender_id = Some(database.local_user_id.clone());
+    request.created_after = Some(origin + 3_600_000);
+    request.created_before = Some(origin + 6 * 3_600_000);
+    request.limit = 1;
+    let first = search_database(&database.conn, &request).unwrap();
+    assert_eq!(first.items[0].seq, 5.into());
+    assert!(first.has_more);
+    request.cursor = first.next_cursor;
+    for changed in [
+        ChatSearchRequest {
+            sender_id: Some(agent.id.clone()),
+            ..request.clone()
+        },
+        ChatSearchRequest {
+            created_after: Some(origin + 2 * 3_600_000),
+            ..request.clone()
+        },
+        ChatSearchRequest {
+            created_before: None,
+            ..request.clone()
+        },
+    ] {
+        assert_code(
+            search_database(&database.conn, &changed),
+            ErrorCode::InvalidInput,
+        );
+    }
+    let second = search_database(&database.conn, &request).unwrap();
+    assert_eq!(second.items[0].seq, 3.into());
+    request.cursor = second.next_cursor;
+    let third = search_database(&database.conn, &request).unwrap();
+    assert_eq!(third.items[0].seq, 1.into());
+    assert!(!third.has_more);
+    request.cursor = None;
+    request.limit = 20;
+    request.sender_id = None;
+    request.created_after = Some(origin + 2 * 3_600_000);
+    request.created_before = Some(origin + 4 * 3_600_000);
+    let interval = search_database(&database.conn, &request).unwrap();
+    assert_eq!(
+        interval
+            .items
+            .iter()
+            .map(|hit| hit.seq.clone())
+            .collect::<Vec<_>>(),
+        vec![3.into(), 2.into()]
+    );
+    request.sender_id = Some(agent.id);
+    assert_eq!(
+        search_database(&database.conn, &request).unwrap().items[0].seq,
+        2.into()
+    );
+    request.created_after = request.created_before;
+    assert_code(
+        search_database(&database.conn, &request),
+        ErrorCode::InvalidInput,
+    );
+    request.created_after = None;
+    request.sender_id = Some("missing-member".into());
+    assert_code(
+        search_database(&database.conn, &request),
+        ErrorCode::InvalidInput,
+    );
 }
 
 #[derive(Deserialize)]

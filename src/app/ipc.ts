@@ -12,6 +12,10 @@ import type {
   CancelSearchRequest,
   CancelSearchResult,
   ChatListRequest,
+  ChatMessage,
+  ChatRecallRequest,
+  ChatRecallResult,
+  ChatResolveQuotesRequest,
   ChatSearchRequest,
   ChatSendRequest,
   ChatSendResult,
@@ -62,6 +66,10 @@ import {
   validateCancelSearchResponse,
   validateChatListRequest,
   validateChatListResponse,
+  validateChatRecallRequest,
+  validateChatRecallResponse,
+  validateChatResolveQuotesRequest,
+  validateChatResolveQuotesResponse,
   validateChatSearchRequest,
   validateChatSearchResponse,
   validateChatSendRequest,
@@ -174,6 +182,10 @@ export const ipc = {
     request("chat_list", input, validateChatListRequest, validateChatListResponse),
   send: (input: ChatSendRequest): Promise<ChatSendResult> =>
     request("chat_send", input, validateChatSendRequest, validateChatSendResponse),
+  recall: (input: ChatRecallRequest): Promise<ChatRecallResult> =>
+    request("chat_recall", input, validateChatRecallRequest, validateChatRecallResponse),
+  resolveQuotes: (input: ChatResolveQuotesRequest): Promise<ChatMessage[]> =>
+    request("chat_resolve_quotes", input, validateChatResolveQuotesRequest, validateChatResolveQuotesResponse),
   search: (input: ChatSearchRequest): Promise<SearchPage> =>
     request("chat_search", input, validateChatSearchRequest, validateChatSearchResponse),
   cancelSearch: (input: CancelSearchRequest): Promise<CancelSearchResult> =>

@@ -30,7 +30,7 @@ function AppearanceCard({ active }: { active: boolean }) {
   const state = useAppliedResource(store.appearance, active)
   const appearance = state.value!
   return <div className="config-stack"><fieldset disabled={runtime.exiting}>
-    <SettingSection title="外观设置" description="选择后直接应用到当前界面并保存在本机。">
+    <SettingSection title="外观设置">
       <Field label="主题"><SettingsSelect label="主题" value={appearance.theme} options={[{ value: "system", label: "跟随系统" }, { value: "light", label: "浅色" }, { value: "dark", label: "深色" }]} onValueChange={(theme) => store.updateAppearance({ theme: theme as typeof appearance.theme })} /></Field>
       <Field label="减少动画" caption="减少非必要的界面动效。"><Switch label="减少动画" checked={appearance.reduce_motion} onCheckedChange={(reduce_motion) => store.updateAppearance({ reduce_motion })} /></Field>
     </SettingSection>
@@ -54,11 +54,11 @@ function SettingsEditor({ session, active, onNavigate }: ApplicationPageProps) {
   useEffect(() => { if (active && section === "about") void reload() }, [active, section, reload])
   return <div className="workspace-layout config-page">
     <WorkspaceList aria-label="设置分类"><div className="panel-heading"><h1 className="panel-title">设置</h1></div><nav className="config-list-scroll">{sections.map(({ id, title: label, icon: Icon }) => <button key={id} type="button" className="list-entry" data-active={section === id} aria-current={section === id ? "page" : undefined} onClick={() => setSection(id)}><Icon size={21} aria-hidden="true" /><span>{label}</span></button>)}</nav><Button variant="ghost" size="sm" onClick={() => onNavigate("agents")}>管理智能体</Button></WorkspaceList>
-    <div className="workspace-detail"><section className="surface-card"><header className="panel-heading"><div><h2 className="panel-title">{title}</h2><p className="panel-description">{section === "about" ? "版本、许可与本地数据。" : "选择后直接应用。"}</p></div></header>
+    <div className="workspace-detail"><section className="surface-card"><header className="panel-heading"><h2 className="panel-title">{title}</h2></header>
       <div className="panel-content panel-scroll">
         <div hidden={section !== "appearance"} inert={section !== "appearance"}><AppearanceCard active={active && section === "appearance"} /></div>
         {section === "about" && <div className="config-stack config-about"><SettingSection title="Sageroom"><dl><div><dt>版本</dt><dd>{snapshot.app_version}</dd></div><div><dt>许可证</dt><dd>MIT</dd></div><div><dt>数据目录</dt><dd>{snapshot.data_directory}</dd></div><div><dt>数据库占用（含 WAL/SHM）</dt><dd>{formatBytes(snapshot.data_usage.database_bytes)}</dd></div><div><dt>头像占用</dt><dd>{formatBytes(snapshot.data_usage.avatar_bytes)}</dd></div><div><dt>开源项目</dt><dd><a href="https://github.com/MonoKelvin/sageroom" target="_blank" rel="noreferrer">github.com/MonoKelvin/sageroom</a></dd></div><div><dt>作者</dt><dd><a href="https://github.com/MonoKelvin" target="_blank" rel="noreferrer">MonoKelvin</a></dd></div></dl></SettingSection>
-          <SettingSection title="本地数据"><p className="form-caption">聊天和配置保存在本机。模型密钥放在系统凭据库，头像按本地对象 ID 引用。只有显式连接测试才会访问你填写的模型服务。</p><p className="form-caption">当前未提供备份与恢复入口。</p></SettingSection>
+          <SettingSection title="本地数据"><p className="form-caption">聊天、配置和经历保存在本机，密钥放在系统凭据库。连接测试和已配置成员的运行会访问对应模型服务，发送上下文并可能产生费用。</p><p className="form-caption">当前未提供备份与恢复入口。</p></SettingSection>
           <SettingSection title="退出应用" description="关闭窗口会隐藏到托盘；退出会等待已应用配置落盘。"><ExitControl /></SettingSection>
         </div>}
       </div>

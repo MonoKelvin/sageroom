@@ -57,7 +57,7 @@ export function GlobalConfiguration({ active }: { active: boolean }) {
     finally { setImporting(false) }
   }
   return <section className="surface-card">
-    <header className="panel-heading"><div><h2 className="panel-title">全局配置</h2><p className="panel-description">预设采用后独立编辑；设置直接应用，不会启动智能体。</p></div></header>
+    <header className="panel-heading"><h2 className="panel-title">全局配置</h2></header>
     <div className="panel-content panel-scroll">
       <nav className="config-actions mb-4" aria-label="全局配置分类">{sections.map(({ id, title, icon: Icon }) => <Button key={id} variant={section === id ? "secondary" : "ghost"} size="sm" aria-pressed={section === id} onClick={() => setSection(id)}><Icon size={17} aria-hidden="true" />{title}</Button>)}</nav>
       {!config && <p className="form-caption">{state.loading ? "正在读取本地配置…" : "配置尚未就绪。"}</p>}

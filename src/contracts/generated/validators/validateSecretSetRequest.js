@@ -1,17 +1,17 @@
 import { t as require_ucs2length } from "./ucs2length.js";
 // generated/raw-validators/validateSecretSetRequest.js
-var validateSecretSetRequest = validate298;
+var validateSecretSetRequest = validate322;
 var func2 = require_ucs2length().default;
 var pattern4 = /* @__PURE__ */ new RegExp("^(0|[1-9][0-9]*)$", "u");
-function validate298(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate322(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
-	const evaluated0 = validate298.evaluated;
+	const evaluated0 = validate322.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		let missing0;
 		if (data.data_generation_id === void 0 && (missing0 = "data_generation_id") || data.profile_id === void 0 && (missing0 = "profile_id") || data.expected_revision === void 0 && (missing0 = "expected_revision") || data.api_key === void 0 && (missing0 = "api_key")) {
-			validate298.errors = [{
+			validate322.errors = [{
 				instancePath,
 				schemaPath: "#/required",
 				keyword: "required",
@@ -21,7 +21,7 @@ function validate298(data, { instancePath = "", parentData, parentDataProperty, 
 			return false;
 		} else {
 			for (const key0 in data) if (!(key0 === "api_key" || key0 === "data_generation_id" || key0 === "expected_revision" || key0 === "profile_id")) {
-				validate298.errors = [{
+				validate322.errors = [{
 					instancePath,
 					schemaPath: "#/additionalProperties",
 					keyword: "additionalProperties",
@@ -32,7 +32,7 @@ function validate298(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 			if (data.api_key !== void 0) {
 				if (typeof data.api_key !== "string") {
-					validate298.errors = [{
+					validate322.errors = [{
 						instancePath: instancePath + "/api_key",
 						schemaPath: "#/properties/api_key/type",
 						keyword: "type",
@@ -46,7 +46,7 @@ function validate298(data, { instancePath = "", parentData, parentDataProperty, 
 			if (valid0) {
 				if (data.data_generation_id !== void 0) {
 					if (typeof data.data_generation_id !== "string") {
-						validate298.errors = [{
+						validate322.errors = [{
 							instancePath: instancePath + "/data_generation_id",
 							schemaPath: "#/properties/data_generation_id/type",
 							keyword: "type",
@@ -62,7 +62,7 @@ function validate298(data, { instancePath = "", parentData, parentDataProperty, 
 						let data2 = data.expected_revision;
 						if (typeof data2 === "string") {
 							if (func2(data2) > 19) {
-								validate298.errors = [{
+								validate322.errors = [{
 									instancePath: instancePath + "/expected_revision",
 									schemaPath: "#/$defs/DecimalString/maxLength",
 									keyword: "maxLength",
@@ -71,7 +71,7 @@ function validate298(data, { instancePath = "", parentData, parentDataProperty, 
 								}];
 								return false;
 							} else if (!pattern4.test(data2)) {
-								validate298.errors = [{
+								validate322.errors = [{
 									instancePath: instancePath + "/expected_revision",
 									schemaPath: "#/$defs/DecimalString/pattern",
 									keyword: "pattern",
@@ -81,7 +81,7 @@ function validate298(data, { instancePath = "", parentData, parentDataProperty, 
 								return false;
 							}
 						} else {
-							validate298.errors = [{
+							validate322.errors = [{
 								instancePath: instancePath + "/expected_revision",
 								schemaPath: "#/$defs/DecimalString/type",
 								keyword: "type",
@@ -95,7 +95,7 @@ function validate298(data, { instancePath = "", parentData, parentDataProperty, 
 					if (valid0) {
 						if (data.profile_id !== void 0) {
 							if (typeof data.profile_id !== "string") {
-								validate298.errors = [{
+								validate322.errors = [{
 									instancePath: instancePath + "/profile_id",
 									schemaPath: "#/properties/profile_id/type",
 									keyword: "type",
@@ -111,7 +111,7 @@ function validate298(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 		}
 	} else {
-		validate298.errors = [{
+		validate322.errors = [{
 			instancePath,
 			schemaPath: "#/type",
 			keyword: "type",
@@ -120,10 +120,10 @@ function validate298(data, { instancePath = "", parentData, parentDataProperty, 
 		}];
 		return false;
 	}
-	validate298.errors = vErrors;
+	validate322.errors = vErrors;
 	return true;
 }
-validate298.evaluated = {
+validate322.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

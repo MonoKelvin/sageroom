@@ -1,13 +1,87 @@
 import type {} from "@testing-library/jest-dom/vitest"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import userEvent from "@testing-library/user-event"
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import { message, snapshot } from "./chat.test-fixtures"
 import { MessageComposer } from "./MessageComposer"
 
 vi.mock("@/app/ipc", () => ({ errorMessage: (error: unknown) => error instanceof Error ? error.message : "测试失败" }))
 
 beforeEach(() => vi.clearAllMocks())
+const addedMethods: string[] = []
+beforeAll(() => {
+  for (const method of ["scrollIntoView", "hasPointerCapture", "setPointerCapture", "releasePointerCapture"]) if (!(method in HTMLElement.prototype)) {
+    Object.defineProperty(HTMLElement.prototype, method, { configurable: true, value: method === "hasPointerCapture" ? () => false : () => {} })
+    addedMethods.push(method)
+  }
+  if (!globalThis.ResizeObserver) vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} })
+})
+afterAll(() => { for (const method of addedMethods) Reflect.deleteProperty(HTMLElement.prototype, method); vi.unstubAllGlobals() })
 
 describe("消息输入", () => {
+  it("引用和成员 ID 随草稿保留，失败重试完整复用提交", async () => {
+    const onSend = vi.fn().mockRejectedValueOnce(new Error("数据库忙碌")).mockResolvedValue(undefined)
+    const onRemoveQuote = vi.fn()
+    render(<MessageComposer dataGenerationId="generation" disabled={false} participants={snapshot().participants} quoteMessageId="message-1" quote={message(1, "被引用正文")} onRemoveQuote={onRemoveQuote} onSend={onSend} />)
+    await userEvent.click(screen.getByRole("button", { name: "提及成员" }))
+    await userEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Sage" }))
+    await userEvent.keyboard("{Escape}")
+    const input = screen.getByRole("textbox", { name: "消息输入" })
+    expect(input).toHaveFocus()
+    await userEvent.type(input, "回应")
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }))
+    await screen.findByText("数据库忙碌")
+    expect(screen.getByRole("button", { name: "取消引用" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "移除提及 Sage" })).toBeVisible()
+    expect(onSend.mock.calls[0]?.[2]).toEqual({ quote_message_id: "message-1", mention_ids: ["sage-test"], mention_all: false })
+    await userEvent.click(screen.getByRole("button", { name: "重试发送" }))
+    await waitFor(() => expect(input).toHaveValue(""))
+    expect(onSend.mock.calls[1]).toEqual(onSend.mock.calls[0])
+    expect(onRemoveQuote).toHaveBeenCalledOnce()
+  })
+
+  it("引用切换后不复用失败请求，即使最后又选回原消息", async () => {
+    const onSend = vi.fn().mockRejectedValueOnce(new Error("失败")).mockResolvedValue(undefined)
+    const props = { dataGenerationId: "generation", disabled: false, onSend }
+    const view = render(<MessageComposer {...props} quoteMessageId="message-1" quote={message(1)} />)
+    const input = screen.getByRole("textbox", { name: "消息输入" })
+    fireEvent.change(input, { target: { value: "回应" } })
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }))
+    await screen.findByText("失败")
+    view.rerender(<MessageComposer {...props} quoteMessageId="message-2" quote={message(2)} />)
+    view.rerender(<MessageComposer {...props} quoteMessageId="message-1" quote={message(1)} />)
+    fireEvent.click(screen.getByRole("button", { name: /发送/ }))
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(2))
+    expect(onSend.mock.calls[1]?.[1]).not.toBe(onSend.mock.calls[0]?.[1])
+  })
+
+  it("迟到成功不清空新选引用或其文字草稿", async () => {
+    let complete!: () => void
+    const onSend = vi.fn().mockReturnValue(new Promise<void>((resolve) => { complete = resolve }))
+    const onRemoveQuote = vi.fn()
+    const props = { dataGenerationId: "generation", disabled: false, onSend, onRemoveQuote }
+    const view = render(<MessageComposer {...props} quoteMessageId="message-1" quote={message(1)} />)
+    const input = screen.getByRole("textbox", { name: "消息输入" })
+    fireEvent.change(input, { target: { value: "回应" } })
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }))
+    view.rerender(<MessageComposer {...props} quoteMessageId="message-2" quote={message(2, "新引用")} />)
+    await act(async () => complete())
+    expect(input).toHaveValue("回应")
+    expect(screen.getByRole("generic", { name: "引用预览" })).toHaveTextContent("新引用")
+    expect(onRemoveQuote).not.toHaveBeenCalled()
+  })
+
+  it("只有显式群主权限提供所有人选项，昵称正文不推导结构化提及", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined)
+    render(<MessageComposer dataGenerationId="generation" disabled={false} participants={snapshot().participants} onSend={onSend} />)
+    await userEvent.click(screen.getByRole("button", { name: "提及成员" }))
+    expect(screen.queryByRole("menuitemcheckbox", { name: "所有人" })).not.toBeInTheDocument()
+    await userEvent.keyboard("{Escape}")
+    await userEvent.type(screen.getByRole("textbox", { name: "消息输入" }), "@所有人 @Sage")
+    await userEvent.click(screen.getByRole("button", { name: "发送消息" }))
+    expect(onSend.mock.calls[0]?.[2]).toEqual({ quote_message_id: null, mention_ids: [], mention_all: false })
+  })
+
   it("IME 组合态 Enter 和 Shift+Enter 都不发送", async () => {
     const onSend = vi.fn().mockResolvedValue(undefined)
     render(<MessageComposer dataGenerationId="generation" disabled={false} onSend={onSend} />)

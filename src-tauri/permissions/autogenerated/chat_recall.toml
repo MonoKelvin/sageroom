@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-chat-recall"
+description = "Enables the chat_recall command without any pre-configured scope."
+commands.allow = ["chat_recall"]
+
+[[permission]]
+identifier = "deny-chat-recall"
+description = "Denies the chat_recall command without any pre-configured scope."
+commands.deny = ["chat_recall"]

@@ -11,7 +11,7 @@ use std::{
 
 use super::{
     database::Database,
-    runtime::{RuntimeInput, RuntimeMessage},
+    runtime::{RuntimeExperience, RuntimeInput, RuntimeMessage},
     search::SearchService,
 };
 use crate::domain::{contracts::*, error::AppResult};
@@ -134,9 +134,24 @@ impl DbWorker {
             .unwrap_or_else(|| Err(shutting_down()))
     }
 
-    /// 记录一条智能体经历；写文件不阻塞数据库事务，直接在工作线程外执行。
-    pub fn record_experience(&self, agent_id: &str, experience: &str) -> AppResult<()> {
-        super::experience::record_from_decision(&self.root, agent_id, experience).map(|_| ())
+    pub async fn list_experience(&self, request: ExperienceAgentRequest) -> AppResult<Vec<ExperienceEntry>> {
+        self.call(move |database| database.list_experience(request)).await
+    }
+
+    pub async fn add_experience(&self, request: ExperienceAddRequest) -> AppResult<ExperienceEntry> {
+        self.call(move |database| database.add_experience(request)).await
+    }
+
+    pub async fn delete_experience(&self, request: ExperienceDeleteRequest) -> AppResult<Vec<ExperienceEntry>> {
+        self.call(move |database| database.delete_experience(request)).await
+    }
+
+    pub async fn prune_experience(&self, request: ExperiencePruneRequest) -> AppResult<Vec<ExperienceEntry>> {
+        self.call(move |database| database.prune_experience(request)).await
+    }
+
+    pub async fn record_experience(&self, experience: RuntimeExperience) -> AppResult<()> {
+        self.call(move |database| database.record_experience(experience)).await
     }
 
     pub async fn snapshot(&self, request: AppSnapshotRequest) -> AppResult<AppSnapshot> {
@@ -153,6 +168,26 @@ impl DbWorker {
             Ok(result)
         })
         .await
+    }
+
+    pub async fn recall_message(&self, request: ChatRecallRequest) -> AppResult<ChatRecallResult> {
+        let sink = self.event_sink.clone();
+        self.call(move |database| {
+            let (result, event) = database.recall_message(request)?;
+            if let Some(event) = event {
+                sink(&event);
+            }
+            Ok(result)
+        })
+        .await
+    }
+
+    pub async fn resolve_quotes(
+        &self,
+        request: ChatResolveQuotesRequest,
+    ) -> AppResult<Vec<ChatMessage>> {
+        self.call(move |database| database.resolve_quotes(request))
+            .await
     }
 
     pub async fn list_messages(&self, request: ChatListRequest) -> AppResult<MessagePage> {

@@ -1,4 +1,7 @@
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    time::{Duration, Instant},
+};
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
@@ -250,6 +253,31 @@ pub(crate) fn load_messages(conn: &Connection, sequences: &[i64]) -> AppResult<V
         .collect()
 }
 
+pub(crate) fn resolve_quotes(
+    conn: &Connection,
+    room_id: &str,
+    ids: &[String],
+) -> AppResult<Vec<ChatMessage>> {
+    if ids.len() > 32 {
+        return Err(AppError::invalid("message_ids", "单次最多读取 32 条引用。"));
+    }
+    let mut seen = HashSet::new();
+    let mut sequences = Vec::new();
+    let mut statement =
+        conn.prepare("SELECT seq FROM messages WHERE id=?1 AND room_id=?2 AND state='visible'")?;
+    for id in ids {
+        validate_id(id, "message_ids")?;
+        if seen.insert(id)
+            && let Some(seq) = statement
+                .query_row(params![id, room_id], |row| row.get(0))
+                .optional()?
+        {
+            sequences.push(seq);
+        }
+    }
+    load_messages(conn, &sequences)
+}
+
 fn sequence_query(conn: &Connection, sql: &str, cursor: i64, limit: u32) -> AppResult<Vec<i64>> {
     let mut statement = conn.prepare(sql)?;
     Ok(statement
@@ -314,6 +342,19 @@ pub(crate) fn insert_message(
     mention_all: bool,
     text: &str,
 ) -> AppResult<(ChatSendResult, DomainEvent)> {
+    if let Some(id) = quote {
+        let visible: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM messages WHERE id=?1 AND room_id=?2 AND state='visible')",
+            params![id, room_id],
+            |row| row.get(0),
+        )?;
+        if !visible {
+            return Err(AppError::new(
+                ErrorCode::MessageNotFound,
+                "被引用消息不存在或已失效，草稿未清除。",
+            ));
+        }
+    }
     let owner: String = transaction.query_row(
         "SELECT r.owner_participant_id FROM room r JOIN participants p ON p.id = ?1 WHERE r.singleton = 1",
         [sender_id], |row| row.get(0),
@@ -549,19 +590,7 @@ impl Database {
                 None,
             ));
         }
-        if let Some(id) = &request.quote_message_id {
-            let exists: bool = transaction.query_row(
-                "SELECT EXISTS(SELECT 1 FROM messages WHERE id = ?1 AND room_id = ?2)",
-                params![id, room_id],
-                |row| row.get(0),
-            )?;
-            if !exists {
-                return Err(AppError::new(
-                    ErrorCode::MessageNotFound,
-                    "被引用消息不存在，草稿未清除。",
-                ));
-            }
-        }
+        let recall_anchor = Instant::now();
         let (result, event) = insert_message(
             &transaction,
             &generation,
@@ -588,6 +617,10 @@ impl Database {
             },
         )?;
         transaction.commit()?;
+        self.recall_anchors
+            .retain(|_, anchor| anchor.elapsed() < Duration::from_secs(120));
+        self.recall_anchors
+            .insert(message_id.clone(), recall_anchor);
         Ok((
             ChatSendResult {
                 data_generation_id: generation,
@@ -597,6 +630,160 @@ impl Database {
             },
             Some(event),
         ))
+    }
+
+    pub fn resolve_quotes(
+        &mut self,
+        request: ChatResolveQuotesRequest,
+    ) -> AppResult<Vec<ChatMessage>> {
+        self.check_generation(&request.data_generation_id)?;
+        let transaction = self.conn.transaction()?;
+        let messages = resolve_quotes(&transaction, &self.room_id, &request.message_ids)?;
+        transaction.commit()?;
+        Ok(messages)
+    }
+
+    pub fn recall_message(
+        &mut self,
+        request: ChatRecallRequest,
+    ) -> AppResult<(ChatRecallResult, Option<DomainEvent>)> {
+        self.recall_message_with_clock(request, Instant::now)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn recall_message_at(
+        &mut self,
+        request: ChatRecallRequest,
+        now: Instant,
+    ) -> AppResult<(ChatRecallResult, Option<DomainEvent>)> {
+        self.recall_message_with_clock(request, || now)
+    }
+
+    fn recall_message_with_clock(
+        &mut self,
+        request: ChatRecallRequest,
+        clock: impl FnOnce() -> Instant,
+    ) -> AppResult<(ChatRecallResult, Option<DomainEvent>)> {
+        self.check_generation(&request.data_generation_id)?;
+        validate_id(&request.client_request_id, "client_request_id")?;
+        validate_id(&request.message_id, "message_id")?;
+        let generation = self.generation_id.clone();
+        let hash = fingerprint(request.message_id.as_bytes());
+        let transaction = self
+            .conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        if let Some(result) = replay_request(
+            &transaction,
+            &request.client_request_id,
+            "chat_recall",
+            &hash,
+        )? {
+            let mut result: ChatRecallResult = serde_json::from_str(&result)?;
+            result.data_generation_id = generation;
+            return Ok((result, None));
+        }
+        let message: Option<(i64, String, String)> = transaction
+            .query_row(
+                "SELECT seq,sender_id,state FROM messages WHERE id=?1 AND room_id=?2",
+                params![request.message_id, self.room_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?;
+        let Some((seq, sender_id, state)) = message else {
+            return Err(AppError::new(ErrorCode::MessageNotFound, "消息已不存在。"));
+        };
+        if sender_id != self.local_user_id {
+            return Err(AppError::new(
+                ErrorCode::PermissionDenied,
+                "只能撤回自己发送的消息。",
+            ));
+        }
+        if state != "visible" {
+            return Err(AppError::new(
+                ErrorCode::MessageNotFound,
+                "这条消息已撤回或删除。",
+            ));
+        }
+        // 重启后没有可靠的单调时间锚，旧消息不能重新获得撤回期限。
+        let now = clock();
+        let eligible = self
+            .recall_anchors
+            .get(&request.message_id)
+            .and_then(|anchor| now.checked_duration_since(*anchor))
+            .is_some_and(|elapsed| elapsed < Duration::from_secs(120));
+        if !eligible {
+            return Err(AppError::new(
+                ErrorCode::PermissionDenied,
+                "这条消息已超过可撤回期限，或发送于上次运行。",
+            ));
+        }
+        let text: Option<String> = transaction
+            .query_row("SELECT text FROM search_text WHERE seq=?1", [seq], |row| {
+                row.get(0)
+            })
+            .optional()?;
+        if let Some(text) = text {
+            transaction.execute(
+                "INSERT INTO message_search(message_search,rowid,text) VALUES ('delete',?1,?2)",
+                params![seq, text],
+            )?;
+            transaction.execute("DELETE FROM search_text WHERE seq=?1", [seq])?;
+        }
+        transaction.execute(
+            "DELETE FROM message_parts WHERE message_id=?1",
+            [&request.message_id],
+        )?;
+        transaction.execute(
+            "DELETE FROM mentions WHERE message_id=?1",
+            [&request.message_id],
+        )?;
+        transaction.execute(
+            "UPDATE messages SET state='recalled',quote_message_id=NULL,mention_all=0 WHERE id=?1",
+            [&request.message_id],
+        )?;
+        let (id, name, owner, version, epoch): (String, String, String, i64, i64) = transaction.query_row(
+            "SELECT id,name,owner_participant_id,version,content_epoch FROM room WHERE singleton=1", [],
+            |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?)),
+        )?;
+        let next_epoch = epoch
+            .checked_add(1)
+            .ok_or_else(|| AppError::new(ErrorCode::DataRootInvalid, "聊天内容版本已达到上限。"))?;
+        transaction.execute(
+            "UPDATE room SET content_epoch=?1 WHERE singleton=1",
+            [next_epoch],
+        )?;
+        let room = Room {
+            id,
+            name,
+            owner_participant_id: owner,
+            version: version.into(),
+            content_epoch: next_epoch.into(),
+        };
+        let event = record_event(
+            &transaction,
+            EventPayload::MessageChanged {
+                message_id: request.message_id.clone(),
+                message_seq: seq.into(),
+                room: room.clone(),
+            },
+            &generation,
+        )?;
+        let result = ChatRecallResult {
+            data_generation_id: generation,
+            message_id: request.message_id.clone(),
+            event_seq: event.event_seq.clone(),
+            room,
+        };
+        record_request(
+            &transaction,
+            &request.client_request_id,
+            "chat_recall",
+            &hash,
+            &result,
+        )?;
+        transaction.commit()?;
+        self.recall_anchors.remove(&request.message_id);
+        Ok((result, Some(event)))
     }
 
     pub fn list_messages(&mut self, request: ChatListRequest) -> AppResult<MessagePage> {

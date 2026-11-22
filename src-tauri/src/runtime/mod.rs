@@ -19,7 +19,7 @@ use crate::{
     },
     models::ModelGateway,
     secrets::store::SecretStore,
-    storage::{runtime::RuntimeMessage, worker::DbWorker},
+    storage::{runtime::{RuntimeExperience, RuntimeMessage}, worker::DbWorker},
 };
 use decision::Participation;
 
@@ -34,6 +34,7 @@ enum ReconcileTrigger {
     Configuration,
     GlobalConfiguration,
     NewMessage,
+    ContentChanged,
 }
 
 #[derive(Clone)]
@@ -50,8 +51,90 @@ struct CompletedDecision {
     observed_through_seq: DecimalString,
 }
 
+/// 决策请求的重试方向：格式修复，或首次过长时的口语化拆分。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RetryKind {
+    Repair,
+    Split,
+}
+
+/// 房间级冷场时钟：用实际冷场时长动态调整「多久没人说话就该有人开口」。
+///
+/// 反向反馈：冷场比目标更长，说明大家确实没话聊，下次应该更早主动开口，目标调小；
+/// 对话很热闹、间隔比目标短，则可以更从容，目标调大。始终夹在合理区间内，
+/// 保证既不会长时间没人说话，也不会一直自己说。
+pub struct IdleClock {
+    last_message_at: Option<i64>,
+    target_ms: u64,
+}
+
+impl IdleClock {
+    const INITIAL_MS: u64 = 10 * 60_000;
+    const MIN_MS: u64 = 90_000;
+    const MAX_MS: u64 = 45 * 60_000;
+    /// 小于此间隔视为连续对话，不计入冷场统计。
+    const MIN_GAP_MS: i64 = 30_000;
+
+    pub const fn new() -> Self {
+        Self { last_message_at: None, target_ms: Self::INITIAL_MS }
+    }
+
+    /// 记录一次有人说话（含自己），并用本次冷场时长修正目标间隔。
+    pub fn observe(&mut self, at: i64) {
+        if let Some(previous) = self.last_message_at {
+            let gap = at.saturating_sub(previous);
+            if gap >= Self::MIN_GAP_MS {
+                self.adjust(gap as u64);
+            }
+        }
+        self.last_message_at = Some(at);
+    }
+
+    fn adjust(&mut self, observed: u64) {
+        let target = self.target_ms as i64;
+        let observed = observed.min(Self::MAX_MS) as i64;
+        // 朝反向修正三分之一，避免单次异常把目标拉得太远。
+        let next = target + (target - observed) / 3;
+        self.target_ms = next.clamp(Self::MIN_MS as i64, Self::MAX_MS as i64) as u64;
+    }
+
+    pub fn target_ms(&self) -> u64 {
+        self.target_ms
+    }
+}
+
+/// 单房间场景：所有智能体共享同一份冷场时钟。
+static IDLE_CLOCK: Mutex<IdleClock> = Mutex::new(IdleClock::new());
+
+fn idle_target_ms() -> u64 {
+    IDLE_CLOCK.lock().expect("冷场时钟锁被污染").target_ms()
+}
+
+fn observe_message_activity() {
+    IDLE_CLOCK.lock().expect("冷场时钟锁被污染").observe(now_ms());
+}
+
+/// 按活跃度缩放房间冷场目标，并加入随机抖动。
+/// 活跃度 100 约 ×0.7，50 约 ×1.0，0 约 ×1.3；睡眠时再放宽一些。
+fn idle_interval_ms(activity: u8, target_ms: u64, seed: u64, sleeping: bool) -> u64 {
+    let activity = i64::from(activity.min(100));
+    let factor = 1.0 + (50 - activity) as f64 / 100.0 * 0.6;
+    let base = (target_ms as f64 * factor) as u64;
+    let jitter = seed % (base / 4 + 1);
+    let interval = base + jitter;
+    let interval = if sleeping { interval * 3 / 2 } else { interval };
+    interval.clamp(45_000, 120 * 60_000)
+}
+
+/// 空闲条目真正触发主动发言的概率：高活跃近乎必然，低活跃也保留机会。
+fn idle_trigger_chance(activity: u8) -> u64 {
+    // 0 → 30%，100 → 90%
+    30 + u64::from(activity.min(100)) * 60 / 100
+}
+
 struct Actor {
     revision: DecimalString,
+    content_epoch: DecimalString,
     credential_ref: Option<String>,
     cancellation: CancellationToken,
     opportunities: watch::Sender<Opportunity>,
@@ -149,11 +232,28 @@ impl RuntimeSupervisor {
                             )
                             .await;
                         }
+                        EventPayload::MessageChanged { .. } => {
+                            for actor in actors.values() {
+                                actor.cancellation.cancel();
+                            }
+                            let _ = reconcile(
+                                &worker,
+                                &models,
+                                &secrets,
+                                &cancellation,
+                                &mut actors,
+                                None,
+                                ReconcileTrigger::ContentChanged,
+                            )
+                            .await;
+                        }
                         EventPayload::MessageCommitted {
                             message_seq,
                             sender_id,
                             ..
                         } => {
+                            // 有人说话：刷新冷场时钟，动态学习房间的自然对话间隔。
+                            observe_message_activity();
                             let chain_id = worker
                                 .runtime_chain(message_seq.clone())
                                 .await
@@ -319,10 +419,19 @@ async fn reconcile(
             && actors
                 .get(&agent.agent_id)
                 .is_some_and(|actor| actor.credential_ref != credential_ref);
-        let unchanged = actors
+        let content_changed = actors
             .get(&agent.agent_id)
-            .is_some_and(|a| a.revision == agent.revision && !a.opportunities.is_closed());
-        if unchanged && !binding_changed && restart != Some(agent.agent_id.as_str()) {
+            .is_some_and(|actor| actor.content_epoch != snapshot.room.content_epoch);
+        let unchanged = actors.get(&agent.agent_id).is_some_and(|a| {
+            a.revision == agent.revision
+                && !a.opportunities.is_closed()
+                && !a.cancellation.is_cancelled()
+        });
+        if unchanged
+            && !binding_changed
+            && !content_changed
+            && restart != Some(agent.agent_id.as_str())
+        {
             continue;
         }
         if let Some(old) = actors.remove(&agent.agent_id) {
@@ -376,6 +485,7 @@ async fn reconcile(
             agent.agent_id.clone(),
             Actor {
                 revision: agent.revision.clone(),
+                content_epoch: snapshot.room.content_epoch.clone(),
                 credential_ref,
                 cancellation: cancellation.clone(),
                 opportunities,
@@ -393,7 +503,9 @@ async fn reconcile(
                 receiver,
                 cancellation,
                 restore,
-                trigger == ReconcileTrigger::NewMessage,
+                trigger == ReconcileTrigger::NewMessage
+                    || trigger == ReconcileTrigger::ContentChanged
+                    || content_changed,
             )
             .await;
         });
@@ -447,9 +559,7 @@ async fn run_actor(
         .await
         .ok()
         .flatten()
-        .filter(|(_, _, revision)| {
-            restore && revision == &agent.revision
-        });
+        .filter(|(_, _, revision)| restore && revision == &agent.revision);
     let mut sleeping = restore
         && stored.as_ref().is_some_and(|s| {
             s.config_revision == agent.revision && s.status == AgentRuntimeStatus::Sleeping
@@ -487,6 +597,10 @@ async fn run_actor(
     {
         return;
     }
+    // 空闲自主发起：无人说话时，按活跃度概率主动开启话题，而不是只等着接话。
+    let activity = agent.dimensions.activity;
+    let mut idle_at = tokio::time::Instant::now()
+        + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, sleeping));
     loop {
         if cancellation.is_cancelled() {
             break;
@@ -502,6 +616,9 @@ async fn run_actor(
                 changed=opportunities.changed()=>{
                     if changed.is_err(){break;}
                     let incoming=opportunities.borrow_and_update().clone();
+                    // 有真实新消息时重置空闲计时，避免刚聊过又主动插话。
+                    idle_at = tokio::time::Instant::now()
+                        + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, sleeping));
                     if sequence(&incoming.message_seq) <= sequence(&observed_through_seq)
                         || (sleeping && sequence(&incoming.mention_seq) <= sequence(&observed_through_seq)) {continue;}
                     Some(incoming)
@@ -513,12 +630,27 @@ async fn run_actor(
                             next=Some((at,chain.clone(),agent.revision.clone()));
                             let _=worker.save_runtime_plan(agent.agent_id.clone(),agent.revision.clone(),Some(at),chain).await;
                             sleeping = true;
+                            idle_at = tokio::time::Instant::now()
+                                + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, sleeping));
                             let _=state(&worker,&agent,AgentRuntimeStatus::Sleeping,Some("自主检查已达到两次/滚动小时，将按既有计划稍后继续。".into()),Some(at),count,&cancellation).await;
                             continue;
                         },
                         Ok(None)=>Some(Opportunity{chain_id:chain,reason:"planned_wake",message_seq:observed_through_seq.clone(),mention_seq:0.into()}),
                         Err(error)=>{report_failure(&worker,&agent,error,count,&cancellation).await;break;}
                     }
+                }
+                _=tokio::time::sleep_until(idle_at)=>{
+                    let seed = now_ms() as u64;
+                    idle_at = tokio::time::Instant::now()
+                        + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), seed, sleeping));
+                    // 按活跃度概率决定这一次是否真的主动开口；没中就先跳过。
+                    if seed % 100 >= idle_trigger_chance(activity) { continue; }
+                    Some(Opportunity{
+                        chain_id: Uuid::now_v7().to_string(),
+                        reason: "idle_tick",
+                        message_seq: observed_through_seq.clone(),
+                        mention_seq: 0.into(),
+                    })
                 }
             };
         }
@@ -537,6 +669,7 @@ async fn run_actor(
             .await;
         next = None;
         let mut completed = None;
+        let mut throttle = false;
         for competition in 0..=2 {
             if opportunities.has_changed().unwrap_or(false) {
                 current = opportunities.borrow_and_update().clone();
@@ -560,11 +693,37 @@ async fn run_actor(
                     if error.code == ErrorCode::ConfigConflict
                         && competition < 2
                         && !cancellation.is_cancelled() => {}
+                Err(error) if error.code == ErrorCode::Backpressure => {
+                    // 频率/额度保护是暂时的：记录观察状态并稍后重试，不把智能体永久停用。
+                    let _ = state(
+                        &worker,
+                        &agent,
+                        AgentRuntimeStatus::Observing,
+                        Some(error.message),
+                        None,
+                        count,
+                        &cancellation,
+                    )
+                    .await;
+                    throttle = true;
+                    break;
+                }
                 Err(error) => {
                     report_failure(&worker, &agent, error, count, &cancellation).await;
                     return;
                 }
             }
+        }
+        if throttle {
+            // 冷却一段时间再回到等待机会，避免立刻重试继续撞上限。
+            tokio::select! {
+                biased;
+                _=cancellation.cancelled()=>return,
+                _=tokio::time::sleep(Duration::from_secs(30))=>{}
+            }
+            idle_at = tokio::time::Instant::now()
+                + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, false));
+            continue;
         }
         let Some(completed) = completed else {
             break;
@@ -578,6 +737,9 @@ async fn run_actor(
             decision.participation,
             Participation::Sleep | Participation::Defer
         );
+        // 刚参与过对话，重新开始空闲计时，避免马上又主动插话。
+        idle_at = tokio::time::Instant::now()
+            + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, sleeping));
         if let Some(plan) = decision.wake_plan {
             let at = completed
                 .validated_at
@@ -653,15 +815,15 @@ async fn make_decision(
     let (system, context) = decision::context(&mut input, opportunity.reason)?;
     let gateway = models.clone()?;
     let mut decision = None;
-    for attempt in 0..=1 {
+    // 首次正常请求；格式错误重试一次；首次内容过长时再请模型自己决定是否改拆短句。
+    let mut retry: Option<RetryKind> = None;
+    let mut fallback: Option<decision::Decision> = None;
+    for _attempt in 0..3 {
         if cancellation.is_cancelled() {
             return Err(AppError::new(ErrorCode::ShuttingDown, "成员请求已取消。"));
         }
         *count = worker
-            .reserve_runtime_request(
-                agent.agent_id.clone(),
-                DAILY_REQUEST_LIMIT,
-            )
+            .reserve_runtime_request(agent.agent_id.clone(), DAILY_REQUEST_LIMIT)
             .await?;
         state(
             worker,
@@ -673,10 +835,12 @@ async fn make_decision(
             cancellation,
         )
         .await?;
-        let prompt = if attempt == 1 {
-            format!("{context}{}", decision::REPAIR_HINT)
-        } else {
-            context.clone()
+        let prompt = match retry {
+            Some(RetryKind::Repair) => format!("{context}
+{}", decision::repair_hint()),
+            Some(RetryKind::Split) => format!("{context}
+{}", decision::split_hint()),
+            None => context.clone(),
         };
         let reply = gateway
             .chat_with_reasoning(
@@ -694,23 +858,36 @@ async fn make_decision(
             .await?;
         match decision::parse(&reply.text, &input) {
             Ok(value) => {
+                if retry != Some(RetryKind::Split) && decision::needs_refinement(&value) {
+                    // 首次输出像一整段：先保存兜底，再问一次是否拆成短句。
+                    fallback = Some(value);
+                    retry = Some(RetryKind::Split);
+                    continue;
+                }
                 decision = Some(value);
                 break;
             }
-            Err(error) if attempt == 1 => return Err(error),
-            Err(_) => {}
+            Err(error) => {
+                if retry.is_some() {
+                    // 已重试仍不合法：有兜底就用兜底，否则报告格式错误。
+                    if fallback.is_some() {
+                        break;
+                    }
+                    return Err(error);
+                }
+                retry = Some(RetryKind::Repair);
+            }
         }
     }
-    let decision = decision.expect("合法决策或明确错误");
-    // 经历写入失败不应阻止本次发言。
-    if let Some(experience) = &decision.experience {
-        if let Err(error) = worker.record_experience(&agent.agent_id, experience) {
-            tracing::warn!(?error, "写入智能体经历失败");
-        }
+    let decision = decision.or(fallback).expect("合法决策或明确错误");
+    if cancellation.is_cancelled() {
+        return Err(AppError::new(ErrorCode::ShuttingDown, "成员请求已取消。"));
     }
     let latest = worker.runtime_input(agent.agent_id.clone()).await?;
     if latest.agent.revision != agent.revision
         || latest.snapshot.latest_message_seq != input.snapshot.latest_message_seq
+        || latest.snapshot.room.content_epoch != input.snapshot.room.content_epoch
+        || latest.experience_revision != input.experience_revision
     {
         return Err(AppError::new(
             ErrorCode::ConfigConflict,
@@ -719,6 +896,7 @@ async fn make_decision(
     }
     let validated_at = now_ms();
     let mut observed_through_seq = input.snapshot.latest_message_seq.clone();
+    let decision_id = (!decision.messages.is_empty()).then(|| Uuid::now_v7().to_string());
     if !decision.messages.is_empty() {
         state(
             worker,
@@ -731,7 +909,7 @@ async fn make_decision(
         )
         .await?;
         let anchor = tokio::time::Instant::now();
-        let decision_id = Uuid::now_v7().to_string();
+        let committed_decision_id = decision_id.as_ref().expect("发言决定必须包含标识");
         for (ordinal, message) in decision.messages.iter().enumerate() {
             tokio::select! {biased;_=cancellation.cancelled()=>return Err(AppError::new(ErrorCode::ShuttingDown,"待发消息已取消。")),_=tokio::time::sleep_until(anchor+Duration::from_millis(message.send_after_ms))=>{}}
             let sent = worker
@@ -739,7 +917,9 @@ async fn make_decision(
                     agent_id: agent.agent_id.clone(),
                     config_revision: agent.revision.clone(),
                     observed_through_seq: input.snapshot.latest_message_seq.clone(),
-                    decision_id: decision_id.clone(),
+                    observed_content_epoch: input.snapshot.room.content_epoch.clone(),
+                    observed_experience_revision: input.experience_revision.clone(),
+                    decision_id: committed_decision_id.clone(),
                     ordinal: ordinal as u32,
                     chain_id: opportunity.chain_id.clone(),
                     parts: message.parts.clone(),
@@ -750,6 +930,26 @@ async fn make_decision(
                 })
                 .await?;
             observed_through_seq = sent.message_seq;
+        }
+    }
+    if let Some(experience) = &decision.experience {
+        let result = worker.record_experience(RuntimeExperience {
+            data_generation_id: input.snapshot.data_generation_id.clone(),
+            agent_id: agent.agent_id.clone(),
+            config_revision: agent.revision.clone(),
+            observed_through_seq: input.snapshot.latest_message_seq.clone(),
+            observed_content_epoch: input.snapshot.room.content_epoch.clone(),
+            decision_id,
+            experience_revision: input.experience_revision.clone(),
+            content: experience.content.clone(),
+            score: experience.score,
+            cancellation: cancellation.clone(),
+        }).await;
+        if let Err(error) = result {
+            if matches!(error.code, ErrorCode::ConfigConflict | ErrorCode::ShuttingDown) {
+                return Err(error);
+            }
+            tracing::warn!(?error, "写入智能体经历失败");
         }
     }
     Ok(CompletedDecision {
@@ -774,7 +974,9 @@ async fn report_failure(
         return;
     }
     let status = match error.code {
-        ErrorCode::Backpressure | ErrorCode::ConfigConflict => AgentRuntimeStatus::Protected,
+        // 频率/额度保护是暂时性的，降级为观察而不是永久停用。
+        ErrorCode::Backpressure => AgentRuntimeStatus::Observing,
+        ErrorCode::ConfigConflict => AgentRuntimeStatus::Protected,
         ErrorCode::PermissionDenied if !error.may_have_been_charged => {
             AgentRuntimeStatus::NeedsConfiguration
         }
@@ -891,12 +1093,49 @@ mod tests {
         (
             Actor {
                 revision: agent.revision.clone(),
+                content_epoch: 0.into(),
                 credential_ref: None,
                 cancellation: CancellationToken::new(),
                 opportunities,
             },
             receiver,
         )
+    }
+
+    #[test]
+    fn content_epoch_reconciliation_cancels_cached_actor_even_when_configuration_is_unchanged() {
+        tauri::async_runtime::block_on(async {
+            let (_directory, worker, agent, _events) = fixture().await;
+            let shutdown = CancellationToken::new();
+            let (existing, _receiver) = actor(&agent);
+            let old_token = existing.cancellation.clone();
+            let mut actors = HashMap::from([(agent.agent_id.clone(), existing)]);
+            worker
+                .call(|database| {
+                    database
+                        .conn
+                        .execute("UPDATE room SET content_epoch=1 WHERE singleton=1", [])?;
+                    Ok(())
+                })
+                .await
+                .unwrap();
+            reconcile(
+                &worker,
+                &Err(AppError::new(ErrorCode::InternalError, "fixture")),
+                &Err(AppError::new(ErrorCode::InternalError, "fixture")),
+                &shutdown,
+                &mut actors,
+                None,
+                ReconcileTrigger::Configuration,
+            )
+            .await
+            .unwrap();
+            assert!(old_token.is_cancelled());
+            assert_eq!(actors[&agent.agent_id].content_epoch, 1.into());
+            assert!(!actors[&agent.agent_id].cancellation.is_cancelled());
+            shutdown.cancel();
+            worker.shutdown().await.unwrap();
+        });
     }
 
     #[test]

@@ -13,7 +13,7 @@ const icons: Record<ToastKind, TablerIcon> = {
 
 function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: () => void }) {
   const Icon = icons[item.kind]
-  return <div className="toast-item" data-kind={item.kind} role={item.kind === "error" ? "alert" : "status"}>
+  return <div className="floating-surface toast-item" data-kind={item.kind} role={item.kind === "error" ? "alert" : "status"}>
     <Icon size={18} stroke={1.6} className="toast-icon" aria-hidden="true" />
     <span className="toast-message">{item.message}</span>
     <button type="button" className="icon-button toast-close" aria-label="关闭通知" onClick={onDismiss}>

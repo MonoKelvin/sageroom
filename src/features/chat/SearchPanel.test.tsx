@@ -1,11 +1,21 @@
 import type {} from "@testing-library/jest-dom/vitest"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import userEvent from "@testing-library/user-event"
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { ipc } from "@/app/ipc"
 import { SearchPanel } from "./SearchPanel"
 import { GENERATION, searchPage, snapshot } from "./chat.test-fixtures"
 
 const participants = new Map(snapshot().participants.map((participant) => [participant.id, participant]))
+const addedMethods: string[] = []
+beforeAll(() => {
+  for (const method of ["scrollIntoView", "hasPointerCapture", "setPointerCapture", "releasePointerCapture"]) if (!(method in HTMLElement.prototype)) {
+    Object.defineProperty(HTMLElement.prototype, method, { configurable: true, value: method === "hasPointerCapture" ? () => false : () => {} })
+    addedMethods.push(method)
+  }
+  if (!globalThis.ResizeObserver) vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} })
+})
+afterAll(() => { for (const method of addedMethods) Reflect.deleteProperty(HTMLElement.prototype, method); vi.unstubAllGlobals() })
 
 vi.mock("@/app/ipc", () => ({
   errorMessage: (error: unknown) => error instanceof Error ? error.message : "测试失败",
@@ -18,6 +28,63 @@ beforeEach(() => {
 })
 
 describe("聊天搜索", () => {
+  it("成员与日期形成完整分页身份，结束日期覆盖当天", async () => {
+    vi.mocked(ipc.search).mockResolvedValueOnce(searchPage("测试", { has_more: true, next_cursor: "filtered-cursor" })).mockResolvedValue(searchPage("测试", { items: [{ ...searchPage().items[0], message_id: "message-2", seq: "2" }] }))
+    render(<SearchPanel open participants={participants} onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
+    await userEvent.click(screen.getByRole("button", { name: "筛选搜索" }))
+    await userEvent.click(screen.getByRole("combobox", { name: "搜索成员" }))
+    await userEvent.click(await screen.findByRole("option", { name: "Sage" }))
+    fireEvent.change(screen.getByLabelText("搜索开始日期"), { target: { value: "2026-11-21" } })
+    fireEvent.change(screen.getByLabelText("搜索结束日期"), { target: { value: "2026-11-22" } })
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "测试" } })
+    fireEvent.click(screen.getByRole("button", { name: "开始搜索" }))
+    await screen.findByRole("button", { name: "定位我的消息" })
+    fireEvent.click(screen.getByRole("button", { name: "加载更早的匹配" }))
+    await waitFor(() => expect(ipc.search).toHaveBeenCalledTimes(2))
+    expect(ipc.search).toHaveBeenLastCalledWith(expect.objectContaining({ sender_id: "sage-test", created_after: new Date(2026, 10, 21).getTime(), created_before: new Date(2026, 10, 23).getTime(), query: "测试", cursor: "filtered-cursor" }))
+  })
+
+  it("日期倒置不给宿主提交请求，保留用户筛选", async () => {
+    render(<SearchPanel open participants={participants} onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
+    fireEvent.click(screen.getByRole("button", { name: "筛选搜索" }))
+    fireEvent.change(screen.getByLabelText("搜索开始日期"), { target: { value: "2026-11-22" } })
+    fireEvent.change(screen.getByLabelText("搜索结束日期"), { target: { value: "2026-11-21" } })
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "测试" } })
+    fireEvent.click(screen.getByRole("button", { name: "开始搜索" }))
+    expect(screen.getByRole("alert")).toHaveTextContent("结束日期不能早于开始日期")
+    expect(ipc.search).not.toHaveBeenCalled()
+    expect(screen.getByLabelText("搜索开始日期")).toHaveValue("2026-11-22")
+  })
+
+  it("筛选变更取消旧请求，迟到的相同文字结果不能串入", async () => {
+    let finishOld!: (value: ReturnType<typeof searchPage>) => void
+    vi.mocked(ipc.search).mockReturnValueOnce(new Promise((resolve) => { finishOld = resolve })).mockResolvedValueOnce(searchPage("测试", { items: [] }))
+    render(<SearchPanel open participants={participants} onOpenChange={vi.fn()} generation={GENERATION} onLocate={vi.fn()} />)
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "测试" } })
+    fireEvent.click(screen.getByRole("button", { name: "开始搜索" }))
+    fireEvent.click(screen.getByRole("button", { name: "筛选搜索" }))
+    fireEvent.change(screen.getByLabelText("搜索开始日期"), { target: { value: "2026-11-22" } })
+    fireEvent.click(screen.getByRole("button", { name: "开始搜索" }))
+    await screen.findByText("没有匹配的消息。")
+    await act(async () => finishOld(searchPage("测试")))
+    expect(screen.queryByRole("button", { name: "定位我的消息" })).not.toBeInTheDocument()
+    expect(ipc.cancelSearch).toHaveBeenCalledWith(expect.objectContaining({ search_id: vi.mocked(ipc.search).mock.calls[0][0].search_id }))
+  })
+
+  it("正文 epoch 改变立即隐藏旧摘要，保留查询并重新搜索", async () => {
+    vi.mocked(ipc.search).mockResolvedValueOnce(searchPage("测试")).mockResolvedValue(searchPage("测试", { items: [] }))
+    const props = { participants, onOpenChange: vi.fn(), generation: GENERATION, onLocate: vi.fn() }
+    const view = render(<SearchPanel open contentEpoch="0" {...props} />)
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "测试" } })
+    fireEvent.click(screen.getByRole("button", { name: "开始搜索" }))
+    await screen.findByRole("button", { name: "定位我的消息" })
+    view.rerender(<SearchPanel open contentEpoch="1" {...props} />)
+    expect(screen.queryByRole("button", { name: "定位我的消息" })).not.toBeInTheDocument()
+    expect(screen.getByRole("searchbox")).toHaveValue("测试")
+    await screen.findByText("没有匹配的消息。")
+    expect(ipc.search).toHaveBeenCalledTimes(2)
+  })
+
   it("打开时不显示结果面板，输入内容后才出现，关闭后重新打开清空", () => {
     vi.mocked(ipc.search).mockResolvedValue(searchPage())
     const props = { participants, onOpenChange: vi.fn(), generation: GENERATION, onLocate: vi.fn().mockResolvedValue(undefined) }

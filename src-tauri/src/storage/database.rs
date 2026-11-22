@@ -1,8 +1,9 @@
 use std::{
+    collections::HashMap,
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use rusqlite::{Connection, OpenFlags, config::DbConfig, params};
@@ -24,6 +25,7 @@ pub struct Database {
     pub(crate) generation_id: String,
     pub(crate) local_user_id: String,
     pub(crate) room_id: String,
+    pub(crate) recall_anchors: HashMap<String, Instant>,
     _writer_lock: File,
 }
 
@@ -321,6 +323,7 @@ impl Database {
             generation_id,
             local_user_id,
             room_id,
+            recall_anchors: HashMap::new(),
             _writer_lock: writer_lock,
         })
     }

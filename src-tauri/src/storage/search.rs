@@ -24,6 +24,9 @@ use crate::domain::{
 struct SearchCursor {
     data_generation_id: String,
     query: String,
+    sender_id: Option<String>,
+    created_after: Option<i64>,
+    created_before: Option<i64>,
     before_seq: i64,
 }
 
@@ -36,6 +39,27 @@ pub fn validate_search(request: &ChatSearchRequest) -> AppResult<()> {
         return Err(AppError::invalid(
             "query",
             "请输入 1～256 个 Unicode 字符，查询不能只有空白。",
+        ));
+    }
+    if let Some(id) = &request.sender_id {
+        validate_id(id, "sender_id")?;
+    }
+    for (field, value) in [
+        ("created_after", request.created_after),
+        ("created_before", request.created_before),
+    ] {
+        if value
+            .is_some_and(|value| !(-9_007_199_254_740_991..=9_007_199_254_740_991).contains(&value))
+        {
+            return Err(AppError::invalid(field, "日期必须是有效的 UTC 毫秒时间。"));
+        }
+    }
+    if let (Some(after), Some(before)) = (request.created_after, request.created_before)
+        && after >= before
+    {
+        return Err(AppError::invalid(
+            "created_before",
+            "结束日期必须晚于开始日期。",
         ));
     }
     if request.limit == 0 || request.limit > PAGE_LIMIT {
@@ -53,11 +77,27 @@ pub fn validate_search(request: &ChatSearchRequest) -> AppResult<()> {
 
 pub fn search_database(conn: &Connection, request: &ChatSearchRequest) -> AppResult<SearchPage> {
     validate_search(request)?;
+    if let Some(id) = &request.sender_id {
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM participants WHERE id=?1)",
+            [id],
+            |row| row.get(0),
+        )?;
+        if !exists {
+            return Err(AppError::invalid(
+                "sender_id",
+                "筛选成员不存在，请重新选择。",
+            ));
+        }
+    }
     let before = if let Some(cursor) = &request.cursor {
         let cursor: SearchCursor = serde_json::from_str(cursor)
             .map_err(|_| AppError::invalid("cursor", "检索游标无效，请重新检索。"))?;
         if cursor.data_generation_id != request.data_generation_id
             || cursor.query != request.query
+            || cursor.sender_id != request.sender_id
+            || cursor.created_after != request.created_after
+            || cursor.created_before != request.created_before
             || cursor.before_seq < 0
         {
             return Err(AppError::invalid(
@@ -78,12 +118,12 @@ pub fn search_database(conn: &Connection, request: &ChatSearchRequest) -> AppRes
                 || ('\u{4e00}'..='\u{9fff}').contains(&character)
         });
     let candidate = if indexed {
-        " AND s.seq IN (SELECT rowid FROM message_search WHERE message_search MATCH ?5)"
+        " AND s.seq IN (SELECT rowid FROM message_search WHERE message_search MATCH ?8)"
     } else {
-        ""
+        " AND ?8 IS NULL"
     };
     let sql = format!(
-        "SELECT m.id, m.seq, m.sender_id, substr(s.text, max(1, instr(s.text, ?1) - 30), ?4), m.created_at FROM search_text s JOIN messages m ON m.seq = s.seq WHERE m.state = 'visible' AND m.seq < ?2 AND instr(s.text, ?1) > 0{candidate} ORDER BY m.seq DESC LIMIT ?3"
+        "SELECT m.id, m.seq, m.sender_id, substr(s.text, max(1, instr(s.text, ?1) - 30), ?4), m.created_at FROM search_text s JOIN messages m ON m.seq = s.seq WHERE m.state = 'visible' AND m.seq < ?2 AND instr(s.text, ?1) > 0 AND (?5 IS NULL OR m.sender_id=?5) AND (?6 IS NULL OR m.created_at>=?6) AND (?7 IS NULL OR m.created_at<?7){candidate} ORDER BY m.seq DESC LIMIT ?3"
     );
     let mut statement = conn.prepare(&sql)?;
     let collect = |row: &rusqlite::Row<'_>| -> rusqlite::Result<SearchHit> {
@@ -96,28 +136,22 @@ pub fn search_database(conn: &Connection, request: &ChatSearchRequest) -> AppRes
         })
     };
     let snippet_length = request.query.chars().count() as i64 + 60;
-    let mut items = if indexed {
-        let literal = format!("\"{}\"", request.query.replace('"', "\"\""));
-        statement
-            .query_map(
-                params![
-                    request.query,
-                    before,
-                    request.limit + 1,
-                    snippet_length,
-                    literal
-                ],
-                collect,
-            )?
-            .collect::<rusqlite::Result<Vec<_>>>()?
-    } else {
-        statement
-            .query_map(
-                params![request.query, before, request.limit + 1, snippet_length],
-                collect,
-            )?
-            .collect::<rusqlite::Result<Vec<_>>>()?
-    };
+    let literal = indexed.then(|| format!("\"{}\"", request.query.replace('"', "\"\"")));
+    let mut items = statement
+        .query_map(
+            params![
+                request.query,
+                before,
+                request.limit + 1,
+                snippet_length,
+                request.sender_id,
+                request.created_after,
+                request.created_before,
+                literal
+            ],
+            collect,
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
     let has_more = items.len() > request.limit as usize;
     items.truncate(request.limit as usize);
     let next_cursor = if has_more {
@@ -127,6 +161,9 @@ pub fn search_database(conn: &Connection, request: &ChatSearchRequest) -> AppRes
                 serde_json::to_string(&SearchCursor {
                     data_generation_id: request.data_generation_id.clone(),
                     query: request.query.clone(),
+                    sender_id: request.sender_id.clone(),
+                    created_after: request.created_after,
+                    created_before: request.created_before,
                     before_seq: hit.seq.0.parse().expect("数据库序号已验证"),
                 })
             })

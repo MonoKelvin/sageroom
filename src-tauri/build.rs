@@ -3,6 +3,8 @@ fn main() {
         tauri_build::AppManifest::new().commands(&[
             "app_get_snapshot",
             "chat_send",
+            "chat_recall",
+            "chat_resolve_quotes",
             "chat_list",
             "chat_search",
             "cancel_search",

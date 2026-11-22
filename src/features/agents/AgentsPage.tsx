@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { IconAdjustments, IconCopy, IconPhoto, IconPlus } from "@tabler/icons-react"
+import { IconAdjustments, IconCopy, IconLoader2, IconPhoto, IconPlayerPause, IconPlayerPlay, IconPlus, IconTrash } from "@tabler/icons-react"
 import type { ApplicationPageProps } from "@/app/navigation"
 import type { AgentConfiguration, AgentRuntimeStatus, GlobalConfiguration, Participant } from "@/contracts/generated"
 import type { AppliedResource } from "@/app/appliedResource"
@@ -17,6 +17,8 @@ import { validateText } from "@/features/settings/configurationDefaults"
 import { DimensionsFields, Field, ModelFields, ResourceFeedback } from "@/features/settings/ConfigurationFields"
 import { usePageActivation } from "@/features/settings/useLocalEditor"
 import { GlobalConfiguration as GlobalConfigurationPanel } from "./GlobalConfiguration"
+import { ExperiencePanel } from "./ExperiencePanel"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import "@/features/settings/configuration.css"
 
 const runtimeStatusLabels: Record<AgentRuntimeStatus, string> = {
@@ -104,18 +106,20 @@ function AgentEditor({ resource, global, active, session, onCopy, onOpenGlobal }
   }
 
   return <section className="surface-card">
-    <header className="panel-heading"><div><h2 className="panel-title">{agent.display_name}</h2><p className="panel-description"><span role="status">{statusLabel}</span> · {agent.model ? "模型参数已配置" : "模型尚未配置"}</p></div><Button variant="ghost" size="sm" disabled={runtime.exiting} onClick={() => onCopy(agent)}><IconCopy size={17} aria-hidden="true" />复制</Button></header>
+    <header className="panel-heading"><div className="min-w-0"><h2 className="panel-title truncate">{agent.display_name}</h2><p className="panel-description"><span role="status">{statusLabel}</span> · {agent.model ? "模型参数已配置" : "模型尚未配置"}</p></div><div className="config-actions">
+      {agent.model && <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={runtimePending ? "正在处理…" : runtimeAction} disabled={runtime.exiting || runtimePending} onClick={() => void controlRuntime()}>{runtimePending ? <IconLoader2 size={18} className="spin" aria-hidden="true" /> : canPause ? <IconPlayerPause size={18} aria-hidden="true" /> : <IconPlayerPlay size={18} aria-hidden="true" />}</Button></TooltipTrigger><TooltipContent>{runtimeAction}</TooltipContent></Tooltip>}
+      <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="复制智能体" disabled={runtime.exiting} onClick={() => onCopy(agent)}><IconCopy size={18} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>复制智能体</TooltipContent></Tooltip>
+    </div></header>
     <div className="panel-content panel-scroll">
-      <div className="config-stack">
+      {(agentRuntime || agent.agent_type === "tool" || runtimeError) && <div className="config-stack">
         {agentRuntime?.detail && <p className="form-caption">{agentRuntime.detail}</p>}
-        {agentRuntime && <p className="form-caption">今日请求：{agentRuntime.requests_today} 次 · 配置版本：{agentRuntime.config_revision}</p>}
+        {agentRuntime && <p className="form-caption">今日请求：{agentRuntime.requests_today} 次</p>}
         {agentRuntime?.next_wake_at != null && <p className="form-caption">下次唤醒：{new Date(agentRuntime.next_wake_at).toLocaleString("zh-CN", { hour12: false })}</p>}
         {agent.agent_type === "tool" && <p className="form-caption">工具任务尚未启用，不参与闲聊。</p>}
-        {agent.model && <div className="config-actions"><Button variant="secondary" size="sm" disabled={runtime.exiting || runtimePending} onClick={() => void controlRuntime()}>{runtimePending ? "正在处理…" : runtimeAction}</Button></div>}
         {runtimeError && <p role="alert">{runtimeError}</p>}
-      </div>
+      </div>}
       <fieldset disabled={runtime.exiting} className="config-stack">
-        <div className="config-avatar-row"><Avatar name={agent.display_name} avatarId={agent.avatar_id} colorId={agent.agent_id} generation={generation} size={64} retryable /><div><div className="config-actions"><Button variant="secondary" size="sm" disabled={avatarPending} onClick={() => void importAvatar()}><IconPhoto size={16} aria-hidden="true" />{avatarPending ? "正在选择…" : "选择头像"}</Button>{agent.avatar_id && <Button variant="ghost" size="sm" onClick={() => setConfirmRemoveAvatar(true)}>移除头像</Button>}</div><p className="form-caption mt-2">选择本地 PNG 或 JPEG，成功后直接应用。</p></div></div>
+        <div className="config-avatar-row"><Avatar name={agent.display_name} avatarId={agent.avatar_id} colorId={agent.agent_id} generation={generation} size={64} retryable /><div className="config-actions"><Tooltip><TooltipTrigger asChild><Button variant="secondary" size="icon" aria-label={avatarPending ? "正在选择…" : "选择头像"} disabled={avatarPending} onClick={() => void importAvatar()}><IconPhoto size={18} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>选择 PNG 或 JPEG 头像</TooltipContent></Tooltip>{agent.avatar_id && <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label="移除头像" onClick={() => setConfirmRemoveAvatar(true)}><IconTrash size={18} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>移除头像</TooltipContent></Tooltip>}</div></div>
         {confirmRemoveAvatar && <div className="config-notice"><p>移除当前头像？历史消息也会改用默认头像。</p><div className="config-actions"><Button size="sm" onClick={() => void removeAvatar()}>确认移除头像</Button><Button variant="ghost" size="sm" onClick={() => setConfirmRemoveAvatar(false)}>保留头像</Button></div></div>}
         <SettingSection title="基本资料">
           <Field label="名称"><EditableInput label="名称" active={active} maxLength={80} value={agent.display_name} normalize={(next) => next.trim()} validate={(next) => validateText(next, 80, true)} onApply={(display_name) => update({ display_name })} /></Field>
@@ -134,6 +138,7 @@ function AgentEditor({ resource, global, active, session, onCopy, onOpenGlobal }
           <Button variant="ghost" size="sm" className="self-start" onClick={onOpenGlobal}>打开全局配置</Button>
         </SettingSection>
       </fieldset>
+      <ExperiencePanel store={store} agentId={agent.agent_id} active={active} disabled={runtime.exiting || agent.revision === "0"} />
       {applyTarget && <div className="config-notice" role="alert"><p>{applyTarget.kind === "model" ? "采用预设会替换当前独立模型参数；选择不配置模型会清除模型参数。" : "采用人格预设会替换当前语言风格和人格维度。"}</p><div className="config-actions"><Button size="sm" disabled={runtime.exiting} onClick={() => void applyTemplate(applyTarget.kind, applyTarget.id)}>确认采用</Button><Button variant="ghost" size="sm" onClick={() => setApplyTarget(null)}>保留当前参数</Button></div></div>}
       {operationError && state.status !== "error" && <p role="alert">{operationError}</p>}
       <ResourceFeedback resource={resource} state={state} />
@@ -171,13 +176,12 @@ function AgentsWorkspace({ active, session }: ApplicationPageProps) {
     <WorkspaceList aria-label="智能体列表">
       <div className="panel-heading"><h1 className="panel-title">智能体</h1><Button variant="ghost" size="icon-sm" disabled={!globalState.value || runtime.exiting} aria-label="新建智能体" onClick={() => void create()}><IconPlus size={20} aria-hidden="true" /></Button></div>
       <div className="config-list-scroll">
-        <button type="button" className="list-entry" aria-label="全局配置" data-active={selected === null} aria-current={selected === null ? "page" : undefined} onClick={() => setSelected(null)}><IconAdjustments size={22} aria-hidden="true" /><span className="config-entry-text"><strong>全局配置</strong><span>模型、人格与运行偏好</span></span></button>
+        <button type="button" className="list-entry" aria-label="全局配置" data-active={selected === null} aria-current={selected === null ? "page" : undefined} onClick={() => setSelected(null)}><IconAdjustments size={22} aria-hidden="true" /><span className="config-entry-text"><strong>全局配置</strong><span>模型与人格预设</span></span></button>
         {list.resources.map((resource) => { const agent = resource.getSnapshot().value!; const participant = participants.find((member) => member.kind === "agent" && member.id === agent.agent_id); return <button key={agent.agent_id} type="button" className="list-entry" data-active={selected === agent.agent_id} aria-current={selected === agent.agent_id ? "page" : undefined} onClick={() => setSelected(agent.agent_id)}><Avatar name={agent.display_name} avatarId={agent.avatar_id} colorId={agent.agent_id} generation={generation} /><span className="config-entry-text"><strong>{agent.display_name}</strong><span>{agent.model ? `已配置，${agentStatusLabel(agent, participant)}` : "待配置"}</span></span></button> })}
       </div>
       {list.loading && <p className="form-caption p-3">正在读取智能体…</p>}
       {list.error && <div className="config-notice" role="alert"><p>{list.error}</p><Button variant="ghost" size="sm" onClick={() => void store.loadAgents()}>重试读取智能体</Button></div>}
       {creationError && <p className="form-caption p-3" role="alert">{creationError}</p>}
-      <p className="form-caption p-3">群主和普通成员聊天平等，不因身份获得话题优先权。</p>
     </WorkspaceList>
     <div className="workspace-detail">
       <div className="workspace-detail" hidden={selected !== null} inert={selected !== null}><GlobalConfigurationPanel active={active && selected === null} /></div>

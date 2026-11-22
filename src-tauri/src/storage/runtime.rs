@@ -13,6 +13,8 @@ use crate::domain::{
 const UTC_DAY_MS: i64 = 86_400_000;
 const HOUR_MS: i64 = 3_600_000;
 const MINUTE_MS: i64 = 60_000;
+/// 同一话题链的限流窗口：只在最近 30 分钟内计数，避免长对话被永久锁死。
+const CHAIN_WINDOW_MS: i64 = 30 * MINUTE_MS;
 const MAX_TIMESTAMP: i64 = 9_007_199_254_740_991;
 
 pub struct RuntimeInput {
@@ -20,6 +22,23 @@ pub struct RuntimeInput {
     pub credential_ref: String,
     pub snapshot: AppSnapshot,
     pub messages: Vec<ChatMessage>,
+    pub quoted_messages: Vec<ChatMessage>,
+    pub experiences: Vec<ExperienceEntry>,
+    pub experience_revision: String,
+}
+
+#[derive(Clone)]
+pub struct RuntimeExperience {
+    pub data_generation_id: String,
+    pub agent_id: String,
+    pub config_revision: DecimalString,
+    pub observed_through_seq: DecimalString,
+    pub observed_content_epoch: DecimalString,
+    pub decision_id: Option<String>,
+    pub experience_revision: String,
+    pub content: String,
+    pub score: u8,
+    pub cancellation: CancellationToken,
 }
 
 #[derive(Clone)]
@@ -27,6 +46,8 @@ pub struct RuntimeMessage {
     pub agent_id: String,
     pub config_revision: DecimalString,
     pub observed_through_seq: DecimalString,
+    pub observed_content_epoch: DecimalString,
+    pub observed_experience_revision: String,
     pub decision_id: String,
     pub ordinal: u32,
     pub chain_id: String,
@@ -229,7 +250,8 @@ fn cancelled(token: &CancellationToken) -> AppResult<()> {
 impl Database {
     pub fn runtime_input(&mut self, id: &str) -> AppResult<RuntimeInput> {
         let room = self.room_id.clone();
-        let (snapshot, (agent, credential_ref, messages)) = self.snapshot_with(
+        let root = self.root.clone();
+        let (snapshot, (agent, credential_ref, messages, quoted_messages, experiences, experience_revision)) = self.snapshot_with(
             AppSnapshotRequest { data_generation_id: None, last_event_seq: None },
             |conn| {
                 let agent = read_agent(conn, id)?;
@@ -238,11 +260,15 @@ impl Database {
                 })?;
                 let mut sequences = conn.prepare(
                     "SELECT seq FROM messages WHERE room_id=?1 AND state='visible' ORDER BY seq DESC LIMIT 30",
-                )?.query_map([room], |row| row.get(0))?
+                )?.query_map([&room], |row| row.get(0))?
                     .collect::<rusqlite::Result<Vec<i64>>>()?;
                 sequences.reverse();
                 let messages = load_messages(conn, &sequences)?;
-                Ok((agent, credential_ref, messages))
+                let quote_ids: Vec<_> = messages.iter().filter_map(|message| message.quote_message_id.clone()).collect();
+                let quoted_messages = super::chat::resolve_quotes(conn, &room, &quote_ids)?;
+                let (entries, experience_revision) = super::experience::read_snapshot(&root, id)?;
+                let experiences = super::experience::context_entries(entries);
+                Ok((agent, credential_ref, messages, quoted_messages, experiences, experience_revision))
             },
         )?;
         Ok(RuntimeInput {
@@ -250,7 +276,93 @@ impl Database {
             credential_ref,
             snapshot,
             messages,
+            quoted_messages,
+            experiences,
+            experience_revision,
         })
+    }
+
+    fn ensure_experience_agent(&self, generation: &str, id: &str) -> AppResult<()> {
+        self.check_generation(generation)?;
+        super::experience::validate_agent_id(id)?;
+        let exists: bool = self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM agent_configurations a JOIN participants p ON p.id=a.agent_id AND p.kind='agent' WHERE a.agent_id=?1)",
+            [id], |row| row.get(0),
+        )?;
+        if !exists {
+            return Err(AppError::invalid("agent_id", "智能体不存在。"));
+        }
+        Ok(())
+    }
+
+    pub fn list_experience(&self, request: ExperienceAgentRequest) -> AppResult<Vec<ExperienceEntry>> {
+        self.ensure_experience_agent(&request.data_generation_id, &request.agent_id)?;
+        super::experience::list(&self.root, &request.agent_id)
+    }
+
+    pub fn add_experience(&self, request: ExperienceAddRequest) -> AppResult<ExperienceEntry> {
+        self.ensure_experience_agent(&request.data_generation_id, &request.agent_id)?;
+        super::experience::add(&self.root, &request.agent_id, &request.content, request.score)
+    }
+
+    pub fn delete_experience(&self, request: ExperienceDeleteRequest) -> AppResult<Vec<ExperienceEntry>> {
+        self.ensure_experience_agent(&request.data_generation_id, &request.agent_id)?;
+        super::experience::delete(&self.root, &request.agent_id, &request.entry_id)
+    }
+
+    pub fn prune_experience(&self, request: ExperiencePruneRequest) -> AppResult<Vec<ExperienceEntry>> {
+        self.ensure_experience_agent(&request.data_generation_id, &request.agent_id)?;
+        super::experience::prune(&self.root, &request.agent_id, request.max_entries as usize)
+    }
+
+    pub fn record_experience(&mut self, experience: RuntimeExperience) -> AppResult<()> {
+        self.ensure_experience_agent(&experience.data_generation_id, &experience.agent_id)?;
+        cancelled(&experience.cancellation)?;
+        let observed = parse_counter(&experience.observed_through_seq, "observed_through_seq")?;
+        let epoch = parse_counter(&experience.observed_content_epoch, "observed_content_epoch")?;
+        let revision = parse_counter(&experience.config_revision, "config_revision")?;
+        if let Some(id) = &experience.decision_id {
+            validate_id(id, "decision_id")?;
+        }
+        let root = self.root.clone();
+        let transaction = self.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let agent = read_agent(&transaction, &experience.agent_id)?;
+        let state = read_runtime_state(&transaction, &agent, now_ms())?;
+        let current_epoch: i64 = transaction.query_row("SELECT content_epoch FROM room WHERE singleton=1", [], |row| row.get(0))?;
+        if parse_counter(&agent.revision, "config_revision")? != revision || current_epoch != epoch
+            || matches!(state.status, AgentRuntimeStatus::Paused | AgentRuntimeStatus::Protected)
+            || credential_reference(&transaction, &agent)?.is_none()
+        {
+            return Err(AppError::new(ErrorCode::ConfigConflict, "经历来源的配置或观察已改变，未写入旧决定。"));
+        }
+        let latest = allocated_seq(&transaction, "messages")?;
+        let stale = if let Some(decision_id) = &experience.decision_id {
+            let committed: bool = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM runtime_messages WHERE decision_id=?1 AND agent_id=?2 AND config_revision=?3 AND observed_through_seq=?4 AND ordinal=0)",
+                params![decision_id, experience.agent_id, revision, observed], |row| row.get(0),
+            )?;
+            let external: bool = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM runtime_message_activity WHERE message_seq>?1 AND (decision_id IS NULL OR decision_id<>?2 OR sender_id<>?3))",
+                params![observed, decision_id, experience.agent_id], |row| row.get(0),
+            )?;
+            !committed || observed > latest || external
+        } else {
+            observed != latest
+        };
+        let (_, current_revision) = super::experience::read_snapshot(&root, &experience.agent_id)?;
+        if stale || current_revision != experience.experience_revision {
+            return Err(AppError::new(ErrorCode::ConfigConflict, "经历或消息已改变，未写入旧决定。"));
+        }
+        super::experience::add_checked(&root, &experience.agent_id, &experience.content, experience.score, || {
+            cancelled(&experience.cancellation)?;
+            let (_, current_revision) = super::experience::read_snapshot(&root, &experience.agent_id)?;
+            if current_revision != experience.experience_revision {
+                return Err(AppError::new(ErrorCode::ConfigConflict, "经历已改变，未写入旧决定。"));
+            }
+            Ok(())
+        })?;
+        transaction.commit()?;
+        Ok(())
     }
 
     pub fn runtime_states(&self) -> AppResult<Vec<AgentRuntimeState>> {
@@ -416,8 +528,16 @@ impl Database {
             [day],
             |row| row.get(0),
         )?;
+        // 额度按智能体计：每个智能体各自拥有 DAILY_REQUEST_LIMIT，
+        // 全局上限随智能体数量放大，避免两个成员互相挤占对方的额度。
+        let agent_count: i64 = transaction.query_row(
+            "SELECT COUNT(*) FROM agent_configurations",
+            [],
+            |row| row.get(0),
+        )?;
+        let global_limit = DAILY_REQUEST_LIMIT.saturating_mul(agent_count.max(1) as u32);
         let current = count_today(&transaction, owner, now)?;
-        if total >= 500 || current >= limit {
+        if total >= global_limit || current >= limit {
             return Err(AppError::new(
                 ErrorCode::Backpressure,
                 "今日模型请求额度已用完，等待下一个 UTC 日。",
@@ -531,6 +651,8 @@ impl Database {
         validate_id(&message.chain_id, "chain_id")?;
         let revision = parse_counter(&message.config_revision, "config_revision")?;
         let observed = parse_counter(&message.observed_through_seq, "observed_through_seq")?;
+        let observed_epoch =
+            parse_counter(&message.observed_content_epoch, "observed_content_epoch")?;
         let text = validate_message_content(
             &message.parts,
             &message.quote_message_id,
@@ -540,6 +662,8 @@ impl Database {
             &message.agent_id,
             &message.config_revision,
             &message.observed_through_seq,
+            &message.observed_content_epoch,
+            &message.observed_experience_revision,
             &message.chain_id,
             &message.parts,
             &message.quote_message_id,
@@ -548,6 +672,7 @@ impl Database {
         ))?);
         let generation = self.generation_id.clone();
         let room_id = self.room_id.clone();
+        let root = self.root.clone();
         let transaction = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -570,6 +695,18 @@ impl Database {
                     event_seq: event_seq.into(),
                 },
                 None,
+            ));
+        }
+        let current_epoch: i64 = transaction.query_row(
+            "SELECT content_epoch FROM room WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )?;
+        let (_, experience_revision) = super::experience::read_snapshot(&root, &message.agent_id)?;
+        if current_epoch != observed_epoch || experience_revision != message.observed_experience_revision {
+            return Err(AppError::new(
+                ErrorCode::ConfigConflict,
+                "历史或经历已改变，旧候选已丢弃。",
             ));
         }
         let agent = read_agent(&transaction, &message.agent_id)?;
@@ -635,9 +772,11 @@ impl Database {
                 ));
             }
         }
+        // 频率保护都按滚动窗口统计：话题链只在最近一段时间内限流，
+        // 避免长对话被永久锁死；分钟/小时窗口也放到不会误伤正常拆条的量级。
         let chain_count: u32 = transaction.query_row(
-            "SELECT COUNT(*) FROM runtime_messages WHERE chain_id=?1",
-            [&message.chain_id],
+            "SELECT COUNT(*) FROM runtime_messages WHERE chain_id=?1 AND committed_at>?2",
+            params![&message.chain_id, now.saturating_sub(CHAIN_WINDOW_MS)],
             |row| row.get(0),
         )?;
         let minute_count: u32 = transaction.query_row(
@@ -650,10 +789,10 @@ impl Database {
             [now.saturating_sub(HOUR_MS)],
             |row| row.get(0),
         )?;
-        if chain_count >= 20 || minute_count >= 12 || hour_count >= 120 {
+        if chain_count >= 20 || minute_count >= 40 || hour_count >= 400 {
             return Err(AppError::new(
                 ErrorCode::Backpressure,
-                "自动消息已达到话题链或滚动时段上限，候选未发送。",
+                "自动消息发送过于频繁，已暂时放缓，稍后自动恢复。",
             ));
         }
         let (result, event) = insert_message(

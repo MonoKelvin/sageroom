@@ -4,7 +4,8 @@
 
 | 文件 | 用途 | 消费方 |
 | --- | --- | --- |
-| `SKILL.md` | 通用角色指令：定位、聊天、语气、输出协议、经历维护说明。**强制注入**每次模型请求的 system prompt 最前，不对外展示、不可编辑，优先级高于智能体自身 `skill`。 | `src-tauri/src/runtime/decision.rs` |
+| `SKILL.md` | 通用角色指令与决策协议：定位、聊天、语气节奏、@ 回应、JSON 输出字段、经历维护。**强制注入**每次模型请求的 system prompt 最前，不对外展示、不可编辑，优先级高于智能体自身 `skill`。 | `src-tauri/src/storage/configuration.rs`（`BASE_SKILL`） |
+| `hints.json` | 少量短提示词：`repair`（格式不合规重试）、`split`（首次过长时的口语化拆分）。 | `src-tauri/src/runtime/decision.rs`（`hints()`） |
 | `agents.json` | 两个内置默认智能体（小墨、云深不知处）的结构化人设：姓名、性别、语言风格（含完整人设描述）、八个人格维度。 | `src-tauri/src/storage/configuration.rs`（新建数据库时种子写入） |
 | `experience.template.md` | 经历文件的格式、评分规则与示例模板。 | 文档；运行时由经历模块按此格式生成 |
 
@@ -18,3 +19,4 @@
 1. 通用 SKILL 与智能体自身 `skill` 是两层：前者由后端强制注入且不可被覆盖，后者仅作为人格补充，不得包含与前者冲突的指令。
 2. `agents.json` 只影响**新建数据库**。已有本地数据库不会重新种子化，避免覆盖用户数据。
 3. 人设一旦确定，后续应持续维护一致性；如需调整，改本文件而非散落在代码里的字符串。
+4. **提示词一律写在本目录**，不要硬编码进 Rust 源码。长文本用 `.md`，几条短提示用 `hints.json`。

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react"
-import { IconPhoto, IconUserCircle } from "@tabler/icons-react"
+import { IconPhoto, IconTrash, IconUserCircle } from "@tabler/icons-react"
 import type { ApplicationPageProps } from "@/app/navigation"
 import { useAppliedResource, useConfiguration, useConfigurationRuntime } from "@/app/configurationContext"
 import { errorMessage, ipc } from "@/app/ipc"
 import { Avatar } from "@/components/Avatar"
 import { WorkspaceList } from "@/components/WorkspaceList"
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { EditableInput } from "@/components/ui/editable-input"
 import { SettingSection } from "@/components/ui/setting-row"
 import { userSections } from "./sections"
@@ -58,9 +59,9 @@ function UserEditor({ active, onNavigate }: ApplicationPageProps) {
       <div className="panel-content panel-scroll">
         {!profile && <p className="form-caption">{state.loading ? "正在读取本地资料…" : "资料尚未就绪。"}</p>}
         {profile && <fieldset disabled={runtime.exiting} className="config-stack">
-          <div className="config-avatar-row"><Avatar name={profile.display_name} avatarId={profile.avatar_id} generation={generation} size={72} retryable /><div className="config-stack"><div className="config-actions"><Button variant="secondary" size="sm" disabled={avatarPending} onClick={() => void importAvatar()}><IconPhoto size={16} aria-hidden="true" />{avatarPending ? "正在选择…" : "选择头像"}</Button>{profile.avatar_id && <Button variant="ghost" size="sm" onClick={() => setConfirmRemoveAvatar(true)}>移除头像</Button>}</div><p className="form-caption">选择 PNG 或 JPEG，成功后直接应用。</p></div></div>
+          <div className="config-avatar-row"><Avatar name={profile.display_name} avatarId={profile.avatar_id} generation={generation} size={72} retryable /><div className="config-actions"><Tooltip><TooltipTrigger asChild><Button variant="secondary" size="icon" aria-label={avatarPending ? "正在选择…" : "选择头像"} disabled={avatarPending} onClick={() => void importAvatar()}><IconPhoto size={18} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>选择 PNG 或 JPEG 头像</TooltipContent></Tooltip>{profile.avatar_id && <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label="移除头像" onClick={() => setConfirmRemoveAvatar(true)}><IconTrash size={18} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>移除头像</TooltipContent></Tooltip>}</div></div>
           {confirmRemoveAvatar && <div className="config-notice"><p>移除当前头像？历史消息也会改用默认头像。</p><div className="config-actions"><Button size="sm" onClick={() => void removeAvatar()}>确认移除头像</Button><Button variant="ghost" size="sm" onClick={() => setConfirmRemoveAvatar(false)}>保留头像</Button></div></div>}
-          <SettingSection title="基本资料" description="文本离开输入框或确认后应用，取消会还原本次编辑。">
+          <SettingSection title="基本资料">
             <Field label="昵称"><EditableInput label="昵称" active={active} maxLength={80} value={profile.display_name} normalize={(next) => next.trim()} validate={(next) => validateText(next, 80, true)} onApply={(display_name) => store.updateUser({ display_name })} /></Field>
           </SettingSection>
         </fieldset>}

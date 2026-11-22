@@ -1,8 +1,11 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Virtuoso, type StateSnapshot, type VirtuosoHandle } from "react-virtuoso"
-import { IconArrowDown } from "@tabler/icons-react"
+import { IconArrowDown, IconCopy, IconDots, IconQuote, IconTrash } from "@tabler/icons-react"
 import type { ChatMessage, MessagePage, Participant } from "@/contracts/generated"
 import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { errorMessage } from "@/app/ipc"
 import { Avatar } from "@/components/Avatar"
 import { cn } from "@/lib/utils"
 import type { ScrollAnchor } from "./useChatSession"
@@ -25,9 +28,51 @@ function messageText(message: ChatMessage): string {
   return message.parts.flatMap((part) => part.kind === "text" ? [part.text] : []).join("")
 }
 
-const MessageRow = memo(function MessageRow({ message, participant, self, highlighted, generation }: {
-  message: ChatMessage; participant: Participant; self: boolean; highlighted: boolean; generation?: string
-}) {
+type MessageActions = {
+  quotes?: ReadonlyMap<string, ChatMessage>
+  onQuote?: (message: ChatMessage) => void
+  onRecall?: (messageId: string, requestId: string) => Promise<unknown>
+  onLocateQuote?: (seq: string, id: string) => Promise<void>
+}
+
+const MessageRow = memo(function MessageRow({ message, participant, participants, self, highlighted, generation, quotes, onQuote, onRecall, onLocateQuote }: {
+  message: ChatMessage; participant: Participant; participants: ReadonlyMap<string, Participant>; self: boolean; highlighted: boolean; generation?: string
+} & MessageActions) {
+  const [pending, setPending] = useState(false)
+  const [feedback, setFeedback] = useState<{ text: string; error: boolean } | null>(null)
+  const recallRequest = useRef<string | null>(null)
+  const quoted = useRef(false)
+  const alive = useRef(false)
+  useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
+  const resolvedQuote = message.quote_message_id ? quotes?.get(message.quote_message_id) : null
+  const original = resolvedQuote?.state === "visible" ? resolvedQuote : null
+  const quoteName = original ? participants.get(original.sender_id)?.display_name : null
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(messageText(message))
+      if (alive.current) setFeedback({ text: "已复制", error: false })
+    } catch { if (alive.current) setFeedback({ text: "复制失败，请重试。", error: true }) }
+  }
+
+  async function recall() {
+    if (!onRecall || pending) return
+    recallRequest.current ??= crypto.randomUUID()
+    setPending(true)
+    setFeedback(null)
+    try {
+      await onRecall(message.id, recallRequest.current)
+      recallRequest.current = null
+    } catch (cause) { if (alive.current) setFeedback({ text: errorMessage(cause), error: true }) }
+    finally { if (alive.current) setPending(false) }
+  }
+
+  async function locateQuote() {
+    if (!original || !onLocateQuote) return
+    try { await onLocateQuote(original.seq, original.id) }
+    catch (cause) { if (alive.current) setFeedback({ text: errorMessage(cause), error: true }) }
+  }
+
   return (
     <article data-message-id={message.id} data-message-seq={message.seq} className={cn("chat-message", highlighted && "chat-message-highlight")} aria-label={`${participant.display_name}的消息`}>
       <div className="chat-message-row" data-self={self}>
@@ -35,16 +80,27 @@ const MessageRow = memo(function MessageRow({ message, participant, self, highli
         <div className="chat-message-stack">
           {!self && <span className="chat-message-name">{participant.display_name}</span>}
           <div className={cn("chat-message-bubble", self ? "chat-message-bubble-self" : "chat-message-bubble-other")}>
+            {message.state === "visible" && message.quote_message_id && <button type="button" className="chat-message-quote" disabled={!original || !onLocateQuote} aria-label={original ? `定位引用 ${quoteName ?? "成员"}的消息` : "原消息不可用"} onClick={() => void locateQuote()}><strong>{quoteName ?? "引用"}</strong><span>{original?.state === "visible" ? messageText(original).slice(0, 120) : "原消息不可用"}</span></button>}
             {message.state === "visible" ? messageText(message) : message.state === "recalled" ? "消息已撤回" : "消息已删除"}
+            {message.state === "visible" && (message.mention_all || message.mention_ids.length > 0) && <div className="chat-message-mentions">{message.mention_all ? <span>@所有人</span> : message.mention_ids.map((id) => <span key={id}>@{participants.get(id)?.display_name ?? "已离开成员"}</span>)}</div>}
           </div>
+          {feedback && <p className="chat-message-feedback" data-error={feedback.error} role={feedback.error ? "alert" : "status"}>{feedback.text}</p>}
         </div>
         <time className="chat-message-time" dateTime={new Date(message.created_at).toISOString()}>{formatMessageTime(message.created_at)}</time>
+        {message.state === "visible" && <DropdownMenu modal={false}>
+          <Tooltip><TooltipTrigger asChild><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" className="chat-message-menu" aria-label={`消息操作 ${message.seq}`} disabled={pending}><IconDots size={17} aria-hidden="true" /></Button></DropdownMenuTrigger></TooltipTrigger><TooltipContent>消息操作</TooltipContent></Tooltip>
+          <DropdownMenuContent align={self ? "end" : "start"} onCloseAutoFocus={(event) => { if (quoted.current) { event.preventDefault(); quoted.current = false } }}>
+            <DropdownMenuItem onSelect={() => void copy()}><IconCopy size={16} aria-hidden="true" />复制</DropdownMenuItem>
+            {onQuote && <DropdownMenuItem onSelect={() => { quoted.current = true; setFeedback(null); onQuote(message) }}><IconQuote size={16} aria-hidden="true" />引用</DropdownMenuItem>}
+            {self && onRecall && <DropdownMenuItem variant="destructive" onSelect={() => void recall()}><IconTrash size={16} aria-hidden="true" />撤回</DropdownMenuItem>}
+          </DropdownMenuContent>
+        </DropdownMenu>}
       </div>
     </article>
   )
 })
 
-type Props = {
+type Props = MessageActions & {
   active?: boolean
   generation?: string
   page: MessagePage
@@ -71,6 +127,7 @@ type ViewportProps = Props & {
 function MessageViewport({
   generation, page, participants, localUserId, firstItemIndex, targetMessageId, restoreAnchor, followLatest,
   scrollToBottomSignal = 0, loadingMore, onLoadOlder, onLoadNewer, onAtBottomChange, onRenderedAnchorChange, initialSaved,
+  quotes, onQuote, onRecall, onLocateQuote,
 }: ViewportProps) {
   // 滚动恢复状态由本组件独占；卸载后由 restoreAnchor/targetMessageId 重新定位。
   const saved = useRef<SavedScroll | null>(initialSaved)
@@ -205,7 +262,7 @@ function MessageViewport({
       const previous = page.items[index - firstItemIndex - 1]
       return <>
         {shouldInsertTimeTag(previous?.created_at, message.created_at) && <p className="chat-time-divider">{formatMessageTime(message.created_at)}</p>}
-        <MessageRow message={message} participant={participants.get(message.sender_id)!} self={message.sender_id === localUserId} highlighted={message.id === targetMessageId} generation={generation} />
+        <MessageRow message={message} participant={participants.get(message.sender_id)!} participants={participants} self={message.sender_id === localUserId} highlighted={message.id === targetMessageId} generation={generation} quotes={quotes} onQuote={onQuote} onRecall={onRecall} onLocateQuote={onLocateQuote} />
       </>
     }}
   />
@@ -216,7 +273,7 @@ export function MessageList(props: Props) {
     {props.page.items.length === 0 ? <div className="chat-empty-state">
       <div aria-hidden="true" className="chat-empty-mark">S</div>
       <p className="chat-empty-title">这里还很安静</p>
-      <p className="chat-empty-description">先说点什么。消息保存在本机，智能体的运行任务尚未启用。</p>
+      <p className="chat-empty-description">先说点什么。</p>
     </div> : (props.active ?? true) && <MessageViewport {...props} initialSaved={null} />}
     {(props.hasNewMessages || props.page.has_more_after) && <div className="chat-latest-position">
       <Button size="sm" variant="secondary" className="chat-latest-button" onClick={() => void props.onGoToLatest()}>

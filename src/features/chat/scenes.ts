@@ -1,5 +1,5 @@
 import type { AppSnapshot, ChatSendResult } from "@/contracts/generated"
-import type { useChatSession } from "./useChatSession"
+import type { SendOptions, useChatSession } from "./useChatSession"
 
 type Session = ReturnType<typeof useChatSession>
 
@@ -10,14 +10,14 @@ export type ChatScene =
 export type SceneAdapter = {
   kind: ChatScene["kind"]
   scenes: (snapshot: AppSnapshot) => ChatScene[]
-  send: (session: Session, text: string, requestId: string) => Promise<ChatSendResult>
+  send: (session: Session, text: string, requestId: string, options: SendOptions) => Promise<ChatSendResult>
 }
 
 export const sceneAdapters: Partial<Record<ChatScene["kind"], SceneAdapter>> = {
   group: {
     kind: "group",
     scenes: (snapshot) => [{ kind: "group", id: snapshot.room.id, roomId: snapshot.room.id, name: snapshot.room.name }],
-    send: (session, text, requestId) => session.send(text, requestId),
+    send: (session, text, requestId, options) => session.send(text, requestId, options),
   },
 }
 

@@ -200,7 +200,7 @@ describe("智能体实时运行状态", () => {
     expect(detail("Sage").getByRole("status")).toHaveTextContent("在线观察")
     expect(detail("Sage").queryByText("正在判断是否接话")).not.toBeInTheDocument()
     expect(detail("Sage").getByText("等待新消息")).toBeInTheDocument()
-    expect(detail("Sage").getByText("今日请求：5 次 · 配置版本：2")).toBeInTheDocument()
+    expect(detail("Sage").getByText("今日请求：5 次")).toBeInTheDocument()
     expect(detail("Sage").getByText(`下次唤醒：${new Date(nextWake).toLocaleString("zh-CN", { hour12: false })}`)).toBeInTheDocument()
     expect(detail("Sage").getByLabelText("语言风格", { selector: "textarea" })).toHaveValue("尚未失焦的局部草稿")
     expect(ipc.listAgents).toHaveBeenCalledTimes(1)

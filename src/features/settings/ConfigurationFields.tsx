@@ -114,7 +114,7 @@ function ModelNameField({ value, onChange, active, readOnly, onListModels }: {
     {open && models.length > 0 && createPortal(
       <div
         ref={list}
-        className="model-name-options"
+        className="floating-surface model-name-options"
         role="listbox"
         aria-label="可用模型"
         style={{ top: position.top, left: position.left }}

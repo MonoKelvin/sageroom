@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-chat-resolve-quotes"
+description = "Enables the chat_resolve_quotes command without any pre-configured scope."
+commands.allow = ["chat_resolve_quotes"]
+
+[[permission]]
+identifier = "deny-chat-resolve-quotes"
+description = "Denies the chat_resolve_quotes command without any pre-configured scope."
+commands.deny = ["chat_resolve_quotes"]

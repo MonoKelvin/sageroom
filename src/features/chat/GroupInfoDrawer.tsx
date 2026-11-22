@@ -46,7 +46,7 @@ export function GroupInfoDrawer({ snapshot, container, open, onOpenChange, onRoo
       <DialogPrimitive.Overlay className="group-info-overlay" style={{ pointerEvents: open ? "auto" : "none" }} />
       <DialogPrimitive.Content
         ref={drawer}
-        className="group-info-drawer"
+        className="floating-surface group-info-drawer"
         aria-describedby={undefined}
         inert={!open}
         onOpenAutoFocus={(event) => { event.preventDefault(); close.current?.focus({ preventScroll: true }) }}

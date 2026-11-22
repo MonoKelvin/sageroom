@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { AppSnapshot, Appearance, ChatSendResult, DomainEvent, MessagePage, Room } from "@/contracts/generated"
+import type { AppSnapshot, Appearance, ChatRecallResult, ChatSendRequest, ChatSendResult, DomainEvent, MessagePage, Room } from "@/contracts/generated"
 import { errorMessage, ipc, IpcError } from "@/app/ipc"
 import { compareSequence, INITIAL_ITEM_INDEX, mergePage, PAGE_SIZE } from "./timeline"
 
 export type ScrollAnchor = { id: string; seq: string; offset: number }
+export type SendOptions = Pick<ChatSendRequest, "quote_message_id" | "mention_ids" | "mention_all">
+const EMPTY_SEND_OPTIONS: SendOptions = { quote_message_id: null, mention_ids: [], mention_all: false }
 
 function generationError() {
   return new IpcError({
@@ -203,6 +205,8 @@ export function useChatSession() {
     } else if (event.payload.kind === "agent_configuration_changed") {
       assignSnapshot(next)
       await synchronize()
+    } else if (event.payload.kind === "message_changed") {
+      await synchronize()
     } else if (event.payload.kind === "message_committed") {
       if (compareSequence(event.payload.message_seq, current.latest_message_seq) > 0) {
         next.latest_message_seq = event.payload.message_seq
@@ -322,16 +326,16 @@ export function useChatSession() {
     }
   }, [assignPage, report])
 
-  const send = useCallback(async (text: string, requestId: string): Promise<ChatSendResult> => {
+  const send = useCallback(async (text: string, requestId: string, options: SendOptions = EMPTY_SEND_OPTIONS): Promise<ChatSendResult> => {
     const current = snapshotRef.current
     if (!current) throw generationError()
     const result = await ipc.send({
       data_generation_id: current.data_generation_id,
       client_request_id: requestId,
       parts: [{ kind: "text", text }],
-      quote_message_id: null,
-      mention_ids: [],
-      mention_all: false,
+      quote_message_id: options.quote_message_id,
+      mention_ids: options.mention_ids,
+      mention_all: options.mention_all,
     })
     if (result.data_generation_id !== snapshotRef.current?.data_generation_id) throw generationError()
     const updated = snapshotRef.current
@@ -341,6 +345,15 @@ export function useChatSession() {
     void enqueue(() => synchronizeMessages()).catch(report)
     return result
   }, [assignSnapshot, enqueue, report, synchronizeMessages])
+
+  const recall = useCallback(async (messageId: string, requestId: string): Promise<ChatRecallResult> => {
+    const current = snapshotRef.current
+    if (!current) throw generationError()
+    const result = await ipc.recall({ data_generation_id: current.data_generation_id, client_request_id: requestId, message_id: messageId })
+    if (result.data_generation_id !== snapshotRef.current?.data_generation_id) throw generationError()
+    await enqueue(() => synchronize())
+    return result
+  }, [enqueue, synchronize])
 
   const applyRoom = useCallback((room: Room, generation: string) => {
     const current = snapshotRef.current
@@ -388,7 +401,7 @@ export function useChatSession() {
   return {
     snapshot, page, loading, loadingMore, error, hasNewMessages, atBottom,
     firstItemIndex, windowRevision, targetMessageId, restoreAnchor,
-    reload, send, goToLatest, jumpTo, updateAtBottom, updateRenderedAnchor, setChatActive, applyRoom, applyAppearance,
+    reload, send, recall, goToLatest, jumpTo, updateAtBottom, updateRenderedAnchor, setChatActive, applyRoom, applyAppearance,
     loadOlder: () => loadPage("before"),
     loadNewer: () => loadPage("after"),
   }

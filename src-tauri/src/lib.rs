@@ -29,6 +29,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             app::commands::app_get_snapshot,
             app::commands::chat_send,
+            app::commands::chat_recall,
+            app::commands::chat_resolve_quotes,
             app::commands::chat_list,
             app::commands::chat_search,
             app::commands::cancel_search,

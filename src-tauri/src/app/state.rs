@@ -21,7 +21,6 @@ use crate::{
 
 pub struct AppState {
     pub generation: String,
-    data_directory: Option<PathBuf>,
     storage: Mutex<AppResult<Arc<DbWorker>>>,
     storage_initialized: bool,
     secrets: AppResult<Arc<SecretStore>>,
@@ -43,7 +42,6 @@ impl AppState {
         let models = ModelGateway::new().map(Arc::new);
         let runtime = RuntimeSupervisor::new();
         let event_runtime = runtime.clone();
-        let data_directory = directory.as_ref().ok().map(|path| path.join("data"));
         let storage = directory
             .map_err(|_| {
                 AppError::new(
@@ -66,7 +64,6 @@ impl AppState {
         }
         Self {
             generation,
-            data_directory,
             storage_initialized: storage.is_ok(),
             storage: Mutex::new(storage),
             secrets,
@@ -92,50 +89,20 @@ impl AppState {
         self.storage.lock().expect("存储锁被污染").clone()
     }
 
-    fn experience_root(&self, generation: &str) -> AppResult<PathBuf> {
-        if generation != self.generation {
-            return Err(AppError::new(
-                ErrorCode::ConfigConflict,
-                "数据版本已改变，请重新读取后再操作。",
-            ));
-        }
-        self.data_directory.clone().ok_or_else(|| {
-            AppError::new(ErrorCode::IoError, "无法获取应用数据目录。")
-        })
-    }
-
-    async fn ensure_agent(&self, generation: &str, agent_id: &str) -> AppResult<()> {
-        let agents = self.worker()?.list_agents(AgentListRequest {
-            data_generation_id: generation.to_owned(),
-        }).await?;
-        if !agents.iter().any(|agent| agent.agent_id == agent_id) {
-            return Err(AppError::invalid("agent_id", "智能体不存在。"));
-        }
-        Ok(())
-    }
-
     pub async fn experience_list(&self, request: ExperienceAgentRequest) -> AppResult<Vec<ExperienceEntry>> {
-        let root = self.experience_root(&request.data_generation_id)?;
-        self.ensure_agent(&request.data_generation_id, &request.agent_id).await?;
-        crate::storage::experience::list(&root, &request.agent_id)
+        self.worker()?.list_experience(request).await
     }
 
     pub async fn experience_add(&self, request: ExperienceAddRequest) -> AppResult<ExperienceEntry> {
-        let root = self.experience_root(&request.data_generation_id)?;
-        self.ensure_agent(&request.data_generation_id, &request.agent_id).await?;
-        crate::storage::experience::add(&root, &request.agent_id, &request.content, request.score)
+        self.worker()?.add_experience(request).await
     }
 
     pub async fn experience_delete(&self, request: ExperienceDeleteRequest) -> AppResult<Vec<ExperienceEntry>> {
-        let root = self.experience_root(&request.data_generation_id)?;
-        self.ensure_agent(&request.data_generation_id, &request.agent_id).await?;
-        crate::storage::experience::delete(&root, &request.agent_id, &request.entry_id)
+        self.worker()?.delete_experience(request).await
     }
 
     pub async fn experience_prune(&self, request: ExperiencePruneRequest) -> AppResult<Vec<ExperienceEntry>> {
-        let root = self.experience_root(&request.data_generation_id)?;
-        self.ensure_agent(&request.data_generation_id, &request.agent_id).await?;
-        crate::storage::experience::prune(&root, &request.agent_id, request.max_entries as usize)
+        self.worker()?.prune_experience(request).await
     }
 
     pub async fn global_configuration(
@@ -497,7 +464,6 @@ mod tests {
     fn fixture(worker: AppResult<Arc<DbWorker>>) -> AppState {
         AppState {
             generation: "state-tests".into(),
-            data_directory: None,
             storage_initialized: worker.is_ok(),
             storage: Mutex::new(worker),
             secrets: Err(AppError::new(

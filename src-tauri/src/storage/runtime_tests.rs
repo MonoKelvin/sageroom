@@ -90,6 +90,8 @@ fn candidate(
         agent_id: agent.agent_id.clone(),
         config_revision: agent.revision.clone(),
         observed_through_seq: observed.into(),
+        observed_content_epoch: 0.into(),
+        observed_experience_revision: fingerprint(&[]),
         decision_id: decision.into(),
         ordinal,
         chain_id: chain.into(),
@@ -304,7 +306,7 @@ fn runtime_snapshot_status_and_events_are_truthful_and_unchanged_states_do_not_b
 
 #[test]
 fn request_quota_counts_silence_failures_and_survives_restart_and_utc_day_change() {
-    let (directory, mut database, mut agent) = fixture();
+    let (directory, mut database, agent) = fixture();
     let agent = save_agent(&mut database, agent);
     assert_eq!(
         database
@@ -358,11 +360,16 @@ fn global_request_quota_is_five_hundred_across_agents_and_not_reset_on_restart()
         })
         .unwrap()
         .0;
-    for _ in 0..499 {
+    // 额度按智能体计：第一个成员用满 500 后拒绝，第二个成员仍有自己的 500。
+    for _ in 0..500 {
         database
             .reserve_runtime_request(&agent.agent_id, 500)
             .unwrap();
     }
+    code(
+        database.reserve_runtime_request(&agent.agent_id, 500),
+        ErrorCode::Backpressure,
+    );
     assert_eq!(
         database
             .reserve_runtime_request(&second.agent_id, 500)
@@ -372,12 +379,14 @@ fn global_request_quota_is_five_hundred_across_agents_and_not_reset_on_restart()
     drop(database);
     let mut restarted = Database::open(directory.path(), "quota-cap-restart".into()).unwrap();
     code(
-        restarted.reserve_runtime_request(&second.agent_id, 500),
-        ErrorCode::Backpressure,
-    );
-    code(
         restarted.reserve_runtime_request(&agent.agent_id, 500),
         ErrorCode::Backpressure,
+    );
+    assert_eq!(
+        restarted
+            .reserve_runtime_request(&second.agent_id, 500)
+            .unwrap(),
+        2
     );
     assert_eq!(rows(&restarted.conn, "messages"), 0);
 }
@@ -404,7 +413,7 @@ fn connection_test_quota_is_separate_durable_and_included_in_the_global_cap() {
         database.reserve_runtime_request(owner, 20),
         ErrorCode::Backpressure,
     );
-    for _ in 0..480 {
+    for _ in 0..500 {
         database
             .reserve_runtime_request(&agent.agent_id, 500)
             .unwrap();
@@ -413,6 +422,16 @@ fn connection_test_quota_is_separate_durable_and_included_in_the_global_cap() {
         database.reserve_runtime_request(&agent.agent_id, 500),
         ErrorCode::Backpressure,
     );
+    // 连接测试的 20 次与智能体自身的调用记在同一份每日总账里。
+    let total: u32 = database
+        .conn
+        .query_row(
+            "SELECT COALESCE(SUM(requests),0) FROM runtime_request_counts WHERE utc_day=?1",
+            [now_ms().div_euclid(UTC_DAY_MS)],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(total, 520);
     let tomorrow = (now_ms().div_euclid(UTC_DAY_MS) + 1) * UTC_DAY_MS;
     assert_eq!(
         database
@@ -490,6 +509,9 @@ fn sender_identity_mentions_indexes_and_chain_commit_in_one_transaction() {
             data_generation_id: database.generation_id.clone(),
             search_id: "runtime-search".into(),
             query: "自动成员正文".into(),
+            sender_id: None,
+            created_after: None,
+            created_before: None,
             cursor: None,
             limit: 30,
         },
@@ -815,17 +837,22 @@ fn wake_log_has_two_reservations_per_rolling_hour_across_restart_and_boundary() 
 fn minute_and_chain_limits_are_global_durable_and_count_every_split_part() {
     let (directory, mut database, agent) = fixture();
     let now = now_ms();
-    for ordinal in 0..12 {
-        database
-            .commit_runtime_message_at(
-                candidate(&agent, 0, "limited", ordinal, "limited-chain"),
-                now,
-            )
-            .unwrap();
+    // 分钟总量上限（40）：4 个决策 × 10 条分条，各自独立话题链，避开链限制。
+    for decision in 0..4 {
+        let observed = allocated_seq(&database.conn, "messages").unwrap();
+        for ordinal in 0..10 {
+            database
+                .commit_runtime_message_at(
+                    candidate(&agent, observed, &format!("minute-{decision}"), ordinal, &format!("minute-chain-{decision}")),
+                    now,
+                )
+                .unwrap();
+        }
     }
+    let observed = allocated_seq(&database.conn, "messages").unwrap();
     code(
         database.commit_runtime_message_at(
-            candidate(&agent, 0, "limited", 12, "limited-chain"),
+            candidate(&agent, observed, "minute-extra", 0, "minute-chain-extra"),
             now + MINUTE_MS - 1,
         ),
         ErrorCode::Backpressure,
@@ -833,36 +860,41 @@ fn minute_and_chain_limits_are_global_durable_and_count_every_split_part() {
     drop(database);
     let mut restarted = Database::open(directory.path(), "minute-restart".into()).unwrap();
     code(
-        restarted
-            .commit_runtime_message_at(candidate(&agent, 0, "limited", 12, "limited-chain"), now),
+        restarted.commit_runtime_message_at(
+            candidate(&agent, observed, "minute-extra", 0, "minute-chain-extra"),
+            now,
+        ),
         ErrorCode::Backpressure,
     );
-    for ordinal in 12..20 {
+    // 话题链上限：30 分钟窗口内同一链最多 20 条，跨分钟继续累计。
+    let observed = allocated_seq(&restarted.conn, "messages").unwrap();
+    for ordinal in 0..20 {
         restarted
             .commit_runtime_message_at(
-                candidate(&agent, 0, "limited", ordinal, "limited-chain"),
+                candidate(&agent, observed, "chain", ordinal, "limited-chain"),
                 now + MINUTE_MS,
             )
             .unwrap();
     }
     code(
         restarted.commit_runtime_message_at(
-            candidate(&agent, 0, "limited", 20, "limited-chain"),
+            candidate(&agent, observed, "chain", 20, "limited-chain"),
             now + 2 * MINUTE_MS,
         ),
         ErrorCode::Backpressure,
     );
-    assert_eq!(rows(&restarted.conn, "runtime_messages"), 20);
+    assert_eq!(rows(&restarted.conn, "runtime_messages"), 60);
 }
 
 #[test]
 fn global_hour_limit_persists_across_restart_and_chain_changes() {
     let (directory, mut database, agent) = fixture();
     let now = now_ms();
-    let start = now - 10 * MINUTE_MS;
-    for minute in 0..10 {
+    // 40 分钟 × 每分钟 10 条 = 400 条小时额度，且每分钟/每链都不触发保护。
+    let start = now - 40 * MINUTE_MS;
+    for minute in 0..40 {
         let observed = allocated_seq(&database.conn, "messages").unwrap();
-        for ordinal in 0..12 {
+        for ordinal in 0..10 {
             database
                 .commit_runtime_message_at(
                     candidate(
@@ -887,7 +919,7 @@ fn global_hour_limit_persists_across_restart_and_chain_changes() {
         ),
         ErrorCode::Backpressure,
     );
-    assert_eq!(rows(&restarted.conn, "runtime_messages"), 120);
+    assert_eq!(rows(&restarted.conn, "runtime_messages"), 400);
     restarted
         .commit_runtime_message_at(
             candidate(&agent, observed, "hour-boundary", 0, "fresh-chain"),
@@ -1061,31 +1093,83 @@ fn deleting_automatic_messages_does_not_reset_limits_idempotency_or_own_part_exe
     let (replay, event) = database.commit_runtime_message(original).unwrap();
     assert_eq!(replay.message_id, first.message_id);
     assert!(event.is_none());
-    for ordinal in 1..12 {
-        let result = database
-            .commit_runtime_message_at(
-                candidate(&agent, 0, "delete-split", ordinal, "delete-chain"),
-                now,
-            )
-            .unwrap()
-            .0;
-        remove_chat_message(&mut database, &result);
+    // 删除聊天消息不重置分钟限流：再用 3 个决策 × 13 条凑满 40 条分钟额度。
+    for decision in 1..4 {
+        let observed = allocated_seq(&database.conn, "messages").unwrap();
+        for ordinal in 0..13 {
+            let result = database
+                .commit_runtime_message_at(
+                    candidate(&agent, observed, &format!("delete-split-{decision}"), ordinal, &format!("delete-chain-{decision}")),
+                    now,
+                )
+                .unwrap()
+                .0;
+            remove_chat_message(&mut database, &result);
+        }
     }
+    let observed = allocated_seq(&database.conn, "messages").unwrap();
     assert_eq!(rows(&database.conn, "messages"), 0);
-    assert_eq!(rows(&database.conn, "runtime_messages"), 12);
+    assert_eq!(rows(&database.conn, "runtime_messages"), 40);
     code(
         database.commit_runtime_message_at(
-            candidate(&agent, 0, "delete-split", 12, "delete-chain"),
+            candidate(&agent, observed, "delete-extra", 0, "delete-chain-extra"),
             now,
         ),
         ErrorCode::Backpressure,
     );
     database
         .commit_runtime_message_at(
-            candidate(&agent, 0, "delete-split", 12, "delete-chain"),
+            candidate(&agent, observed, "delete-later", 0, "delete-chain"),
             now + MINUTE_MS,
         )
         .unwrap();
+}
+
+#[test]
+fn recalled_observation_invalidates_stale_runtime_parts_without_advancing_message_sequence() {
+    let (_directory, mut database, agent) = fixture();
+    let external = human(&mut database);
+    let observed = parse_counter(&external.message_seq, "observed").unwrap();
+    let first = candidate(&agent, observed, "before-recall", 0, "recall-chain");
+    let committed = database.commit_runtime_message(first.clone()).unwrap().0;
+    database
+        .recall_message(ChatRecallRequest {
+            data_generation_id: database.generation_id.clone(),
+            client_request_id: Uuid::now_v7().to_string(),
+            message_id: external.message_id,
+        })
+        .unwrap();
+    code(
+        database.commit_runtime_message(candidate(
+            &agent,
+            observed,
+            "before-recall",
+            1,
+            "recall-chain",
+        )),
+        ErrorCode::ConfigConflict,
+    );
+    let (replay, event) = database.commit_runtime_message(first).unwrap();
+    assert_eq!(replay.message_id, committed.message_id);
+    assert!(event.is_none());
+    let input = database.runtime_input(&agent.agent_id).unwrap();
+    assert_eq!(input.snapshot.room.content_epoch, 1.into());
+    assert_eq!(input.snapshot.latest_message_seq, committed.message_seq);
+    assert!(
+        !input
+            .messages
+            .iter()
+            .any(|m| m.state != MessageState::Visible)
+    );
+    let mut fresh = candidate(
+        &agent,
+        parse_counter(&committed.message_seq, "latest").unwrap(),
+        "after-recall",
+        0,
+        "fresh-chain",
+    );
+    fresh.observed_content_epoch = 1.into();
+    database.commit_runtime_message(fresh).unwrap();
 }
 
 #[test]
@@ -1180,4 +1264,137 @@ fn mention_recovery_only_finds_new_visible_external_mentions() {
         database.runtime_mention_seq(&agent.agent_id, DecimalString("-1".into())),
         ErrorCode::InvalidInput,
     );
+}
+
+fn experience_candidate(database: &mut Database, agent: &AgentConfiguration) -> RuntimeExperience {
+    let input = database.runtime_input(&agent.agent_id).unwrap();
+    RuntimeExperience {
+        data_generation_id: database.generation_id.clone(),
+        agent_id: agent.agent_id.clone(),
+        config_revision: agent.revision.clone(),
+        observed_through_seq: input.snapshot.latest_message_seq,
+        observed_content_epoch: input.snapshot.room.content_epoch,
+        decision_id: None,
+        experience_revision: input.experience_revision,
+        content: "本地测试中获知的真实经历".into(),
+        score: 73,
+        cancellation: CancellationToken::new(),
+    }
+}
+
+#[test]
+fn experience_crud_checks_generation_and_agent_and_reads_after_deletion() {
+    let (_directory, mut database, agent) = fixture();
+    let request = ExperienceAgentRequest { data_generation_id: database.generation_id.clone(), agent_id: agent.agent_id.clone() };
+    code(database.list_experience(ExperienceAgentRequest { data_generation_id: "stale".into(), ..request.clone() }), ErrorCode::DataGenerationChanged);
+    for id in ["missing-agent".into(), database.local_user_id.clone(), "../outside".into()] {
+        code(database.list_experience(ExperienceAgentRequest { agent_id: id, ..request.clone() }), ErrorCode::InvalidInput);
+    }
+    let before = database.runtime_input(&agent.agent_id).unwrap();
+    let entry = database.add_experience(ExperienceAddRequest {
+        data_generation_id: request.data_generation_id.clone(), agent_id: request.agent_id.clone(), content: "记录由人工提供".into(), score: 91,
+    }).unwrap();
+    let after = database.runtime_input(&agent.agent_id).unwrap();
+    assert_eq!(after.experiences[0].id, entry.id);
+    assert_ne!(before.experience_revision, after.experience_revision);
+    let pending = experience_candidate(&mut database, &agent);
+    database.delete_experience(ExperienceDeleteRequest {
+        data_generation_id: request.data_generation_id, agent_id: request.agent_id, entry_id: entry.id,
+    }).unwrap();
+    code(database.record_experience(pending), ErrorCode::ConfigConflict);
+    assert!(database.runtime_input(&agent.agent_id).unwrap().experiences.is_empty());
+}
+
+#[test]
+fn cancelled_or_stale_experience_decisions_never_publish() {
+    let (_directory, mut database, agent) = fixture();
+    let cancelled = experience_candidate(&mut database, &agent);
+    cancelled.cancellation.cancel();
+    code(database.record_experience(cancelled), ErrorCode::ShuttingDown);
+    let stale_generation = RuntimeExperience { data_generation_id: "old-generation".into(), ..experience_candidate(&mut database, &agent) };
+    code(database.record_experience(stale_generation), ErrorCode::DataGenerationChanged);
+    let stale_message = experience_candidate(&mut database, &agent);
+    human(&mut database);
+    code(database.record_experience(stale_message), ErrorCode::ConfigConflict);
+    let stale_epoch = experience_candidate(&mut database, &agent);
+    database.conn.execute("UPDATE room SET content_epoch=content_epoch+1", []).unwrap();
+    code(database.record_experience(stale_epoch), ErrorCode::ConfigConflict);
+    let stale_configuration = experience_candidate(&mut database, &agent);
+    save_agent(&mut database, agent.clone());
+    code(database.record_experience(stale_configuration), ErrorCode::ConfigConflict);
+    assert!(database.list_experience(ExperienceAgentRequest { data_generation_id: database.generation_id.clone(), agent_id: agent.agent_id }).unwrap().is_empty());
+}
+
+#[test]
+fn valid_observation_and_committed_speech_can_publish_experience() {
+    let (_directory, mut database, agent) = fixture();
+    let observing = experience_candidate(&mut database, &agent);
+    database.record_experience(observing).unwrap();
+    let mut pending = experience_candidate(&mut database, &agent);
+    pending.content = "发言成功后才记录的经历".into();
+    pending.decision_id = Some("experience-speech".into());
+    code(database.record_experience(pending.clone()), ErrorCode::ConfigConflict);
+    let mut message = candidate(&agent, 0, "experience-speech", 0, "experience-chain");
+    message.observed_experience_revision = pending.experience_revision.clone();
+    database.commit_runtime_message(message).unwrap();
+    database.record_experience(pending).unwrap();
+    let entries = database.list_experience(ExperienceAgentRequest { data_generation_id: database.generation_id.clone(), agent_id: agent.agent_id }).unwrap();
+    assert_eq!(entries.len(), 2);
+    assert!(entries.iter().all(|entry| entry.score == 73));
+}
+
+#[test]
+fn experience_change_invalidates_delayed_speech_and_external_messages_invalidate_speech_memory() {
+    let (_directory, mut database, agent) = fixture();
+    let entry = database.add_experience(ExperienceAddRequest {
+        data_generation_id: database.generation_id.clone(), agent_id: agent.agent_id.clone(), content: "将被手动删除的经历".into(), score: 80,
+    }).unwrap();
+    let mut delayed = candidate(&agent, 0, "delayed-experience", 0, "experience-chain");
+    delayed.observed_experience_revision = database.runtime_input(&agent.agent_id).unwrap().experience_revision;
+    database.delete_experience(ExperienceDeleteRequest {
+        data_generation_id: database.generation_id.clone(), agent_id: agent.agent_id.clone(), entry_id: entry.id,
+    }).unwrap();
+    code(database.commit_runtime_message(delayed), ErrorCode::ConfigConflict);
+    let mut pending = experience_candidate(&mut database, &agent);
+    pending.decision_id = Some("committed-experience".into());
+    database.commit_runtime_message(candidate(&agent, 0, "committed-experience", 0, "experience-chain")).unwrap();
+    human(&mut database);
+    code(database.record_experience(pending), ErrorCode::ConfigConflict);
+}
+
+#[test]
+fn quote_context_loads_older_originals_and_excludes_recalled_originals() {
+    let (_directory, mut database, agent) = fixture();
+    let original = human(&mut database);
+    for _ in 0..31 { human(&mut database); }
+    database.send_message(ChatSendRequest {
+        data_generation_id: database.generation_id.clone(), client_request_id: Uuid::now_v7().to_string(),
+        parts: vec![MessagePart::Text { text: "引用分页外原文".into() }], quote_message_id: Some(original.message_id.clone()), mention_ids: vec![], mention_all: false,
+    }).unwrap();
+    let input = database.runtime_input(&agent.agent_id).unwrap();
+    assert!(!input.messages.iter().any(|message| message.id == original.message_id));
+    assert_eq!(input.quoted_messages[0].id, original.message_id);
+    database.conn.execute("UPDATE messages SET state='recalled' WHERE id=?1", [&original.message_id]).unwrap();
+    assert!(database.runtime_input(&agent.agent_id).unwrap().quoted_messages.is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn experience_worker_serializes_parallel_additions_without_losing_entries() {
+    let directory = TempDir::new().unwrap();
+    let worker = DbWorker::open(directory.path(), "experience-worker".into(), Arc::new(|_| {})).unwrap();
+    let agent_id = worker.list_agents(AgentListRequest { data_generation_id: "experience-worker".into() }).await.unwrap()[0].agent_id.clone();
+    let mut jobs = Vec::new();
+    for index in 0..16 {
+        let worker = worker.clone();
+        let agent_id = agent_id.clone();
+        jobs.push(tokio::spawn(async move {
+            worker.add_experience(ExperienceAddRequest {
+                data_generation_id: "experience-worker".into(), agent_id, content: format!("并发经历 {index}"), score: 50,
+            }).await.unwrap();
+        }));
+    }
+    for job in jobs { job.await.unwrap(); }
+    let entries = worker.list_experience(ExperienceAgentRequest { data_generation_id: "experience-worker".into(), agent_id }).await.unwrap();
+    assert_eq!(entries.len(), 16);
+    worker.shutdown().await.unwrap();
 }
