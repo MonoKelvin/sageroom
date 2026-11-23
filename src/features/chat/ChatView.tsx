@@ -44,6 +44,13 @@ export function ChatView({ session, active, onNavigate }: ApplicationPageProps) 
   }, [loadedMessages, resolvedQuotes, quotesIdentity])
   const quote = quoteId ? quotes.get(quoteId) ?? (selectedQuote?.epoch === contentEpoch ? selectedQuote.message : null) : null
   const participants = useMemo(() => new Map(snapshot?.participants.map((participant) => [participant.id, participant])), [snapshot?.participants])
+  // 正在思考或准备发送的智能体，像真人聊天那样显示「正在输入」。
+  const typingNames = useMemo(
+    () => (snapshot?.participants ?? [])
+      .filter((participant) => participant.kind === "agent" && participant.runtime?.status != null && ["deciding", "waiting_to_send"].includes(participant.runtime.status))
+      .map((participant) => participant.display_name),
+    [snapshot?.participants],
+  )
   const visible = useRef(active)
   const navigationEpoch = useRef(0)
   useLayoutEffect(() => { visible.current = active; navigationEpoch.current += 1 }, [active])
@@ -118,6 +125,10 @@ export function ChatView({ session, active, onNavigate }: ApplicationPageProps) 
         <div className="chat-conversation">
           {session.page && snapshot ? <MessageList key={session.windowRevision} active={active} page={session.page} participants={participants} restoreAnchor={session.restoreAnchor} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !session.page.has_more_after} hasNewMessages={session.hasNewMessages} scrollToBottomSignal={scrollToBottomSignal} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={session.goToLatest} quotes={quotes} onQuote={selectQuote} onRecall={session.recall} onLocateQuote={session.jumpTo} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}
           {resolvedQuotes?.identity === quotesIdentity && resolvedQuotes.error && <p className="chat-quote-feedback" role="alert">{resolvedQuotes.error}</p>}
+          {typingNames.length > 0 && <div className="chat-typing" role="status" aria-live="polite">
+            <span className="chat-typing-dots" aria-hidden="true"><i /><i /><i /></span>
+            <span>{typingNames.length === 1 ? `${typingNames[0]} 正在输入…` : `${typingNames.slice(0, 2).join("、")} 正在输入…`}</span>
+          </div>}
           <MessageComposer active={active} dataGenerationId={generation} disabled={!snapshot} participants={snapshot?.participants} canMentionAll={snapshot?.room.owner_participant_id === snapshot?.local_user.id} quoteMessageId={quoteId} quote={quote} onRemoveQuote={() => setSelectedQuote(null)} onSend={handleSend} />
         </div>
       </div>

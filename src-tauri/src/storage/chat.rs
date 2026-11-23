@@ -647,7 +647,24 @@ impl Database {
         &mut self,
         request: ChatRecallRequest,
     ) -> AppResult<(ChatRecallResult, Option<DomainEvent>)> {
-        self.recall_message_with_clock(request, Instant::now)
+        self.recall_message_with_clock(request, Instant::now, None)
+    }
+
+    /// 智能体撤回自己刚发出的消息；仍受 120 秒时限与来源校验约束。
+    pub fn recall_agent_message(
+        &mut self,
+        agent_id: &str,
+        message_id: &str,
+        generation: &str,
+    ) -> AppResult<Option<DomainEvent>> {
+        validate_id(agent_id, "agent_id")?;
+        let request = ChatRecallRequest {
+            data_generation_id: generation.to_owned(),
+            client_request_id: Uuid::now_v7().to_string(),
+            message_id: message_id.to_owned(),
+        };
+        let (_, event) = self.recall_message_with_clock(request, Instant::now, Some(agent_id))?;
+        Ok(event)
     }
 
     #[cfg(test)]
@@ -656,13 +673,14 @@ impl Database {
         request: ChatRecallRequest,
         now: Instant,
     ) -> AppResult<(ChatRecallResult, Option<DomainEvent>)> {
-        self.recall_message_with_clock(request, || now)
+        self.recall_message_with_clock(request, || now, None)
     }
 
     fn recall_message_with_clock(
         &mut self,
         request: ChatRecallRequest,
         clock: impl FnOnce() -> Instant,
+        expected_agent: Option<&str>,
     ) -> AppResult<(ChatRecallResult, Option<DomainEvent>)> {
         self.check_generation(&request.data_generation_id)?;
         validate_id(&request.client_request_id, "client_request_id")?;
@@ -692,7 +710,11 @@ impl Database {
         let Some((seq, sender_id, state)) = message else {
             return Err(AppError::new(ErrorCode::MessageNotFound, "消息已不存在。"));
         };
-        if sender_id != self.local_user_id {
+        let allowed = match expected_agent {
+            Some(agent_id) => sender_id == agent_id,
+            None => sender_id == self.local_user_id,
+        };
+        if !allowed {
             return Err(AppError::new(
                 ErrorCode::PermissionDenied,
                 "只能撤回自己发送的消息。",

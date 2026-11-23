@@ -1398,3 +1398,40 @@ async fn experience_worker_serializes_parallel_additions_without_losing_entries(
     assert_eq!(entries.len(), 16);
     worker.shutdown().await.unwrap();
 }
+
+#[test]
+fn agent_recalls_only_its_own_recent_messages() {
+    let (_directory, mut database, agent) = fixture();
+    let generation = database.generation_id.clone();
+
+    // 智能体能撤回自己刚提交的消息。
+    let sent = database
+        .commit_runtime_message(candidate(&agent, 0, "recall-own", 0, "recall-chain"))
+        .unwrap()
+        .0;
+    database
+        .recall_agent_message(&agent.agent_id, &sent.message_id, &generation)
+        .unwrap();
+    let state: String = database
+        .conn
+        .query_row(
+            "SELECT state FROM messages WHERE id=?1",
+            [&sent.message_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(state, "recalled");
+    // 同一条不能重复撤回。
+    assert!(
+        database
+            .recall_agent_message(&agent.agent_id, &sent.message_id, &generation)
+            .is_err()
+    );
+
+    // 不能撤回本地用户的消息。
+    let external = human(&mut database);
+    let error = database
+        .recall_agent_message(&agent.agent_id, &external.message_id, &generation)
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::PermissionDenied);
+}

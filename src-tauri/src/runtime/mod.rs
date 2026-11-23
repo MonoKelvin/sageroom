@@ -116,13 +116,15 @@ fn observe_message_activity() {
 
 /// 按活跃度缩放房间冷场目标，并加入随机抖动。
 /// 活跃度 100 约 ×0.7，50 约 ×1.0，0 约 ×1.3；睡眠时再放宽一些。
-fn idle_interval_ms(activity: u8, target_ms: u64, seed: u64, sleeping: bool) -> u64 {
+fn idle_interval_ms(activity: u8, target_ms: u64, seed: u64, sleeping: bool, misses: u32) -> u64 {
     let activity = i64::from(activity.min(100));
     let factor = 1.0 + (50 - activity) as f64 / 100.0 * 0.6;
     let base = (target_ms as f64 * factor) as u64;
     let jitter = seed % (base / 4 + 1);
     let interval = base + jitter;
     let interval = if sleeping { interval * 3 / 2 } else { interval };
+    // 连续几次被叫醒都不想说话，就明显放慢，别一直打扰。
+    let interval = interval.saturating_mul(1 + u64::from(misses.min(4)));
     interval.clamp(45_000, 120 * 60_000)
 }
 
@@ -599,8 +601,10 @@ async fn run_actor(
     }
     // 空闲自主发起：无人说话时，按活跃度概率主动开启话题，而不是只等着接话。
     let activity = agent.dimensions.activity;
+    // 连续「被叫醒但选择沉默」的次数，用于逐步放慢下一次空闲发起。
+    let mut idle_misses: u32 = 0;
     let mut idle_at = tokio::time::Instant::now()
-        + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, sleeping));
+        + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, sleeping, idle_misses));
     loop {
         if cancellation.is_cancelled() {
             break;
@@ -618,7 +622,7 @@ async fn run_actor(
                     let incoming=opportunities.borrow_and_update().clone();
                     // 有真实新消息时重置空闲计时，避免刚聊过又主动插话。
                     idle_at = tokio::time::Instant::now()
-                        + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, sleeping));
+                        + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, sleeping, idle_misses));
                     if sequence(&incoming.message_seq) <= sequence(&observed_through_seq)
                         || (sleeping && sequence(&incoming.mention_seq) <= sequence(&observed_through_seq)) {continue;}
                     Some(incoming)
@@ -631,7 +635,7 @@ async fn run_actor(
                             let _=worker.save_runtime_plan(agent.agent_id.clone(),agent.revision.clone(),Some(at),chain).await;
                             sleeping = true;
                             idle_at = tokio::time::Instant::now()
-                                + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, sleeping));
+                                + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, sleeping, idle_misses));
                             let _=state(&worker,&agent,AgentRuntimeStatus::Sleeping,Some("自主检查已达到两次/滚动小时，将按既有计划稍后继续。".into()),Some(at),count,&cancellation).await;
                             continue;
                         },
@@ -642,7 +646,7 @@ async fn run_actor(
                 _=tokio::time::sleep_until(idle_at)=>{
                     let seed = now_ms() as u64;
                     idle_at = tokio::time::Instant::now()
-                        + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), seed, sleeping));
+                        + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), seed, sleeping, idle_misses));
                     // 按活跃度概率决定这一次是否真的主动开口；没中就先跳过。
                     if seed % 100 >= idle_trigger_chance(activity) { continue; }
                     Some(Opportunity{
@@ -659,6 +663,8 @@ async fn run_actor(
             tokio::select! {biased;_=cancellation.cancelled()=>return,_=tokio::time::sleep_until(anchor)=>break,changed=opportunities.changed()=>{if changed.is_err(){return;}opportunity=Some(opportunities.borrow_and_update().clone());}}
         }
         let mut current = opportunity.take().expect("需要有效观察机会");
+        // 被空闲机会叫醒却选择沉默时，下一次要更晚打扰。
+        let idle_opportunity = current.reason == "idle_tick";
         let _ = worker
             .save_runtime_plan(
                 agent.agent_id.clone(),
@@ -722,7 +728,7 @@ async fn run_actor(
                 _=tokio::time::sleep(Duration::from_secs(30))=>{}
             }
             idle_at = tokio::time::Instant::now()
-                + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, false));
+                + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, false, idle_misses));
             continue;
         }
         let Some(completed) = completed else {
@@ -738,8 +744,15 @@ async fn run_actor(
             Participation::Sleep | Participation::Defer
         );
         // 刚参与过对话，重新开始空闲计时，避免马上又主动插话。
+        idle_misses = if idle_opportunity && decision.participation == Participation::Observe {
+            (idle_misses + 1).min(4)
+        } else if decision.participation == Participation::Observe {
+            idle_misses
+        } else {
+            0
+        };
         idle_at = tokio::time::Instant::now()
-            + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, sleeping));
+            + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, sleeping, idle_misses));
         if let Some(plan) = decision.wake_plan {
             let at = completed
                 .validated_at
@@ -895,6 +908,28 @@ async fn make_decision(
         ));
     }
     let validated_at = now_ms();
+    // 撤回自己刚发出的消息：独立验证，失败不影响后续发言。
+    for message_id in &decision.recalls {
+        match worker
+            .recall_agent_message(
+                agent.agent_id.clone(),
+                message_id.clone(),
+                input.snapshot.data_generation_id.clone(),
+            )
+            .await
+        {
+            Ok(()) => {}
+            Err(error)
+                if matches!(
+                    error.code,
+                    ErrorCode::ConfigConflict | ErrorCode::ShuttingDown
+                ) =>
+            {
+                return Err(error);
+            }
+            Err(error) => tracing::warn!(?error, "智能体撤回消息失败"),
+        }
+    }
     let mut observed_through_seq = input.snapshot.latest_message_seq.clone();
     let decision_id = (!decision.messages.is_empty()).then(|| Uuid::now_v7().to_string());
     if !decision.messages.is_empty() {

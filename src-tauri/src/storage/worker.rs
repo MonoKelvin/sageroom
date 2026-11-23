@@ -154,6 +154,21 @@ impl DbWorker {
         self.call(move |database| database.record_experience(experience)).await
     }
 
+    /// 智能体撤回自己 120 秒内发出的消息。
+    pub async fn recall_agent_message(
+        &self,
+        agent_id: String,
+        message_id: String,
+        generation: String,
+    ) -> AppResult<()> {
+        self.call(move |database| {
+            database
+                .recall_agent_message(&agent_id, &message_id, &generation)
+                .map(|_| ())
+        })
+        .await
+    }
+
     pub async fn snapshot(&self, request: AppSnapshotRequest) -> AppResult<AppSnapshot> {
         self.call(move |database| database.snapshot(request)).await
     }

@@ -89,8 +89,9 @@
   background: var(--surface-chrome);
   color: var(--text-primary);
   box-shadow: var(--floating-shadow);
-  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  /* 标准声明置后，避免构建归一化时只留下 WebView2 不支持的前缀。 */
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
 }
 .ui-dropdown-content { transform-origin: var(--radix-dropdown-menu-content-transform-origin); }
 .ui-dropdown-item[data-highlighted] { background: var(--control-bg); color: var(--text-primary); }

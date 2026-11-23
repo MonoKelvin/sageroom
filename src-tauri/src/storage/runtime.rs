@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use tokio_util::sync::CancellationToken;
 
@@ -819,6 +821,11 @@ impl Database {
         )?;
         cancelled(&message.cancellation)?;
         transaction.commit()?;
+        // 自动消息也记录撤回时间锚，供智能体在两分钟内自我更正。
+        self.recall_anchors
+            .retain(|_, anchor| anchor.elapsed() < Duration::from_secs(120));
+        self.recall_anchors
+            .insert(result.message_id.clone(), Instant::now());
         Ok((result, Some(event)))
     }
 }

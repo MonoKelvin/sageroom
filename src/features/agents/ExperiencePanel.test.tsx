@@ -100,6 +100,33 @@ describe("成员经历管理", () => {
     expect(screen.queryByText("来自上个成员的迟到经历")).not.toBeInTheDocument()
     expect(store.listExperience).toHaveBeenLastCalledWith("agent-two")
   })
+  it("提交后折叠，成功回执仍清除同一成员的已提交草稿", async () => {
+    let resolve!: (entry: ExperienceEntry) => void
+    store.addExperience.mockImplementationOnce(() => new Promise((done) => { resolve = done }))
+    render(panel())
+    await open()
+    fireEvent.change(screen.getByRole("textbox", { name: "经历内容" }), { target: { value: "隐藏期间完成的经历" } })
+    await userEvent.click(screen.getByRole("button", { name: "添加经历" }))
+    await userEvent.click(screen.getByRole("button", { name: "经历" }))
+    await act(async () => resolve(first))
+    await userEvent.click(screen.getByRole("button", { name: "经历" }))
+    expect(screen.getByRole("textbox", { name: "经历内容" })).toHaveValue("")
+    expect(store.addExperience).toHaveBeenCalledTimes(1)
+  })
+  it("读取未完成时不提交，避免写入使读取状态永久失效", async () => {
+    let resolve!: (entries: ExperienceEntry[]) => void
+    store.listExperience.mockImplementationOnce(() => new Promise((done) => { resolve = done }))
+    render(panel())
+    await userEvent.click(screen.getByRole("button", { name: "经历" }))
+    const input = screen.getByRole("textbox", { name: "经历内容" })
+    fireEvent.change(input, { target: { value: "等待回读" } })
+    expect(screen.getByRole("button", { name: "添加经历" })).toBeDisabled()
+    fireEvent.submit(input.closest("form")!)
+    expect(store.addExperience).not.toHaveBeenCalled()
+    await act(async () => resolve([first]))
+    expect(screen.queryByText("正在读取经历…")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "添加经历" })).toBeEnabled()
+  })
   it("折叠与重新展开保留未提交草稿，但重新读取文件", async () => {
     render(panel())
     await open()

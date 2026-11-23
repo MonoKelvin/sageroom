@@ -90,6 +90,8 @@ pub struct Decision {
     pub announcement: Option<Value>,
     pub profile_patch: Option<Value>,
     pub wake_plan: Option<WakePlan>,
+    // 历史字段，当前未消费；保留兼容但不再要求模型输出。
+    #[serde(default)]
     pub topic_hint: Option<String>,
     pub extra_data: ExtraData,
     pub experience: Option<DecisionExperience>,
@@ -137,7 +139,6 @@ pub fn parse(text: &str, input: &RuntimeInput) -> AppResult<Decision> {
         "announcement",
         "profile_patch",
         "wake_plan",
-        "topic_hint",
         "extra_data",
         "experience",
     ];
@@ -155,7 +156,7 @@ pub fn parse(text: &str, input: &RuntimeInput) -> AppResult<Decision> {
     let mut decision: Decision = serde_json::from_str(text).map_err(|_| invalid())?;
     if decision.messages.len() > 12
         || (decision.participation == Participation::Speak) == decision.messages.is_empty()
-        || !decision.recalls.is_empty()
+        || decision.recalls.len() > 4
         || !decision.tool_requests.is_empty()
         || decision.group_patch.is_some()
         || decision.announcement.is_some()
@@ -170,12 +171,47 @@ pub fn parse(text: &str, input: &RuntimeInput) -> AppResult<Decision> {
     {
         return Err(invalid());
     }
-    if let Some(plan) = &decision.wake_plan
-        && (!(300..=86_400).contains(&plan.after_seconds)
-            || !matches!(plan.reason_code.as_str(), "check_later" | "take_a_break")
-            || plan.review_message_ordinal.is_some())
-    {
-        return Err(invalid());
+    // 撤回只允许自己本次运行内发出、仍在 120 秒窗口内的可见消息。
+    let now = now_ms();
+    for id in &decision.recalls {
+        let eligible = input
+            .messages
+            .iter()
+            .chain(&input.quoted_messages)
+            .any(|message| {
+                &message.id == id
+                    && message.state == MessageState::Visible
+                    && message.sender_id == input.agent.agent_id
+                    && now.saturating_sub(message.created_at) < 120_000
+            });
+        if !eligible {
+            return Err(invalid());
+        }
+    }
+    if let Some(plan) = &decision.wake_plan {
+        let valid = match plan.reason_code.as_str() {
+            "check_later" | "take_a_break" => {
+                (300..=86_400).contains(&plan.after_seconds) && plan.review_message_ordinal.is_none()
+            }
+            // 一次性自我回看：绑定本次某条消息，必须落在两分钟撤回窗口内。
+            "self_review" => {
+                (1..=90).contains(&plan.after_seconds)
+                    && plan
+                        .review_message_ordinal
+                        .is_some_and(|ordinal| (ordinal as usize) < decision.messages.len())
+                    && decision.participation == Participation::Speak
+            }
+            _ => false,
+        };
+        if !valid {
+            return Err(invalid());
+        }
+        // defer 必须安排普通的稍后检查，不能借用回看计划。
+        if decision.participation == Participation::Defer
+            && plan.reason_code == "self_review"
+        {
+            return Err(invalid());
+        }
     }
     if let Some(experience) = &decision.experience {
         crate::storage::experience::validate_entry(&experience.content, experience.score)
@@ -219,23 +255,33 @@ pub fn parse(text: &str, input: &RuntimeInput) -> AppResult<Decision> {
             return Err(invalid());
         }
     }
-    // 模型不擅长估算毫秒，这里按字数重算节奏：首条留出反应时间，
-    // 其余按打字速度累加，并用确定性抖动避免机械感。
+    // 模型不擅长估算毫秒，这里按字数与标点重算节奏：首条留出反应时间，
+    // 之后按打字速度累加，长停顿落在句读处，避免匀速的机械感。
     if !decision.messages.is_empty() {
         let seed = now_ms() as u64;
         let mut elapsed = 0u64;
         for (index, message) in decision.messages.iter_mut().enumerate() {
-            let chars: u64 = message
-                .parts
-                .iter()
-                .map(|part| match part {
-                    MessagePart::Text { text } => text.chars().count() as u64,
-                    _ => 0,
-                })
-                .sum();
-            let reaction = if index == 0 { 600 + seed % 700 } else { 250 + seed % 320 };
-            let per_char = 90 + (seed >> (index * 3)) % 70;
-            elapsed = elapsed.saturating_add(reaction + chars * per_char);
+            let mut body = String::new();
+            for part in &message.parts {
+                if let MessagePart::Text { text } = part {
+                    body.push_str(text);
+                }
+            }
+            let chars = body.chars().count() as u64;
+            // 标点带来自然停顿：逗号短停顿，句末长停顿，省略号表示犹豫。
+            let short_pauses = body
+                .chars()
+                .filter(|c| matches!(c, '，' | ',' | '、' | '；' | ';'))
+                .count() as u64;
+            let end_pauses = body
+                .chars()
+                .filter(|c| matches!(c, '。' | '！' | '？' | '!' | '?' | '.'))
+                .count() as u64;
+            let hesitations = body.matches('…').count() as u64;
+            let punctuation = short_pauses * 120 + end_pauses * 350 + hesitations * 220;
+            let reaction = if index == 0 { 600 + seed % 700 } else { 220 + seed % 260 };
+            let per_char = 85 + (seed >> (index * 3)) % 75;
+            elapsed = elapsed.saturating_add(reaction + chars * per_char + punctuation);
             message.send_after_ms = elapsed.min(30_000);
         }
     }
@@ -520,5 +566,49 @@ mod tests {
         value["participation"] = json!("speak");
         value["messages"] = json!([{"parts":[{"kind":"text","text":"回复"}],"quote_message_id":"invented-id","mention_ids":[],"mention_all":false,"send_after_ms":0}]);
         assert!(parse(&value.to_string(), &input).is_err());
+    }
+
+#[test]
+    fn recalls_only_accept_own_recent_visible_messages_and_self_review_binds_a_target() {
+        let (_dir, mut input) = input();
+        let agent_id = input.agent.agent_id.clone();
+        input.messages.push(ChatMessage {
+            id: "own-recent".into(),
+            seq: 1_i64.into(),
+            sender_id: agent_id.clone(),
+            created_at: now_ms(),
+            state: MessageState::Visible,
+            parts: vec![MessagePart::Text { text: "说错话了".into() }],
+            quote_message_id: None,
+            mention_ids: vec![],
+            mention_all: false,
+        });
+        let mut value = observe();
+        // 撤回自己的近期消息：允许。
+        value["recalls"] = json!(["own-recent"]);
+        assert!(parse(&value.to_string(), &input).is_ok());
+        // 超过 120 秒：拒绝。
+        input.messages[0].created_at = now_ms() - 121_000;
+        assert!(parse(&value.to_string(), &input).is_err());
+        // 别人的消息：拒绝。
+        input.messages[0].created_at = now_ms();
+        input.messages[0].sender_id = "someone-else".into();
+        assert!(parse(&value.to_string(), &input).is_err());
+
+        // self_review 必须绑定本次发言的某条消息。
+        let mut speak = observe();
+        speak["participation"] = json!("speak");
+        speak["messages"] = json!([{"parts":[{"kind":"text","text":"刚说错了"}],"quote_message_id":null,"mention_ids":[],"mention_all":false,"send_after_ms":0}]);
+        speak["wake_plan"] = json!({"after_seconds":30,"reason_code":"self_review","review_message_ordinal":0});
+        assert!(parse(&speak.to_string(), &input).is_ok());
+        speak["wake_plan"]["review_message_ordinal"] = json!(3);
+        assert!(parse(&speak.to_string(), &input).is_err());
+        // 普通检查不能带 ordinal。
+        speak["wake_plan"] = json!({"after_seconds":600,"reason_code":"check_later","review_message_ordinal":0});
+        assert!(parse(&speak.to_string(), &input).is_err());
+        // self_review 不能与 observe 并用。
+        let mut observing = observe();
+        observing["wake_plan"] = json!({"after_seconds":30,"reason_code":"self_review","review_message_ordinal":0});
+        assert!(parse(&observing.to_string(), &input).is_err());
     }
 }

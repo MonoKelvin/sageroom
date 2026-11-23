@@ -131,6 +131,26 @@ async function stop(session) {
 
 async function screenshot(page, name) {
   const filename = `${name}.png`
+  await page.evaluate(async () => {
+    const animations = document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+    await Promise.all(animations.map((animation) => animation.finished.catch(() => {})))
+    await new Promise(requestAnimationFrame)
+    await new Promise(requestAnimationFrame)
+  })
+  const surfaceSelector = { "chat-search-filtered": ".chat-search-results", "chat-group-information": ".group-info-drawer", "settings-select-open": ".settings-select-content" }[name]
+  if (surfaceSelector) {
+    const styles = await page.locator(surfaceSelector).evaluate((surface) => {
+      const ancestors = []
+      for (let node = surface; node; node = node.parentElement) {
+        const style = getComputedStyle(node)
+        ancestors.push({ tag: node.tagName, class: node.className, backdrop_filter: style.backdropFilter, background: style.backgroundColor, opacity: style.opacity, filter: style.filter, contain: style.contain, isolation: style.isolation, clip_path: style.clipPath, mask_image: style.maskImage, mix_blend_mode: style.mixBlendMode, will_change: style.willChange, transform: style.transform, animation: style.animationName })
+      }
+      return { supported: CSS.supports("backdrop-filter", "blur(30px)"), ancestors }
+    })
+    report.surface_styles ??= {}
+    report.surface_styles[name] = styles
+    assert.match(styles.ancestors[0].backdrop_filter, /\bblur\(30px\)/, "原生浮层应实际应用共享背景滤镜，不能只有透明背景")
+  }
   await page.screenshot({ path: path.join(output, filename) })
   report.screenshots.push(filename)
 }
@@ -200,6 +220,12 @@ try {
   await expect(sourceActions).toHaveAttribute("aria-expanded", "false")
   await expect(sourceActions).toBeFocused()
   await sourceActions.press("Enter")
+  await expect(page.getByRole("menuitem", { name: "引用", exact: true })).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(sourceActions).toHaveAttribute("aria-expanded", "false")
+  await expect(sourceActions).toBeFocused()
+  await sourceActions.click()
+  await expect(sourceActions).toHaveAttribute("aria-expanded", "true")
   await expect(page.getByRole("menuitem", { name: "引用", exact: true })).toBeVisible()
   await screenshot(page, "chat-message-menu")
   await page.getByRole("menuitem", { name: "引用", exact: true }).click()
@@ -436,9 +462,18 @@ try {
   const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
   await page.getByLabel("搜索开始日期", { exact: true }).fill(localDate)
   await page.getByLabel("搜索结束日期", { exact: true }).fill(localDate)
-  await screenshot(page, "chat-search-filtered")
   const result = page.getByRole("list", { name: "搜索结果" }).getByRole("button")
   await expect(result).toHaveCount(1)
+  await screenshot(page, "chat-search-filtered")
+  const searchSurface = await page.getByRole("complementary", { name: "搜索结果面板", exact: true }).evaluate((panel) => {
+    const bounds = panel.getBoundingClientRect()
+    return [0.2, 0.5, 0.8].flatMap((y) => [0.2, 0.5, 0.8].map((x) => {
+      const hit = document.elementFromPoint(bounds.left + bounds.width * x, bounds.top + bounds.height * y)
+      return { x, y, covered: hit !== null && panel.contains(hit), top: hit?.className ?? null }
+    }))
+  })
+  report.search_surface = searchSurface
+  assert.ok(searchSurface.every((point) => point.covered), "搜索浮层应覆盖底层消息，不被消息行叠到上方")
   await result.click()
   await expect(page.getByRole("searchbox", { name: "搜索聊天文本" })).toHaveCount(0)
   await expect(page.getByText(firstText, { exact: true })).toBeVisible()
@@ -464,6 +499,7 @@ try {
   assert.equal(await page.locator(".surface-card").filter({ visible: true }).first().evaluate((element) => getComputedStyle(element).boxShadow), "none")
   await screenshot(page, "settings-about")
   await page.getByRole("button", { name: "聊天", exact: true }).click()
+  await expect(page.getByText("重复请求只能出现一次", { exact: true })).toBeVisible()
   await screenshot(page, "chat-dark")
   passed("外观实际保存、深色与减少动画")
 

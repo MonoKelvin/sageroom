@@ -26,7 +26,13 @@ function ExperienceEditor({ store, agentId, active, disabled }: Props) {
   const epoch = useRef(0)
   const busy = useRef(false)
   const alive = useRef(false)
+  const mounted = useRef(false)
   const revision = useRef(0)
+
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
 
   useEffect(() => {
     alive.current = active
@@ -57,7 +63,7 @@ function ExperienceEditor({ store, agentId, active, disabled }: Props) {
 
   async function add(event: FormEvent) {
     event.preventDefault()
-    if (busy.current || disabled || !active) return
+    if (busy.current || loading || disabled || !active) return
     const text = content.trim()
     const importance = Number(score)
     if (!text || [...text].length > 10000 || /[\r\n\0]/.test(text)) { setError("经历需要一行文字，最多 10000 个字符。"); return }
@@ -69,12 +75,13 @@ function ExperienceEditor({ store, agentId, active, disabled }: Props) {
     setError(null)
     try {
       await store.addExperience(agentId, text, importance)
-      if (!alive.current || token !== epoch.current) return
+      if (!mounted.current) return
       if (draftRevision === revision.current) { setContent(""); revision.current += 1 }
+      if (!alive.current || token !== epoch.current) return
       const items = await store.listExperience(agentId)
       if (alive.current && token === epoch.current) setEntries(items)
     } catch (cause) { if (alive.current && token === epoch.current) setError(errorMessage(cause)) }
-    finally { busy.current = false; setPending(false) }
+    finally { busy.current = false; if (mounted.current) setPending(false) }
   }
 
   async function remove() {
@@ -104,7 +111,7 @@ function ExperienceEditor({ store, agentId, active, disabled }: Props) {
       <textarea className="settings-control experience-input" aria-label="经历内容" placeholder="记下值得保留的事……" value={content} rows={2} maxLength={10000} disabled={disabled || pending} onChange={(event) => { revision.current += 1; setContent(event.target.value); setError(null) }} />
       <div className="experience-form-actions">
         <label className="experience-score">重要度<input type="number" className="settings-control" aria-label="经历重要度" min={0} max={100} step={1} value={score} disabled={disabled || pending} onChange={(event) => setScore(event.target.value)} /></label>
-        <Tooltip><TooltipTrigger asChild><Button type="submit" size="icon-sm" aria-label="添加经历" disabled={disabled || pending || !content.trim()}><IconPlus size={18} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>添加经历</TooltipContent></Tooltip>
+        <Tooltip><TooltipTrigger asChild><Button type="submit" size="icon-sm" aria-label="添加经历" disabled={disabled || pending || loading || !content.trim()}><IconPlus size={18} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>添加经历</TooltipContent></Tooltip>
       </div>
     </form>
     {error && <p role="alert" className="settings-control-error">{error}</p>}
