@@ -85,7 +85,8 @@
 .settings-control-error { margin: calc(var(--size-unit) * 1.5) 0 0; font-size: var(--font-caption); line-height: 1.5; color: var(--status-danger); overflow-wrap: anywhere; }
 
 .floating-surface, .settings-glass-popover {
-  border: var(--stroke-width) solid var(--border);
+  /* 所有悬浮面板共用描边变量：浅色模式等同 --border，深色模式可整体调淡/调亮 */
+  border: var(--stroke-width) solid var(--floating-border, var(--border));
   background: var(--surface-chrome);
   color: var(--text-primary);
   box-shadow: var(--floating-shadow);
@@ -97,6 +98,8 @@
 .ui-dropdown-item[data-highlighted] { background: var(--control-bg); color: var(--text-primary); }
 .ui-dropdown-item[data-highlighted][data-variant="destructive"] { color: var(--destructive); }
 .ui-tooltip {
+  pointer-events: none;
+  max-width: min(18rem, calc(var(--application-layer-width, 100vw) - var(--space-5)));
   border: 0;
   background: var(--primary);
   color: var(--primary-foreground);
@@ -114,7 +117,7 @@
 .settings-select-content {
   z-index: 60;
   min-width: var(--radix-select-trigger-width);
-  max-width: min(calc(var(--size-unit) * 110), calc(100vw - var(--size-unit) * 5));
+  max-width: min(calc(var(--size-unit) * 110), calc(var(--application-layer-width, 100vw) - var(--size-unit) * 5));
   max-height: var(--radix-select-content-available-height);
   overflow: hidden;
   border-radius: var(--radius);

@@ -1435,3 +1435,51 @@ fn agent_recalls_only_its_own_recent_messages() {
         .unwrap_err();
     assert_eq!(error.code, ErrorCode::PermissionDenied);
 }
+
+#[test]
+fn agent_recall_cleanup_keeps_three_minute_anchors() {
+    for (age, retained) in [(150, true), (181, false)] {
+        let (_directory, mut database, agent) = fixture();
+        let generation = database.generation_id.clone();
+        let sent = database.commit_runtime_message(candidate(&agent, 0, "anchor-source", 0, "anchor-chain")).unwrap().0;
+        let anchor = Instant::now() - std::time::Duration::from_secs(age);
+        database.recall_anchors.insert(sent.message_id.clone(), anchor);
+        database.commit_runtime_message(candidate(&agent, 1, "anchor-new", 0, "anchor-chain")).unwrap();
+        assert_eq!(database.recall_anchors.contains_key(&sent.message_id), retained);
+        let result = database.recall_agent_message(&agent.agent_id, &sent.message_id, &generation);
+        if retained { assert!(result.is_ok()); }
+        else { code(result, ErrorCode::PermissionDenied); }
+    }
+}
+
+#[test]
+fn worker_agent_recall_broadcasts_only_after_commit_and_not_on_failure() {
+    let directory = TempDir::new().unwrap();
+    let callbacks = Arc::new(Mutex::new(Vec::new()));
+    let received = callbacks.clone();
+    let path = directory.path().join("chat.sqlite3");
+    let generation = "worker-agent-recall".to_owned();
+    let worker = DbWorker::open(directory.path(), generation.clone(), Arc::new(move |event| {
+        let reader = open_reader(&path).unwrap();
+        assert!(reader.query_row("SELECT EXISTS(SELECT 1 FROM domain_events WHERE id=?1)", [&event.event_id], |row| row.get::<_, bool>(0)).unwrap());
+        if let EventPayload::MessageChanged { message_id, .. } = &event.payload {
+            assert_eq!(reader.query_row("SELECT state FROM messages WHERE id=?1", [message_id], |row| row.get::<_, String>(0)).unwrap(), "recalled");
+        }
+        received.lock().unwrap().push(event.clone());
+    })).unwrap();
+    let agent = tauri::async_runtime::block_on(worker.call(|db| Ok(configured(db)))).unwrap();
+    let sent = tauri::async_runtime::block_on(worker.commit_runtime_message(candidate(&agent, 0, "worker-recall", 0, "worker-chain"))).unwrap();
+    callbacks.lock().unwrap().clear();
+    tauri::async_runtime::block_on(worker.recall_agent_message(agent.agent_id.clone(), sent.message_id.clone(), generation.clone())).unwrap();
+    {
+        let events = callbacks.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0].payload, EventPayload::MessageChanged { message_id, message_seq, room }
+            if message_id == &sent.message_id && message_seq == &sent.message_seq && room.content_epoch == 1.into()));
+    }
+    code(tauri::async_runtime::block_on(worker.recall_agent_message(agent.agent_id.clone(), sent.message_id, generation.clone())), ErrorCode::MessageNotFound);
+    let external = tauri::async_runtime::block_on(worker.call(|db| Ok(human(db)))).unwrap();
+    code(tauri::async_runtime::block_on(worker.recall_agent_message(agent.agent_id, external.message_id, generation)), ErrorCode::PermissionDenied);
+    assert_eq!(callbacks.lock().unwrap().len(), 1);
+    tauri::async_runtime::block_on(worker.shutdown()).unwrap();
+}

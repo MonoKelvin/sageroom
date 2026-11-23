@@ -1,6 +1,7 @@
 import * as React from "react"
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu"
 import { IconCheck, IconCircle } from "@tabler/icons-react"
+import { applicationFrame, applicationLayerContainer } from "@/app/application-layers"
 import { cn } from "@/lib/utils"
 import "./settings-controls.css"
 
@@ -9,7 +10,7 @@ function DropdownMenu(props: React.ComponentProps<typeof DropdownMenuPrimitive.R
 }
 
 function DropdownMenuPortal(props: React.ComponentProps<typeof DropdownMenuPrimitive.Portal>) {
-  return <DropdownMenuPrimitive.Portal {...props} />
+  return <DropdownMenuPrimitive.Portal container={applicationLayerContainer()} {...props} />
 }
 
 function DropdownMenuTrigger(props: React.ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
@@ -26,6 +27,8 @@ function DropdownMenuContent({
       <DropdownMenuPrimitive.Content
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
+        collisionBoundary={applicationFrame()}
+        collisionPadding={12}
         className={cn(
           "settings-glass-popover ui-dropdown-content z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-40 overflow-x-hidden overflow-y-auto rounded-xl p-1.5 outline-none",
           className,

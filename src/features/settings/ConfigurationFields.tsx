@@ -1,4 +1,5 @@
 import { cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react"
+import { applicationBounds, applicationLayerContainer } from "@/app/application-layers"
 import { createPortal } from "react-dom"
 import { IconList, IconLoader2, IconPhoto } from "@tabler/icons-react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -47,8 +48,7 @@ function ModelNameField({ value, onChange, active, readOnly, onListModels }: {
   const list = useRef<HTMLDivElement>(null)
   const toast = useToast()
 
-  // 下拉渲染到 body 并使用 fixed 定位，避开祖先的 overflow: clip 剪裁；
-  // 同时按视口边界收缩，避免溢出窗口。
+  // 浮层挂到可见窗体的层容器，按窗体边界定位，不占用外部阴影留白。
   useLayoutEffect(() => {
     if (!open) return
     const place = () => {
@@ -56,18 +56,18 @@ function ModelNameField({ value, onChange, active, readOnly, onListModels }: {
       const panel = list.current
       if (!anchor || !panel) return
       const rect = anchor.getBoundingClientRect()
+      const bounds = applicationBounds()
       const margin = 8
-      // 面板宽度由 CSS max-content 按内容自适应，此处只读取以夹紧到视口内。
-      const width = Math.min(Math.max(rect.width, panel.offsetWidth), window.innerWidth - margin * 2)
+      const width = Math.min(Math.max(rect.width, panel.offsetWidth), bounds.width - margin * 2)
       const height = panel.offsetHeight
-      const spaceBelow = window.innerHeight - rect.bottom - margin
-      const spaceAbove = rect.top - margin
+      const spaceBelow = bounds.bottom - rect.bottom - margin
+      const spaceAbove = rect.top - bounds.top - margin
       const top = spaceBelow >= height || spaceBelow >= spaceAbove
         ? rect.bottom + 4
-        : Math.max(margin, rect.top - height - 4)
+        : Math.max(bounds.top + margin, rect.top - height - 4)
       setPosition({
-        top: Math.min(top, Math.max(margin, window.innerHeight - height - margin)),
-        left: Math.min(Math.max(margin, rect.left), window.innerWidth - width - margin),
+        top: Math.min(top, Math.max(bounds.top + margin, bounds.bottom - height - margin)) - bounds.top,
+        left: Math.min(Math.max(bounds.left + margin, rect.left), bounds.right - width - margin) - bounds.left,
       })
     }
     place()
@@ -131,7 +131,7 @@ function ModelNameField({ value, onChange, active, readOnly, onListModels }: {
           </Tooltip> : option
         })}
       </div>,
-      document.body,
+      applicationLayerContainer() ?? document.body,
     )}
   </div>
 }

@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::{
+    RECALL_WINDOW,
     contracts::*,
     error::{AppResult, now_ms, parse_counter, validate_id},
 };
@@ -618,7 +619,7 @@ impl Database {
         )?;
         transaction.commit()?;
         self.recall_anchors
-            .retain(|_, anchor| anchor.elapsed() < Duration::from_secs(120));
+            .retain(|_, anchor| anchor.elapsed() < RECALL_WINDOW);
         self.recall_anchors
             .insert(message_id.clone(), recall_anchor);
         Ok((
@@ -650,7 +651,7 @@ impl Database {
         self.recall_message_with_clock(request, Instant::now, None)
     }
 
-    /// 智能体撤回自己刚发出的消息；仍受 120 秒时限与来源校验约束。
+    /// 智能体撤回自己刚发出的消息；仍受三分钟时限与来源校验约束。
     pub fn recall_agent_message(
         &mut self,
         agent_id: &str,
@@ -732,7 +733,7 @@ impl Database {
             .recall_anchors
             .get(&request.message_id)
             .and_then(|anchor| now.checked_duration_since(*anchor))
-            .is_some_and(|elapsed| elapsed < Duration::from_secs(120));
+            .is_some_and(|elapsed| elapsed < RECALL_WINDOW);
         if !eligible {
             return Err(AppError::new(
                 ErrorCode::PermissionDenied,

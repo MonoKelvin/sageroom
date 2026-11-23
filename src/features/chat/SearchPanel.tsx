@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useEffectEvent, useRef, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type FormEvent } from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
-import { IconAdjustmentsHorizontal, IconCornerDownRight, IconSearch, IconX } from "@tabler/icons-react"
+import { IconCornerDownRight, IconSearch, IconX } from "@tabler/icons-react"
 import type { Participant, SearchPage } from "@/contracts/generated"
 import { Avatar } from "@/components/Avatar"
 import { Button } from "@/components/ui/button"
 import { SettingsSelect } from "@/components/ui/settings-select"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { applicationBounds } from "@/app/application-layers"
 import { errorMessage, ipc } from "@/app/ipc"
 import { ChatSearchInput } from "./ChatSearchInput"
+import { SearchDatePicker } from "./SearchDatePicker"
 
 const formatter = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
 const SNIPPET_CONTEXT_LENGTH = 10
@@ -42,11 +43,13 @@ type FormProps = {
 function SearchForm({ generation, participants, enabled, contentEpoch, onLocate, onClose }: FormProps) {
   const [query, setQuery] = useState("")
   const [composing, setComposing] = useState(false)
-  const [filtersOpen, setFiltersOpen] = useState(false)
   const [senderId, setSenderId] = useState("")
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateUntil, setDateUntil] = useState("")
-  const [storedResult, setStoredResult] = useState<{ identity: string; page: SearchPage } | null>(null)
+  const [dateFrom, setDateFrom] = useState<number | null>(null)
+  // null 在结束时间中表示实时的“当前时间”，而不是不设上限。
+  const [dateUntil, setDateUntil] = useState<number | null>(null)
+  const earliestTime = useRef<number | null>(null)
+  const fromCustomized = useRef(false)
+  const [storedResult, setStoredResult] = useState<{ identity: string; page: SearchPage; until: number } | null>(null)
   const identity = JSON.stringify([query, senderId, dateFrom, dateUntil, contentEpoch])
   const result = storedResult?.identity === identity ? storedResult.page : null
   const [pending, setPending] = useState(false)
@@ -56,6 +59,17 @@ function SearchForm({ generation, participants, enabled, contentEpoch, onLocate,
   const scheduled = useRef<ReturnType<typeof setTimeout> | null>(null)
   const operationRevision = useRef(0)
   const mounted = useRef(enabled)
+  const [panel, setPanel] = useState<HTMLElement | null>(null)
+
+  useLayoutEffect(() => {
+    if (!panel) return
+    const measure = () => panel.style.setProperty("--search-panel-available-height", `${Math.max(0, applicationBounds().bottom - panel.getBoundingClientRect().top)}px`)
+    const observer = new ResizeObserver(measure)
+    if (panel.parentElement) observer.observe(panel.parentElement)
+    window.addEventListener("resize", measure)
+    measure()
+    return () => { observer.disconnect(); window.removeEventListener("resize", measure) }
+  }, [panel])
 
   useEffect(() => {
     mounted.current = enabled
@@ -69,6 +83,24 @@ function SearchForm({ generation, participants, enabled, contentEpoch, onLocate,
       if (id) void ipc.cancelSearch({ data_generation_id: generation, search_id: id }).catch(() => {})
     }
   }, [generation, enabled, contentEpoch])
+
+  const applyEarliestTime = useEffectEvent((value: number | null) => {
+    earliestTime.current = value
+    const nextFrom = value != null && dateUntil != null && value > dateUntil ? null : value
+    if (!fromCustomized.current && nextFrom !== dateFrom) changeFilter(() => setDateFrom(nextFrom))
+  })
+  useEffect(() => {
+    if (!enabled) return
+    let cancelled = false
+    // 从序号 0 向后读取一条，不依赖当前聊天窗口是否已加载最早历史。
+    void ipc.list({ data_generation_id: generation, before_seq: null, after_seq: "0", around_seq: null, limit: 1 }).then((page) => {
+      if (!cancelled && page?.data_generation_id === generation) {
+        const earliest = page.items?.[0]?.created_at
+        applyEarliestTime(earliest != null && Number.isFinite(earliest) && earliest <= Date.now() ? earliest : null)
+      }
+    }).catch(() => { /* 无法获取时保留不限起始，不阻断搜索。 */ })
+    return () => { cancelled = true }
+  }, [generation, enabled])
 
   const runSearch = useEffectEvent(() => { void search() })
   useEffect(() => {
@@ -111,14 +143,13 @@ function SearchForm({ generation, participants, enabled, contentEpoch, onLocate,
     stopPrevious()
     if (!requestedQuery.trim()) { setPending(false); setError("请输入要查找的文本。"); return }
     if ([...requestedQuery].length > 256) { setPending(false); setError("搜索内容不能超过 256 个字符。"); return }
-    const from = dateFrom ? new Date(`${dateFrom}T00:00:00`) : null
-    const until = dateUntil ? new Date(`${dateUntil}T00:00:00`) : null
-    if ((from && !Number.isFinite(from.getTime())) || (until && !Number.isFinite(until.getTime())) || (dateFrom && dateUntil && dateFrom > dateUntil)) {
+    const from = dateFrom
+    // 分页沿用首次检索的上限，不能让“当前时间”破坏游标身份。
+    const until = cursor && storedResult?.identity === identity ? storedResult.until : dateUntil ?? Date.now()
+    if ((from != null && !Number.isFinite(from)) || !Number.isFinite(until) || (from != null && from > until)) {
       setPending(false)
-      setError("请选择有效日期，结束日期不能早于开始日期。")
       return
     }
-    if (until) until.setDate(until.getDate() + 1)
     const searchId = crypto.randomUUID()
     active.current = searchId
     setPending(true)
@@ -126,9 +157,10 @@ function SearchForm({ generation, participants, enabled, contentEpoch, onLocate,
     setNotice(null)
     if (!cursor) setStoredResult(null)
     try {
-      const next = await ipc.search({ data_generation_id: generation, search_id: searchId, query: requestedQuery, sender_id: senderId || null, created_after: from?.getTime() ?? null, created_before: until?.getTime() ?? null, cursor, limit: 50 })
+      // 宿主使用右开区间；增加 1ms 让相等的起止时间也能命中该时刻。
+      const next = await ipc.search({ data_generation_id: generation, search_id: searchId, query: requestedQuery, sender_id: senderId || null, created_after: from, created_before: until + 1, cursor, limit: 50 })
       if (!mounted.current || active.current !== searchId || next.data_generation_id !== generation) return
-      setStoredResult((current) => ({ identity, page: cursor && current?.identity === identity ? { ...next, items: [...current.page.items, ...next.items].slice(-200) } : next }))
+      setStoredResult((current) => ({ identity, until, page: cursor && current?.identity === identity ? { ...next, items: [...current.page.items, ...next.items].slice(-200) } : next }))
     } catch (cause) {
       if (mounted.current && active.current === searchId) setError(errorMessage(cause))
     } finally {
@@ -164,21 +196,19 @@ function SearchForm({ generation, participants, enabled, contentEpoch, onLocate,
 
   function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!composing) void search() }
 
-  const hasSearchContent = Boolean(filtersOpen || query.trim() || pending || error || notice || result)
-
   return <>
-    <div className="chat-search-toolbar">
-      <ChatSearchInput value={query} pending={pending && enabled} onValueChange={changeQuery} onSubmit={submit} onCancel={() => void cancel()} onCompositionStart={() => { stopPrevious(); setComposing(true); setPending(false) }} onCompositionEnd={(value) => { setComposing(false); changeQuery(value) }} />
-      <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-sm" className="chat-search-filter-toggle" aria-label="筛选搜索" aria-expanded={filtersOpen} data-filtered={Boolean(senderId || dateFrom || dateUntil)} onClick={() => setFiltersOpen((value) => !value)}><IconAdjustmentsHorizontal size={18} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>筛选</TooltipContent></Tooltip>
-    </div>
-    {hasSearchContent && <aside className="floating-surface chat-search-results" aria-label="搜索结果面板">
+    <ChatSearchInput value={query} pending={pending && enabled} onValueChange={changeQuery} onSubmit={submit} onCancel={() => void cancel()} onCompositionStart={() => { stopPrevious(); setComposing(true); setPending(false) }} onCompositionEnd={(value) => { setComposing(false); changeQuery(value) }} />
+    <aside ref={setPanel} className="floating-surface chat-search-results" aria-label="搜索结果面板">
       <div className="chat-search-results-scroll">
-        {filtersOpen && <div className="chat-search-filters">
+        <div className="chat-search-filters">
+          <div className="chat-search-filter-heading"><span>搜索范围</span><Button type="button" variant="ghost" size="sm" onClick={() => changeFilter(() => { fromCustomized.current = false; setSenderId(""); setDateFrom(earliestTime.current); setDateUntil(null) })}>重置</Button></div>
           <SettingsSelect label="搜索成员" value={senderId} options={[{ value: "", label: "所有成员" }, ...Array.from(participants.values()).map((participant) => ({ value: participant.id, label: participant.display_name }))]} onValueChange={(value) => changeFilter(() => setSenderId(value))} />
-          <div className="chat-search-dates"><label><span>从</span><input className="settings-control" aria-label="搜索开始日期" type="date" value={dateFrom} onChange={(event) => changeFilter(() => setDateFrom(event.target.value))} /></label><label><span>至</span><input className="settings-control" aria-label="搜索结束日期" type="date" value={dateUntil} onChange={(event) => changeFilter(() => setDateUntil(event.target.value))} /></label></div>
-          {(senderId || dateFrom || dateUntil) && <Button type="button" variant="ghost" size="sm" onClick={() => changeFilter(() => { setSenderId(""); setDateFrom(""); setDateUntil("") })}>清除筛选</Button>}
-        </div>}
-        <div className="chat-search-summary" aria-live="polite">{pending ? "正在搜索全部历史…" : notice || (result ? `当前 ${result.items.length} 条匹配` : "搜索聊天")}</div>
+          <div className="chat-search-dates">
+            <div className="chat-search-date-field"><span>起始时间</span><SearchDatePicker label="搜索开始日期" value={dateFrom} max={dateUntil ?? undefined} onValueChange={(value) => changeFilter(() => { fromCustomized.current = true; setDateFrom(value) })} onClear={() => changeFilter(() => { fromCustomized.current = true; setDateFrom(null) })} /></div>
+            <div className="chat-search-date-field"><span>结束时间</span><SearchDatePicker label="搜索结束日期" value={dateUntil} min={dateFrom} onValueChange={(value) => changeFilter(() => setDateUntil(value))} onCurrent={() => changeFilter(() => setDateUntil(null))} /></div>
+          </div>
+        </div>
+        <div className="chat-search-summary" aria-live="polite">{pending ? "正在搜索全部历史…" : notice || (result ? `当前 ${result.items.length} 条匹配` : "输入文本，搜索聊天记录")}</div>
         {error && <p role="alert" className="chat-search-feedback">{error}</p>}
         {result && !pending && !notice && result.items.length === 0 && <p className="chat-search-empty">没有匹配的消息。</p>}
         <ul aria-label="搜索结果" className="chat-search-list">
@@ -197,7 +227,7 @@ function SearchForm({ generation, participants, enabled, contentEpoch, onLocate,
         </ul>
         {result?.has_more && <Button className="chat-search-more" variant="ghost" size="sm" disabled={pending} onClick={() => void search(result.next_cursor)}>加载更早的匹配</Button>}
       </div>
-    </aside>}
+    </aside>
   </>
 }
 

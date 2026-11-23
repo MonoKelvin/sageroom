@@ -1,5 +1,6 @@
 import * as React from "react"
 import * as TooltipPrimitive from "@radix-ui/react-tooltip"
+import { applicationFrame, applicationLayerContainer } from "@/app/application-layers"
 import { cn } from "@/lib/utils"
 import "./settings-controls.css"
 
@@ -29,10 +30,12 @@ function TooltipContent({
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Content>) {
   return (
-    <TooltipPrimitive.Portal>
+    <TooltipPrimitive.Portal container={applicationLayerContainer()}>
       <TooltipPrimitive.Content
         data-slot="tooltip-content"
         sideOffset={sideOffset}
+        collisionBoundary={applicationFrame()}
+        collisionPadding={12}
         className={cn(
           "ui-tooltip z-[100] max-w-72 rounded-lg px-3 py-2 text-xs leading-relaxed break-words",
           className,

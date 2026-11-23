@@ -1,0 +1,2 @@
+.chat-system-tag { margin: 0; padding: var(--space-3) var(--space-3) var(--space-1); color: var(--text-secondary); font-size: var(--font-body); line-height: 1.5; text-align: center; overflow-wrap: anywhere; }
+.chat-system-tag[data-kind="recall"] { padding-block: var(--space-2); }

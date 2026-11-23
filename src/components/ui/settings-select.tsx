@@ -1,6 +1,7 @@
 import { useId, type ComponentProps } from "react"
 import * as SelectPrimitive from "@radix-ui/react-select"
 import { IconCheck, IconChevronDown, IconChevronUp } from "@tabler/icons-react"
+import { applicationFrame, applicationLayerContainer } from "@/app/application-layers"
 import { cn } from "@/lib/utils"
 import { useControlAction } from "./use-control-action"
 import "./settings-controls.css"
@@ -46,8 +47,8 @@ export function SettingsSelect({
           <SelectPrimitive.Value placeholder={selectedIndex < 0 && value ? value : placeholder} />
           <SelectPrimitive.Icon><IconChevronDown size={17} aria-hidden="true" /></SelectPrimitive.Icon>
         </SelectPrimitive.Trigger>
-        <SelectPrimitive.Portal>
-          <SelectPrimitive.Content className="settings-select-content settings-glass-popover" position="popper" sideOffset={6} collisionPadding={10}>
+        <SelectPrimitive.Portal container={applicationLayerContainer()}>
+          <SelectPrimitive.Content className="settings-select-content settings-glass-popover" position="popper" sideOffset={6} collisionPadding={10} collisionBoundary={applicationFrame()}>
             <SelectPrimitive.ScrollUpButton className="settings-select-scroll"><IconChevronUp size={16} aria-hidden="true" /></SelectPrimitive.ScrollUpButton>
             <SelectPrimitive.Viewport className="settings-select-viewport">
               {options.map((option, index) => (

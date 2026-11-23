@@ -1,6 +1,6 @@
 use tauri::WebviewWindow;
 
-const SHADOW_GUTTER: f64 = 16.0;
+const SHADOW_GUTTER: f64 = 48.0;
 const CORNER_RADIUS: f64 = 16.0;
 const RESIZE_BORDER: f64 = 8.0;
 
@@ -79,7 +79,11 @@ fn hit_test(width: f64, height: f64, x: f64, y: f64, scale: f64, maximized: bool
 
 #[cfg(target_os = "windows")]
 mod platform {
-    use std::{io, mem::size_of_val};
+    use std::{
+        io,
+        mem::size_of_val,
+        sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    };
 
     use windows_sys::Win32::{
         Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
@@ -87,12 +91,17 @@ mod platform {
             Dwm::{DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DwmSetWindowAttribute},
             Gdi::ScreenToClient,
         },
+        System::LibraryLoader::GetModuleHandleW,
         UI::{
             HiDpi::GetDpiForWindow,
+            Input::KeyboardAndMouse::GetCapture,
             Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
             WindowsAndMessaging::{
-                GetClientRect, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTLEFT, HTRIGHT, HTTOP,
-                HTTOPLEFT, HTTOPRIGHT, HTTRANSPARENT, IsZoomed, WM_NCDESTROY, WM_NCHITTEST,
+                CallNextHookEx, GWL_EXSTYLE, GetClientRect, GetWindowLongPtrW, HC_ACTION, HHOOK,
+                HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT,
+                HTTOPRIGHT, HTTRANSPARENT, IsChild, IsIconic, IsWindowVisible, IsZoomed,
+                MSLLHOOKSTRUCT, SetWindowLongPtrW, SetWindowsHookExW, UnhookWindowsHookEx,
+                WH_MOUSE_LL, WM_NCDESTROY, WM_NCHITTEST, WS_EX_LAYERED, WS_EX_TRANSPARENT,
             },
         },
     };
@@ -101,6 +110,62 @@ mod platform {
 
     const SUBCLASS_ID: usize = 0x5346_524D;
     const E_INVALIDARG: i32 = 0x8007_0057u32 as i32;
+    static FRAME_WINDOW: AtomicUsize = AtomicUsize::new(0);
+    static MOUSE_HOOK: AtomicUsize = AtomicUsize::new(0);
+    static ORIGINAL_LAYERED: AtomicBool = AtomicBool::new(false);
+
+    fn frame_hit(hwnd: HWND, mut point: POINT) -> Option<Hit> {
+        let mut rect = RECT::default();
+        let dpi = unsafe { GetDpiForWindow(hwnd) };
+        if dpi == 0
+            || unsafe { ScreenToClient(hwnd, &mut point) } == 0
+            || unsafe { GetClientRect(hwnd, &mut rect) } == 0
+        {
+            return None;
+        }
+        Some(hit_test(
+            f64::from(rect.right - rect.left),
+            f64::from(rect.bottom - rect.top),
+            f64::from(point.x - rect.left),
+            f64::from(point.y - rect.top),
+            f64::from(dpi) / 96.0,
+            unsafe { IsZoomed(hwnd) } != 0,
+        ))
+    }
+
+    unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        // 只检查当前指针是否在窗体内；不记录输入、不消费其他窗口的鼠标事件。
+        let hwnd = FRAME_WINDOW.load(Ordering::Relaxed) as HWND;
+        if code == HC_ACTION as i32
+            && lparam != 0
+            && !hwnd.is_null()
+            && unsafe { IsWindowVisible(hwnd) } != 0
+            && unsafe { IsIconic(hwnd) } == 0
+        {
+            let point = unsafe { (*(lparam as *const MSLLHOOKSTRUCT)).pt };
+            if let Some(hit) = frame_hit(hwnd, point) {
+                let capture = unsafe { GetCapture() };
+                let captured = capture == hwnd
+                    || (!capture.is_null() && unsafe { IsChild(hwnd, capture) } != 0);
+                let ignore = hit == Hit::Transparent && !captured;
+                let current = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
+                let mut next = current;
+                if ignore {
+                    next |= (WS_EX_LAYERED | WS_EX_TRANSPARENT) as isize;
+                } else {
+                    next &= !(WS_EX_TRANSPARENT as isize);
+                    if !ORIGINAL_LAYERED.load(Ordering::Relaxed) {
+                        next &= !(WS_EX_LAYERED as isize);
+                    }
+                }
+                // 不移动、不重设尺寸；仅在跨越窗体边界时切换命中状态。
+                if next != current {
+                    unsafe { SetWindowLongPtrW(hwnd, GWL_EXSTYLE, next) };
+                }
+            }
+        }
+        unsafe { CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam) }
+    }
 
     unsafe extern "system" fn frame_proc(
         hwnd: HWND,
@@ -111,26 +176,28 @@ mod platform {
         _reference: usize,
     ) -> LRESULT {
         if message == WM_NCDESTROY {
+            FRAME_WINDOW.store(0, Ordering::Relaxed);
+            let hook = MOUSE_HOOK.swap(0, Ordering::Relaxed) as HHOOK;
+            if !hook.is_null() {
+                unsafe { UnhookWindowsHookEx(hook) };
+            }
             unsafe { RemoveWindowSubclass(hwnd, Some(frame_proc), subclass_id) };
         } else if message == WM_NCHITTEST {
-            let mut point = POINT {
+            let point = POINT {
                 x: (lparam as u32 & 0xffff) as i16 as i32,
                 y: ((lparam as u32 >> 16) & 0xffff) as i16 as i32,
             };
-            let mut rect = RECT::default();
-            let dpi = unsafe { GetDpiForWindow(hwnd) };
-            if dpi != 0
-                && unsafe { ScreenToClient(hwnd, &mut point) } != 0
-                && unsafe { GetClientRect(hwnd, &mut rect) } != 0
-            {
-                let hit = hit_test(
-                    f64::from(rect.right - rect.left),
-                    f64::from(rect.bottom - rect.top),
-                    f64::from(point.x - rect.left),
-                    f64::from(point.y - rect.top),
-                    f64::from(dpi) / 96.0,
-                    unsafe { IsZoomed(hwnd) } != 0,
-                );
+            if let Some(hit) = frame_hit(hwnd, point) {
+                // 命中判定在同一条消息内同步样式，当前点击不依赖鼠标钩子先执行。
+                let current = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
+                let mut next = current;
+                if hit == Hit::Transparent {
+                    next |= (WS_EX_LAYERED | WS_EX_TRANSPARENT) as isize;
+                } else {
+                    next &= !(WS_EX_TRANSPARENT as isize);
+                    if !ORIGINAL_LAYERED.load(Ordering::Relaxed) { next &= !(WS_EX_LAYERED as isize); }
+                }
+                if next != current { unsafe { SetWindowLongPtrW(hwnd, GWL_EXSTYLE, next) }; }
                 let result = match hit {
                     Hit::Native => None,
                     Hit::Transparent => Some(HTTRANSPARENT as LRESULT),
@@ -175,6 +242,31 @@ mod platform {
             ))
             .into());
         }
+        ORIGINAL_LAYERED.store(
+            unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } & WS_EX_LAYERED as isize != 0,
+            Ordering::Relaxed,
+        );
+        FRAME_WINDOW.store(hwnd as usize, Ordering::Relaxed);
+        // HTTRANSPARENT 只会在同线程窗口间继续命中；跨应用穿透需要扩展样式。
+        // 低级鼠标回调先更新样式，再交还系统分发；不轮询，不调用 SetWindowPos。
+        let hook = unsafe {
+            SetWindowsHookExW(
+                WH_MOUSE_LL,
+                Some(mouse_proc),
+                GetModuleHandleW(std::ptr::null()),
+                0,
+            )
+        };
+        if hook.is_null() {
+            FRAME_WINDOW.store(0, Ordering::Relaxed);
+            unsafe { RemoveWindowSubclass(hwnd, Some(frame_proc), SUBCLASS_ID) };
+            return Err(io::Error::other(format!(
+                "安装窗口外部穿透处理失败：{}",
+                io::Error::last_os_error()
+            ))
+            .into());
+        }
+        MOUSE_HOOK.store(hook as usize, Ordering::Relaxed);
         Ok(())
     }
 }
@@ -193,52 +285,42 @@ pub fn configure(window: &WebviewWindow) -> Result<(), Box<dyn std::error::Error
 
 #[cfg(test)]
 mod tests {
-    use super::{Hit, hit_test};
+    use super::{Hit, SHADOW_GUTTER, hit_test};
 
     #[test]
     fn transparent_gutter_and_rounded_cutout_do_not_claim_client_input() {
-        assert_eq!(
-            hit_test(1100.0, 780.0, 8.0, 300.0, 1.0, false),
-            Hit::Transparent
-        );
-        assert_eq!(
-            hit_test(1100.0, 780.0, 1095.0, 500.0, 1.0, false),
-            Hit::Transparent
-        );
-        assert_eq!(
-            hit_test(1100.0, 780.0, 17.0, 17.0, 1.0, false),
-            Hit::Transparent
-        );
-        assert_eq!(
-            hit_test(1100.0, 780.0, 1082.0, 762.0, 1.0, false),
-            Hit::Transparent
-        );
+        for (x, y) in [
+            (8.0, 300.0),
+            (47.0, 300.0),
+            (1095.0, 500.0),
+            (500.0, 760.0),
+            (49.0, 49.0),
+            (1050.0, 730.0),
+            (-1.0, 300.0),
+            (1100.0, 300.0),
+        ] {
+            assert_eq!(hit_test(1100.0, 780.0, x, y, 1.0, false), Hit::Transparent);
+        }
     }
 
     #[test]
     fn client_content_uses_existing_window_procedure() {
-        assert_eq!(
-            hit_test(1100.0, 780.0, 500.0, 300.0, 1.0, false),
-            Hit::Native
-        );
-        assert_eq!(hit_test(1100.0, 780.0, 90.0, 38.0, 1.0, false), Hit::Native);
-        assert_eq!(
-            hit_test(1100.0, 780.0, 1050.0, 38.0, 1.0, false),
-            Hit::Native
-        );
+        for (x, y) in [(500.0, 300.0), (90.0, 70.0), (1020.0, 70.0)] {
+            assert_eq!(hit_test(1100.0, 780.0, x, y, 1.0, false), Hit::Native);
+        }
     }
 
     #[test]
     fn visible_edges_keep_native_resize_hits() {
         for (x, y, expected) in [
-            (18.0, 300.0, Hit::Left),
-            (1082.0, 300.0, Hit::Right),
-            (500.0, 18.0, Hit::Top),
-            (500.0, 762.0, Hit::Bottom),
-            (23.0, 23.0, Hit::TopLeft),
-            (1077.0, 23.0, Hit::TopRight),
-            (23.0, 757.0, Hit::BottomLeft),
-            (1077.0, 757.0, Hit::BottomRight),
+            (50.0, 300.0, Hit::Left),
+            (1050.0, 300.0, Hit::Right),
+            (500.0, 50.0, Hit::Top),
+            (500.0, 730.0, Hit::Bottom),
+            (55.0, 55.0, Hit::TopLeft),
+            (1045.0, 55.0, Hit::TopRight),
+            (55.0, 725.0, Hit::BottomLeft),
+            (1045.0, 725.0, Hit::BottomRight),
         ] {
             assert_eq!(hit_test(1100.0, 780.0, x, y, 1.0, false), expected);
         }
@@ -246,13 +328,30 @@ mod tests {
 
     #[test]
     fn geometry_uses_live_size_and_dpi_not_reference_window_fractions() {
-        assert_eq!(hit_test(860.0, 620.0, 18.0, 300.0, 1.0, false), Hit::Left);
-        assert_eq!(hit_test(1720.0, 1240.0, 36.0, 600.0, 2.0, false), Hit::Left);
-        assert_eq!(hit_test(1375.0, 975.0, 22.5, 375.0, 1.25, false), Hit::Left);
-        assert_eq!(
-            hit_test(1720.0, 1240.0, 24.0, 600.0, 2.0, false),
-            Hit::Transparent
-        );
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            assert_eq!(
+                hit_test(
+                    924.0 * scale,
+                    684.0 * scale,
+                    (SHADOW_GUTTER + 2.0) * scale,
+                    300.0 * scale,
+                    scale,
+                    false
+                ),
+                Hit::Left
+            );
+            assert_eq!(
+                hit_test(
+                    924.0 * scale,
+                    684.0 * scale,
+                    (SHADOW_GUTTER - 1.0) * scale,
+                    300.0 * scale,
+                    scale,
+                    false
+                ),
+                Hit::Transparent
+            );
+        }
     }
 
     #[test]

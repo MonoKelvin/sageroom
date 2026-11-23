@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 
 use crate::{
     domain::{
+        RECALL_WINDOW,
         contracts::*,
         error::{AppResult, now_ms},
     },
@@ -171,7 +172,7 @@ pub fn parse(text: &str, input: &RuntimeInput) -> AppResult<Decision> {
     {
         return Err(invalid());
     }
-    // 撤回只允许自己本次运行内发出、仍在 120 秒窗口内的可见消息。
+    // 撤回只允许自己本次运行内发出、仍在三分钟窗口内的可见消息。
     let now = now_ms();
     for id in &decision.recalls {
         let eligible = input
@@ -182,7 +183,7 @@ pub fn parse(text: &str, input: &RuntimeInput) -> AppResult<Decision> {
                 &message.id == id
                     && message.state == MessageState::Visible
                     && message.sender_id == input.agent.agent_id
-                    && now.saturating_sub(message.created_at) < 120_000
+                    && now.saturating_sub(message.created_at) < RECALL_WINDOW.as_millis() as i64
             });
         if !eligible {
             return Err(invalid());
@@ -193,7 +194,7 @@ pub fn parse(text: &str, input: &RuntimeInput) -> AppResult<Decision> {
             "check_later" | "take_a_break" => {
                 (300..=86_400).contains(&plan.after_seconds) && plan.review_message_ordinal.is_none()
             }
-            // 一次性自我回看：绑定本次某条消息，必须落在两分钟撤回窗口内。
+            // 一次性自我回看：绑定本次某条消息，不超出三分钟撤回窗口。
             "self_review" => {
                 (1..=90).contains(&plan.after_seconds)
                     && plan
@@ -587,9 +588,14 @@ mod tests {
         // 撤回自己的近期消息：允许。
         value["recalls"] = json!(["own-recent"]);
         assert!(parse(&value.to_string(), &input).is_ok());
-        // 超过 120 秒：拒绝。
-        input.messages[0].created_at = now_ms() - 121_000;
-        assert!(parse(&value.to_string(), &input).is_err());
+        // 两分钟之后、三分钟以内仍允许撤回。
+        input.messages[0].created_at = now_ms() - 150_000;
+        assert!(parse(&value.to_string(), &input).is_ok());
+        // 达到三分钟或超过三分钟：拒绝。
+        for age in [180_000, 180_001] {
+            input.messages[0].created_at = now_ms() - age;
+            assert!(parse(&value.to_string(), &input).is_err());
+        }
         // 别人的消息：拒绝。
         input.messages[0].created_at = now_ms();
         input.messages[0].sender_id = "someone-else".into();

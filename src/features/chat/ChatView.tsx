@@ -110,11 +110,15 @@ export function ChatView({ session, active, onNavigate }: ApplicationPageProps) 
       {!snapshot && <p className="chat-scene-meta p-3">{session.loading ? "正在读取聊天对象…" : "本地数据尚未就绪。"}</p>}
     </WorkspaceList>
     <section ref={setChatCard} className="surface-card workspace-detail chat-card" aria-label="当前聊天">
-      <header className="panel-heading chat-heading" data-search-open={panel === "search" && active}>
+      <header className="panel-heading chat-heading" data-search-open={panel === "search" && active} data-typing={typingNames.length > 0}>
         <div className="chat-heading-main">
           <h2 className="panel-title chat-room-title"><span className="chat-room-name" title={scene?.name ?? "Sageroom"}>{scene?.name ?? "Sageroom"}</span>{snapshot && <span className="chat-member-count"> ({snapshot.participants.length})</span>}</h2>
           <p className="panel-description">{snapshot ? `${onlineCount} 位成员在线` : session.loading ? "正在读取本地聊天" : "本地数据未就绪"}</p>
         </div>
+        {typingNames.length > 0 && <div className="chat-typing" role="status" aria-live="polite">
+          <span className="chat-typing-text"><span className="chat-typing-name">{typingNames[0]}</span><span>{typingNames.length > 1 ? `等${typingNames.length}人正在输入` : "正在输入"}</span></span>
+          <span className="chat-typing-dots" aria-hidden="true"><i /><i /><i /></span>
+        </div>}
         <div className="chat-heading-actions">
           <SearchPanel open={panel === "search" && active} onOpenChange={(open) => { if (open) openPanel("search"); else closePanel() }} generation={snapshot?.data_generation_id ?? null} contentEpoch={contentEpoch} participants={participants} onLocate={session.jumpTo} onReturnFocus={restoreFocus} />
           <Tooltip disableHoverableContent><TooltipTrigger asChild><Button variant="ghost" size="icon" aria-label="群信息" aria-expanded={panel === "members"} onClick={() => openPanel("members")}><IconUsers size={20} stroke={1.5} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>群信息</TooltipContent></Tooltip>
@@ -125,10 +129,6 @@ export function ChatView({ session, active, onNavigate }: ApplicationPageProps) 
         <div className="chat-conversation">
           {session.page && snapshot ? <MessageList key={session.windowRevision} active={active} page={session.page} participants={participants} restoreAnchor={session.restoreAnchor} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !session.page.has_more_after} hasNewMessages={session.hasNewMessages} scrollToBottomSignal={scrollToBottomSignal} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={session.goToLatest} quotes={quotes} onQuote={selectQuote} onRecall={session.recall} onLocateQuote={session.jumpTo} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}
           {resolvedQuotes?.identity === quotesIdentity && resolvedQuotes.error && <p className="chat-quote-feedback" role="alert">{resolvedQuotes.error}</p>}
-          {typingNames.length > 0 && <div className="chat-typing" role="status" aria-live="polite">
-            <span className="chat-typing-dots" aria-hidden="true"><i /><i /><i /></span>
-            <span>{typingNames.length === 1 ? `${typingNames[0]} 正在输入…` : `${typingNames.slice(0, 2).join("、")} 正在输入…`}</span>
-          </div>}
           <MessageComposer active={active} dataGenerationId={generation} disabled={!snapshot} participants={snapshot?.participants} canMentionAll={snapshot?.room.owner_participant_id === snapshot?.local_user.id} quoteMessageId={quoteId} quote={quote} onRemoveQuote={() => setSelectedQuote(null)} onSend={handleSend} />
         </div>
       </div>

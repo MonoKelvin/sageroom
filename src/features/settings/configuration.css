@@ -40,7 +40,7 @@
 .model-name-field { position: relative; display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0; }
 .model-name-field > .settings-editor { flex: 1 1 auto; width: auto; min-width: 0; }
 .model-name-list { flex: none; width: var(--control-height); height: var(--control-height); padding: 0; border-radius: var(--radius); }
-.model-name-options { position: fixed; z-index: 90; width: max-content; max-width: calc(100vw - var(--space-4)); display: flex; flex-direction: column; max-height: min(calc(var(--size-unit) * 60), calc(100dvh - var(--space-6))); padding: var(--space-1); overflow-y: auto; overflow-x: hidden; border-radius: var(--radius); }
+.model-name-options { position: fixed; z-index: 90; width: max-content; max-width: calc(var(--application-layer-width, 100vw) - var(--space-4)); display: flex; flex-direction: column; max-height: min(calc(var(--size-unit) * 60), calc(var(--application-layer-height, 100dvh) - var(--space-6))); padding: var(--space-1); overflow-y: auto; overflow-x: hidden; border-radius: var(--radius); }
 .model-name-option { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--control-height); padding: var(--space-2) var(--space-3); border: 0; border-radius: calc(var(--radius) * .6); background: transparent; color: var(--text-primary); font-size: var(--font-body); text-align: left; white-space: nowrap; cursor: pointer; }
 .model-name-option-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-name-option-mark { display: inline-flex; flex: none; align-items: center; color: var(--text-secondary); }

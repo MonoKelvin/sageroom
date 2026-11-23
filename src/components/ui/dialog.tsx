@@ -1,6 +1,7 @@
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { IconX } from "@tabler/icons-react"
+import { applicationLayerContainer } from "@/app/application-layers"
 import { cn } from "@/lib/utils"
 
 function Dialog(props: React.ComponentProps<typeof DialogPrimitive.Root>) {
@@ -12,7 +13,7 @@ function DialogTrigger(props: React.ComponentProps<typeof DialogPrimitive.Trigge
 }
 
 function DialogPortal(props: React.ComponentProps<typeof DialogPrimitive.Portal>) {
-  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
+  return <DialogPrimitive.Portal data-slot="dialog-portal" container={applicationLayerContainer()} {...props} />
 }
 
 function DialogClose(props: React.ComponentProps<typeof DialogPrimitive.Close>) {
@@ -44,7 +45,7 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-2xl border border-border/70 bg-popover p-5 text-popover-foreground shadow-sm outline-none",
+          "fixed top-1/2 left-1/2 z-50 grid max-h-[calc(var(--application-layer-height,100dvh)-2rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-2xl border border-border/70 bg-popover p-5 text-popover-foreground shadow-sm outline-none",
           className,
         )}
         {...props}

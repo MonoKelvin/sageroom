@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use tokio_util::sync::CancellationToken;
@@ -8,6 +8,7 @@ use super::{
     database::{Database, fingerprint},
 };
 use crate::domain::{
+    RECALL_WINDOW,
     contracts::*,
     error::{AppResult, now_ms, parse_counter, validate_id},
 };
@@ -821,9 +822,9 @@ impl Database {
         )?;
         cancelled(&message.cancellation)?;
         transaction.commit()?;
-        // 自动消息也记录撤回时间锚，供智能体在两分钟内自我更正。
+        // 自动消息也记录撤回时间锚，供智能体在三分钟内自我更正。
         self.recall_anchors
-            .retain(|_, anchor| anchor.elapsed() < Duration::from_secs(120));
+            .retain(|_, anchor| anchor.elapsed() < RECALL_WINDOW);
         self.recall_anchors
             .insert(result.message_id.clone(), Instant::now());
         Ok((result, Some(event)))

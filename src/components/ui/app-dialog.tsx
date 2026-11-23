@@ -1,6 +1,7 @@
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { IconX } from "@tabler/icons-react"
+import { applicationLayerContainer } from "@/app/application-layers"
 import { cn } from "@/lib/utils"
 import { Button } from "./button"
 import "./app-dialog.css"
@@ -29,7 +30,7 @@ export function AppDialog({ open, onOpenChange, title, children, actions = [], m
   className?: string
 }) {
   return <DialogPrimitive.Root open={open} onOpenChange={onOpenChange} modal={modal}>
-    <DialogPrimitive.Portal>
+    <DialogPrimitive.Portal container={applicationLayerContainer()}>
       <DialogPrimitive.Overlay className="app-dialog-overlay" />
       <DialogPrimitive.Content className={cn("floating-surface app-dialog-content", className)} aria-describedby={undefined}>
         <header className="app-dialog-heading">

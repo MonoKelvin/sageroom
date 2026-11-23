@@ -46,6 +46,8 @@
   --destructive: var(--status-danger);
   --destructive-foreground: #ffffff;
   --border: rgb(0 0 0 / 9%);
+  /* 所有悬浮面板（右键菜单、弹窗、下拉、日历、搜索结果等）共用的描边，浅色下与常规边框一致 */
+  --floating-border: var(--border);
   --input: rgb(0 0 0 / 8%);
   --ring: var(--text-primary);
   --control-bg: rgb(0 0 0 / 4%);
@@ -98,6 +100,8 @@
   --status-danger: #e08a8a;
   --status-warning: #d9b06a;
   --border: rgb(255 255 255 / 10%);
+  /* 深色下悬浮面板描边更轻、更细，避免面板边缘发白；所有悬浮面板共用，便于统一调整 */
+  --floating-border: rgb(255 255 255 / 18%);
   --input: rgb(255 255 255 / 12%);
   --control-bg: rgb(255 255 255 / 5%);
   --control-hover-bg: rgb(255 255 255 / 7%);
@@ -178,15 +182,18 @@
 
 .stage {
   /* 原生边框尺度与 window_frame.rs 保持一致，不随内容间距缩放。 */
-  --window-gutter: calc(var(--native-frame-unit) * 2 / var(--window-zoom));
-  --window-radius: var(--window-gutter);
+  --window-gutter: calc(var(--native-frame-unit) * 6 / var(--window-zoom));
+  --window-radius: calc(var(--native-frame-unit) * 2 / var(--window-zoom));
   --window-resize-border: calc(var(--native-frame-unit) / var(--window-zoom));
-  --window-shadow: 0 calc(var(--native-frame-unit) * .625 / var(--window-zoom)) calc(var(--window-gutter) * 1.25) var(--window-shadow-color);
+  --window-shadow: 0 calc(var(--native-frame-unit) * .625 / var(--window-zoom)) calc(var(--native-frame-unit) * 2.5 / var(--window-zoom)) var(--window-shadow-color);
+  --application-layer-width: calc(100vw - var(--window-gutter) * 2);
+  --application-layer-height: calc(100dvh - var(--window-gutter) * 2);
   width: 100%;
   height: 100%;
   padding: var(--window-gutter);
   overflow: hidden;
   background: transparent;
+  pointer-events: none;
 }
 
 .canvas {
@@ -201,9 +208,10 @@
   border-radius: var(--window-radius);
   background: var(--surface-canvas);
   box-shadow: var(--window-shadow);
+  pointer-events: auto;
 }
 
-.stage[data-maximized="true"] { padding: 0; }
+.stage[data-maximized="true"] { --window-gutter: 0px; padding: 0; }
 .canvas[data-maximized="true"] { border-radius: 0; box-shadow: none; }
 .window-resize-handle { position: absolute; z-index: 51; touch-action: none; user-select: none; }
 .window-resize-handle[data-direction="North"] { inset: 0 var(--window-radius) auto; height: var(--window-resize-border); cursor: n-resize; }
@@ -306,8 +314,9 @@
 .navigation-tooltip { font-size: var(--font-caption); }
 .application-pages { display: flex; flex: 1; min-width: 0; min-height: 0; padding: var(--space-3) var(--space-4) var(--space-4) 0; }
 .application-page { display: flex; width: 100%; min-width: 0; min-height: 0; }
-.application-layers { position: absolute; inset: 0; pointer-events: none; z-index: 50; }
+.application-layers { position: absolute; inset: 0; pointer-events: none; z-index: 50; overflow: clip; contain: layout paint; border-radius: inherit; }
 .application-layers > * { pointer-events: auto; }
+.application-layers > [data-radix-popper-content-wrapper]:has(.ui-tooltip) { pointer-events: none; }
 .workspace-layout { position: relative; display: grid; grid-template-columns: var(--list-width) minmax(0, 1fr); gap: 0; width: 100%; min-width: 0; min-height: 0; padding: var(--space-2); border-radius: var(--radius-card); background: var(--surface-workspace); }
 .workspace-list { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: var(--space-3); }
 .workspace-list-hover { position: absolute; inset: 0; pointer-events: none; background: var(--control-bg); opacity: 0; transition: clip-path var(--motion-duration-medium) ease, opacity var(--motion-duration) var(--motion-ease); }

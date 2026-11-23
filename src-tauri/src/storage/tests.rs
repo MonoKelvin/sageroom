@@ -1492,11 +1492,13 @@ fn recall_before_deadline_clears_content_and_atomically_changes_epoch() {
     request.quote_message_id = Some(source.message_id);
     request.mention_all = true;
     let message = database.send_message(request).unwrap().0;
+    let before = list(&mut database, 50);
+    let original = before.items.iter().find(|item| item.id == message.message_id).unwrap();
     let anchor = database.recall_anchors[&message.message_id];
     let (result, event) = database
         .recall_message_at(
             recall_request(&database, &message.message_id),
-            anchor + Duration::from_millis(119_999),
+            anchor + Duration::from_millis(179_999),
         )
         .unwrap();
     assert_eq!(result.room.content_epoch, 1.into());
@@ -1505,7 +1507,13 @@ fn recall_before_deadline_clears_content_and_atomically_changes_epoch() {
         matches!(event.unwrap().payload, EventPayload::MessageChanged { message_id, message_seq, room }
         if message_id == message.message_id && message_seq == message.message_seq && room.content_epoch == 1.into())
     );
-    let stored = list(&mut database, 50).items.pop().unwrap();
+    let after = list(&mut database, 50);
+    assert_eq!(after.items.len(), before.items.len());
+    let stored = after.items.last().unwrap();
+    assert_eq!(stored.id, original.id);
+    assert_eq!(stored.seq, original.seq);
+    assert_eq!(stored.sender_id, original.sender_id);
+    assert_eq!(stored.created_at, original.created_at);
     assert_eq!(stored.state, MessageState::Recalled);
     assert!(stored.parts.is_empty());
     assert!(stored.mention_ids.is_empty());
@@ -1533,7 +1541,7 @@ fn recall_at_deadline_fails_and_send_replay_does_not_refresh_anchor() {
     assert_code(
         database.recall_message_at(
             recall_request(&database, &message.message_id),
-            anchor + Duration::from_millis(120_000),
+            anchor + Duration::from_millis(180_000),
         ),
         ErrorCode::PermissionDenied,
     );
@@ -1542,7 +1550,7 @@ fn recall_at_deadline_fails_and_send_replay_does_not_refresh_anchor() {
     assert_code(
         database.recall_message_at(
             recall_request(&database, &message.message_id),
-            anchor + Duration::from_millis(120_001),
+            anchor + Duration::from_millis(180_001),
         ),
         ErrorCode::PermissionDenied,
     );
@@ -1550,6 +1558,36 @@ fn recall_at_deadline_fails_and_send_replay_does_not_refresh_anchor() {
         list(&mut database, 50).items[0].state,
         MessageState::Visible
     );
+    assert_eq!(snapshot(&mut database).room.content_epoch, 0.into());
+}
+
+#[test]
+fn recall_send_cleanup_keeps_three_minute_anchors_and_removes_expired_ones() {
+    for (age, retained) in [(150, true), (181, false)] {
+        let (_directory, mut database) = database();
+        let message = send(&mut database, "cleanup-source", "检查撤回窗口");
+        let anchor = Instant::now() - Duration::from_secs(age);
+        database.recall_anchors.insert(message.message_id.clone(), anchor);
+        send(&mut database, "cleanup-new", "新的消息不应过早清理旧锚");
+        assert_eq!(database.recall_anchors.contains_key(&message.message_id), retained);
+        if retained {
+            database.recall_message(recall_request(&database, &message.message_id)).unwrap();
+        } else {
+            assert_code(database.recall_message(recall_request(&database, &message.message_id)), ErrorCode::PermissionDenied);
+        }
+    }
+}
+
+#[test]
+fn recall_monotonic_clock_reversal_cannot_authorize_a_request() {
+    let (_directory, mut database) = database();
+    let message = send(&mut database, "clock-source", "时钟回拨不能获得撤回授权");
+    let anchor = database.recall_anchors[&message.message_id];
+    assert_code(
+        database.recall_message_at(recall_request(&database, &message.message_id), anchor - Duration::from_millis(1)),
+        ErrorCode::PermissionDenied,
+    );
+    assert_eq!(list(&mut database, 50).items[0].state, MessageState::Visible);
     assert_eq!(snapshot(&mut database).room.content_epoch, 0.into());
 }
 

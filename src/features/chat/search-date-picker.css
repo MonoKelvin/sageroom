@@ -1,0 +1,34 @@
+.search-date-trigger { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0; min-height: var(--control-height); padding: var(--space-2) calc(var(--size-unit) * 2.5); border: 0; border-radius: var(--radius); outline: none; background: var(--control-bg); color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; transition: background-color var(--motion-duration) ease; }
+.search-date-trigger > svg { flex: none; color: var(--text-secondary); }
+.search-date-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-body); font-variant-numeric: tabular-nums; }
+.search-date-trigger[aria-expanded="true"], .search-date-trigger:focus-visible { background: var(--control-active-bg); }
+.search-date-popover { z-index: 55; width: min(calc(var(--size-unit) * 78), calc(var(--application-layer-width, 100vw) - var(--space-5)), var(--radix-popover-content-available-width)); max-height: var(--radix-popover-content-available-height); padding: var(--space-3); overflow: auto; border-radius: var(--radius-card); outline: none; opacity: 1; transform: scale(1); transform-origin: var(--radix-popover-content-transform-origin); transition: opacity var(--motion-duration) var(--motion-ease), transform var(--motion-duration) var(--motion-ease); }
+.search-date-popover[data-state="closed"] { pointer-events: none; opacity: 0; transform: scale(.97); }
+@starting-style { .search-date-popover[data-state="open"] { opacity: 0; transform: scale(.97); } }
+.search-date-popover[data-motion="instant"], html[data-input-modality="keyboard"] .search-date-popover { transition: none; }
+.search-calendar-heading { display: flex; align-items: center; gap: var(--space-1); margin-bottom: var(--space-2); }
+.search-calendar-heading .ui-button, .search-calendar-actions .ui-button { transform: none; }
+.search-calendar-month { display: flex; justify-content: center; align-items: center; flex: 1; gap: var(--space-1); min-width: 0; }
+.search-calendar-month .settings-select-trigger { background: transparent; gap: var(--space-1); padding-inline: var(--space-2); }
+.search-calendar-grid { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: calc(var(--size-unit) * .5); font-variant-numeric: tabular-nums; }
+.search-calendar-grid th { height: var(--space-6); color: var(--text-secondary); font-size: var(--font-caption); font-weight: 400; text-align: center; }
+.search-calendar-grid td { padding: 0; }
+.search-calendar-day { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 1; padding: 0; border: 0; border-radius: calc(var(--radius) * .8); outline: none; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--font-body); cursor: pointer; transition: background-color var(--motion-duration) ease, color var(--motion-duration) ease; }
+.search-calendar-day[data-outside="true"] { color: var(--text-secondary); }
+.search-calendar-day[aria-current="date"]::after { content: ""; position: absolute; bottom: var(--space-1); width: calc(var(--size-unit) * .75); height: calc(var(--size-unit) * .75); border-radius: var(--radius-pill); background: currentColor; }
+.search-calendar-day[data-selected="true"] { background: var(--semantic-accent); color: var(--semantic-accent-foreground); }
+.search-calendar-day:disabled { opacity: .3; cursor: default; }
+.search-calendar-day:focus-visible { outline: calc(var(--stroke-width) * 2) solid var(--semantic-accent); outline-offset: var(--stroke-width); }
+.search-calendar-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-3); }
+.search-calendar-actions > :last-child { margin-left: auto; }
+@media (hover: hover) and (pointer: fine) {
+  .search-date-trigger:hover { background: var(--control-hover-bg); }
+  .search-calendar-day:not(:disabled):not([data-selected="true"]):hover { background: var(--control-hover-bg); }
+  .search-calendar-month .settings-select-trigger:hover { background: var(--control-bg); }
+}
+@media (max-height: 480px) {
+  .search-calendar-heading > .ui-button { width: calc(var(--size-unit) * 6); height: calc(var(--size-unit) * 7); }
+  .search-calendar-month .settings-select-trigger { padding-inline: var(--space-1); gap: calc(var(--size-unit) * .5); font-size: var(--font-caption); }
+}
+@media (prefers-reduced-motion: reduce) { .search-date-popover, .search-date-trigger, .search-calendar-day { transition: none; } }
+html[data-reduced-motion="true"] .search-date-popover, html[data-reduced-motion="true"] .search-date-trigger, html[data-input-modality="keyboard"] .search-date-trigger, html[data-input-modality="keyboard"] .search-calendar-day { transition: none; }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { IconAlertTriangle, IconCheck, IconInfoCircle, IconX, type TablerIcon } from "@tabler/icons-react"
+import { applicationLayerContainer } from "@/app/application-layers"
 import { ToastContext, type ToastApi, type ToastItem, type ToastKind } from "./toast-context"
 import "./toast.css"
 
@@ -58,6 +59,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     {children}
     {createPortal(<div className="toast-viewport" aria-label="通知">
       {items.map((item) => <ToastCard key={item.id} item={item} onDismiss={() => dismiss(item.id)} />)}
-    </div>, document.body)}
+    </div>, applicationLayerContainer() ?? document.body)}
   </ToastContext.Provider>
 }

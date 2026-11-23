@@ -154,17 +154,19 @@ impl DbWorker {
         self.call(move |database| database.record_experience(experience)).await
     }
 
-    /// 智能体撤回自己 120 秒内发出的消息。
+    /// 智能体撤回自己三分钟内发出的消息。
     pub async fn recall_agent_message(
         &self,
         agent_id: String,
         message_id: String,
         generation: String,
     ) -> AppResult<()> {
+        let sink = self.event_sink.clone();
         self.call(move |database| {
-            database
-                .recall_agent_message(&agent_id, &message_id, &generation)
-                .map(|_| ())
+            if let Some(event) = database.recall_agent_message(&agent_id, &message_id, &generation)? {
+                sink(&event);
+            }
+            Ok(())
         })
         .await
     }
