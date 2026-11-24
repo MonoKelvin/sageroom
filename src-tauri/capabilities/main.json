@@ -20,6 +20,7 @@
     "model-test",
     "experience-manage",
     "avatar-manage",
+    "clipboard-read",
     "app-snapshot",
     "chat-send",
     "chat-recall",

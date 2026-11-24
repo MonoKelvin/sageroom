@@ -29,11 +29,11 @@ describe("应用标题栏", () => {
   it("空白标题区域可拖动和双击，右键不触发拖动", () => {
     const onAction = vi.fn().mockResolvedValue(undefined)
     render(<Titlebar maximized={false} onAction={onAction} />)
-    const title = screen.getByText("Sageroom")
-    fireEvent.mouseDown(title, { button: 2, detail: 1 })
+    const identity = document.querySelector(".titlebar-identity") as HTMLElement
+    fireEvent.mouseDown(identity, { button: 2, detail: 1 })
     expect(onAction).not.toHaveBeenCalled()
-    fireEvent.mouseDown(title, { button: 0, detail: 1 })
-    fireEvent.doubleClick(title)
+    fireEvent.mouseDown(identity, { button: 0, detail: 1 })
+    fireEvent.doubleClick(identity)
     expect(onAction.mock.calls.map(([action]) => action)).toEqual(["drag", "maximize"])
   })
 })

@@ -13,7 +13,9 @@ pub type AppResult<T> = Result<T, AppError>;
 impl AppError {
     pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
         let retryability = match code {
-            ErrorCode::DbBusy | ErrorCode::Backpressure => Retryability::Retry,
+            ErrorCode::DbBusy | ErrorCode::Backpressure | ErrorCode::ModelOutputInvalid => {
+                Retryability::Retry
+            }
             ErrorCode::InvalidInput
             | ErrorCode::PermissionDenied
             | ErrorCode::IdempotencyConflict

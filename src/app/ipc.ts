@@ -230,6 +230,20 @@ export const ipc = {
     request("avatar_import", input, validateAvatarImportRequest, validateAvatarImportResponse),
   readAvatar: (input: AvatarReadRequest): Promise<AvatarData> =>
     request("avatar_read", input, validateAvatarReadRequest, validateAvatarReadResponse),
+  /** 读取系统剪贴板纯文本；走原生实现，避免 WebView2 对 clipboard.readText 的授权限制。 */
+  readClipboardText: async (): Promise<string> => {
+    if (!isDesktopEnvironment()) throw clientError("请在 Sageroom 桌面应用中粘贴。", "CAPABILITY_UNSUPPORTED")
+    let output: unknown
+    try { output = await invoke("clipboard_read_text") } catch {
+      throw clientError("无法读取剪贴板，请稍后重试。")
+    }
+    const response = output as ApiResponse<string>
+    if (response && typeof response === "object" && "error" in response) throw new IpcError(response.error)
+    if (!response || typeof response !== "object" || !("data" in response) || typeof response.data !== "string") {
+      throw clientError("剪贴板返回的数据不符合当前合同。")
+    }
+    return response.data
+  },
   exit: (input: ExitRequest): Promise<ExitResult> =>
     request("app_request_exit", input, validateExitRequest, validateExitResponse),
   completeExit: (input: ExitReadyRequest): Promise<ExitResult> =>

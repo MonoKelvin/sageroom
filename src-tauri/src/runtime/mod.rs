@@ -716,7 +716,28 @@ async fn run_actor(
                 }
                 Err(error) => {
                     report_failure(&worker, &agent, error, count, &cancellation).await;
-                    return;
+                    // 一次失败不等于永久停用：只有真正需要人工介入的状态才退出，
+                    // 其余（如模型本轮没给出合法决策）退回观察，继续等下一条消息。
+                    let blocking = matches!(
+                        worker
+                            .runtime_states()
+                            .await
+                            .ok()
+                            .and_then(|states| {
+                                states.into_iter().find(|s| s.agent_id == agent.agent_id)
+                            })
+                            .map(|s| s.status),
+                        Some(
+                            AgentRuntimeStatus::NeedsConfiguration
+                                | AgentRuntimeStatus::Paused
+                                | AgentRuntimeStatus::Protected
+                        )
+                    );
+                    if blocking {
+                        return;
+                    }
+                    throttle = true;
+                    break;
                 }
             }
         }
@@ -831,13 +852,16 @@ async fn make_decision(
     // 首次正常请求；格式错误重试一次；首次内容过长时再请模型自己决定是否改拆短句。
     let mut retry: Option<RetryKind> = None;
     let mut fallback: Option<decision::Decision> = None;
-    for _attempt in 0..3 {
+    for attempt in 0..3 {
         if cancellation.is_cancelled() {
             return Err(AppError::new(ErrorCode::ShuttingDown, "成员请求已取消。"));
         }
-        *count = worker
-            .reserve_runtime_request(agent.agent_id.clone(), DAILY_REQUEST_LIMIT)
-            .await?;
+        // 只有首次尝试计入每日额度：格式修复属于应用侧兜底，不该重复消耗用户配额。
+        if attempt == 0 {
+            *count = worker
+                .reserve_runtime_request(agent.agent_id.clone(), DAILY_REQUEST_LIMIT)
+                .await?;
+        }
         state(
             worker,
             agent,
@@ -876,6 +900,14 @@ async fn make_decision(
                     fallback = Some(value);
                     retry = Some(RetryKind::Split);
                     continue;
+                }
+                // 拆句重试如果反而变成沉默，不能覆盖原本要发的消息，
+                // 否则「问它拆短一点」会变成「它决定不说话」。
+                if retry == Some(RetryKind::Split)
+                    && value.participation != Participation::Speak
+                    && fallback.is_some()
+                {
+                    break;
                 }
                 decision = Some(value);
                 break;
@@ -1011,6 +1043,8 @@ async fn report_failure(
     let status = match error.code {
         // 频率/额度保护是暂时性的，降级为观察而不是永久停用。
         ErrorCode::Backpressure => AgentRuntimeStatus::Observing,
+        // 本轮输出不合协议同样只影响这一轮：退回观察，等下一条消息再判断。
+        ErrorCode::ModelOutputInvalid => AgentRuntimeStatus::Observing,
         ErrorCode::ConfigConflict => AgentRuntimeStatus::Protected,
         ErrorCode::PermissionDenied if !error.may_have_been_charged => {
             AgentRuntimeStatus::NeedsConfiguration

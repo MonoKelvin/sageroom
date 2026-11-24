@@ -85,8 +85,8 @@
 .settings-control-error { margin: calc(var(--size-unit) * 1.5) 0 0; font-size: var(--font-caption); line-height: 1.5; color: var(--status-danger); overflow-wrap: anywhere; }
 
 .floating-surface, .settings-glass-popover {
-  /* 所有悬浮面板共用描边变量：浅色模式等同 --border，深色模式可整体调淡/调亮 */
-  border: var(--stroke-width) solid var(--floating-border, var(--border));
+  /* 描边强度由 --floating-border 单点控制，深浅模式各自定义 --floating-border-alpha */
+  border: var(--stroke-width) solid var(--floating-border);
   background: var(--surface-chrome);
   color: var(--text-primary);
   box-shadow: var(--floating-shadow);
@@ -97,6 +97,10 @@
 .ui-dropdown-content { transform-origin: var(--radix-dropdown-menu-content-transform-origin); }
 .ui-dropdown-item[data-highlighted] { background: var(--control-bg); color: var(--text-primary); }
 .ui-dropdown-item[data-highlighted][data-variant="destructive"] { color: var(--destructive); }
+/* 禁用项：文字与图标统一变浅，且不响应悬停/焦点高亮 */
+.ui-dropdown-item[data-disabled], .ui-dropdown-item:disabled { color: var(--text-secondary); opacity: .45; cursor: default; }
+.ui-dropdown-item[data-disabled][data-highlighted], .ui-dropdown-item:disabled[data-highlighted] { background: transparent; color: var(--text-secondary); }
+.ui-dropdown-item[data-disabled] svg, .ui-dropdown-item:disabled svg { color: var(--text-secondary); }
 .ui-tooltip {
   pointer-events: none;
   max-width: min(18rem, calc(var(--application-layer-width, 100vw) - var(--space-5)));

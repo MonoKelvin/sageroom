@@ -1,5 +1,6 @@
 import type { MouseEvent } from "react"
 import { IconMinus, IconSquare, IconSquares, IconX } from "@tabler/icons-react"
+import appIcon from "@/assets/app-icon.png"
 import type { WindowAction } from "./useWindowState"
 
 export function Titlebar({ maximized, onAction }: { maximized: boolean; onAction: (action: WindowAction) => Promise<void> }) {
@@ -14,12 +15,7 @@ export function Titlebar({ maximized, onAction }: { maximized: boolean; onAction
   return (
     <header className="application-titlebar" onMouseDown={drag} onDoubleClick={(event) => { if (!isControl(event)) void onAction("maximize") }}>
       <div className="titlebar-identity">
-        <svg className="titlebar-mark" viewBox="0 0 28 28" aria-hidden="true">
-          <rect x="1" y="1" width="26" height="26" rx="8" fill="currentColor" />
-          <path d="M8 9h12v8a3 3 0 0 1-3 3h-5l-3 2v-2H8V9Z" fill="var(--primary-foreground)" />
-          <path d="M11 12h6M11 15h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-        </svg>
-        <span className="titlebar-wordmark">Sageroom</span>
+        <img className="titlebar-mark" src={appIcon} alt="" aria-hidden="true" draggable={false} />
       </div>
       <div className="titlebar-controls">
         <button type="button" className="titlebar-control" aria-label="最小化窗口" title="最小化" onClick={() => void onAction("minimize")}>

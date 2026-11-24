@@ -9,7 +9,12 @@
   --size-unit: 4px;
   --spacing: var(--size-unit);
   --font-body: 14px;
-  --radius: 10px;
+  /* 圆角基准值与连续曲率补偿倍数：见 styles/corner-curvature.css。
+     仅在支持 corner-shape 的引擎里放大，降级时 --corner-scale 保持 1。 */
+  --radius-base: 10px;
+  /* 连续圆角半径补偿倍数：支持 corner-shape 时生效，降级由代理层重置为 1 */
+  --corner-scale: 1.5;
+  --radius: calc(var(--radius-base) * var(--corner-scale));
   --stroke-width: 1px;
   --native-frame-unit: 8px;
   --window-zoom: 1;
@@ -27,6 +32,10 @@
   --text-secondary: #67676e;
   --semantic-accent: #0969da;
   --semantic-accent-foreground: #ffffff;
+  /* 自己发送的消息：品牌底 + 白字；选中文字时用黑底保证在品牌色上仍清晰 */
+  --self-bubble-bg: var(--semantic-accent);
+  --self-bubble-foreground: #ffffff;
+  --self-bubble-selection-bg: #000000;
   --status-danger: #ab3b3b;
   --status-warning: #8a601f;
   --background: var(--surface-canvas);
@@ -45,10 +54,14 @@
   --accent-foreground: var(--text-primary);
   --destructive: var(--status-danger);
   --destructive-foreground: #ffffff;
-  --border: rgb(0 0 0 / 9%);
-  /* 所有悬浮面板（右键菜单、弹窗、下拉、日历、搜索结果等）共用的描边，浅色下与常规边框一致 */
-  --floating-border: var(--border);
-  --input: rgb(0 0 0 / 8%);
+  /* 描边单一数据源：深浅模式只切换基色通道与强度，常规边框 / 悬浮面板 / 输入框统一派生。 */
+  --stroke-rgb: 0 0 0;
+  --border-alpha: 9%;
+  --floating-border-alpha: 9%;
+  --border: rgb(var(--stroke-rgb) / var(--border-alpha));
+  /* 右键菜单、下拉、抽屉、弹窗、Toast、日历、搜索面板等悬浮面板共用，改强度即可一键调整 */
+  --floating-border: rgb(var(--stroke-rgb) / var(--floating-border-alpha));
+  --input: rgb(var(--stroke-rgb) / 8%);
   --ring: var(--text-primary);
   --control-bg: rgb(0 0 0 / 4%);
   --control-hover-bg: rgb(0 0 0 / 6%);
@@ -89,6 +102,8 @@
   --surface-chrome: rgb(28 28 32 / 94%);
   --semantic-accent: #69adff;
   --semantic-accent-foreground: #151517;
+  /* 深色主题的亮蓝配白字对比不足，自有气泡用加深一档的品牌蓝 */
+  --self-bubble-bg: #1158c7;
   --surface-glass: rgb(24 24 28 / 96%);
   --surface-self: #333337;
   --text-primary: #ffffff;
@@ -99,10 +114,11 @@
   --destructive-foreground: #151517;
   --status-danger: #e08a8a;
   --status-warning: #d9b06a;
-  --border: rgb(255 255 255 / 10%);
-  /* 深色下悬浮面板描边更轻、更细，避免面板边缘发白；所有悬浮面板共用，便于统一调整 */
-  --floating-border: rgb(255 255 255 / 18%);
-  --input: rgb(255 255 255 / 12%);
+  --stroke-rgb: 255 255 255;
+  --border-alpha: 10%;
+  /* 悬浮面板只保留极淡的一圈描边，靠阴影与色差区分层级，避免边缘发白 */
+  --floating-border-alpha: 5%;
+  --input: rgb(var(--stroke-rgb) / 12%);
   --control-bg: rgb(255 255 255 / 5%);
   --control-hover-bg: rgb(255 255 255 / 7%);
   --control-active-bg: rgb(255 255 255 / 9%);
@@ -235,8 +251,7 @@
   background: var(--surface-canvas);
 }
 .titlebar-identity { display: flex; flex: 1; align-self: stretch; align-items: center; gap: var(--space-2); min-width: 0; }
-.titlebar-mark { width: calc(var(--size-unit) * 6); height: calc(var(--size-unit) * 6); flex: 0 0 auto; color: var(--primary); }
-.titlebar-wordmark { color: var(--text-primary); font-size: var(--font-body); font-weight: 650; line-height: 1; }
+.titlebar-mark { width: calc(var(--size-unit) * 6); height: calc(var(--size-unit) * 6); flex: 0 0 auto; border-radius: calc(var(--size-unit) * 1.5); pointer-events: none; user-select: none; }
 .titlebar-controls { display: flex; align-self: stretch; padding: calc(var(--size-unit) * 1.25) calc(var(--size-unit) * 1.75); gap: calc(var(--size-unit) * .5); }
 .titlebar-control {
   display: grid;

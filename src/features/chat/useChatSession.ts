@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { AppSnapshot, Appearance, ChatRecallResult, ChatSendRequest, ChatSendResult, DomainEvent, MessagePage, Room } from "@/contracts/generated"
+import type { AppSnapshot, Appearance, ChatMessage, ChatRecallResult, ChatSendRequest, ChatSendResult, DomainEvent, MessagePage, Room } from "@/contracts/generated"
 import { errorMessage, ipc, IpcError } from "@/app/ipc"
 import { compareSequence, INITIAL_ITEM_INDEX, mergePage, PAGE_SIZE } from "./timeline"
 
@@ -30,6 +30,9 @@ export function useChatSession() {
   const [windowRevision, setWindowRevision] = useState(0)
   const [targetMessageId, setTargetMessageId] = useState<string | null>(null)
   const [restoreAnchor, setRestoreAnchor] = useState<ScrollAnchor | null>(null)
+  // 刚增量到达的消息，用于一次性冒出动画；不影响既有条目。
+  const [enteringIds, setEnteringIds] = useState<ReadonlySet<string>>(() => new Set())
+  const enteringTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const chatActive = useRef(true)
   const navigationEpoch = useRef(0)
   const snapshotRef = useRef<AppSnapshot | null>(null)
@@ -56,6 +59,17 @@ export function useChatSession() {
     firstIndexRef.current = index
     setPage(next)
     setFirstItemIndex(index)
+  }, [])
+
+  /** 标记增量到达的消息，短暂持有后释放，驱动一次性冒出动画。 */
+  const markEntering = useCallback((incoming: ChatMessage[], knownSeq: string | null) => {
+    const fresh = incoming
+      .filter((item) => !knownSeq || compareSequence(item.seq, knownSeq) > 0)
+      .map((item) => item.id)
+    if (!fresh.length) return
+    setEnteringIds((previous) => new Set([...previous, ...fresh]))
+    if (enteringTimer.current) clearTimeout(enteringTimer.current)
+    enteringTimer.current = setTimeout(() => setEnteringIds(new Set()), 600)
   }, [])
 
   const report = useCallback((cause: unknown) => {
@@ -112,6 +126,20 @@ export function useChatSession() {
     if (current && !current.has_more_after) assignPage({ ...current, has_more_after: true }, firstIndexRef.current)
   }, [assignPage])
 
+  /** 撤回只在当前窗口就地替换该条与 room，不重建窗口，避免整列表闪烁重载。 */
+  const applyRecall = useCallback((messageId: string, room: Room) => {
+    const snapshot = snapshotRef.current
+    if (snapshot) assignSnapshot({ ...snapshot, room })
+    const current = pageRef.current
+    if (!current) return
+    const index = current.items.findIndex((item) => item.id === messageId)
+    if (index < 0 || current.items[index].state === "recalled") return
+    const items = current.items.slice()
+    const target = items[index]
+    items[index] = { ...target, state: "recalled", parts: [], quote_message_id: null, mention_all: false, mention_ids: [] }
+    assignPage({ ...current, items }, firstIndexRef.current)
+  }, [assignPage, assignSnapshot])
+
   const synchronizeMessages = useCallback(async () => {
     const currentSnapshot = snapshotRef.current
     const currentPage = pageRef.current
@@ -144,9 +172,10 @@ export function useChatSession() {
     }
     const visible = pageRef.current
     if (!visible) return
+    markEntering(next.items, visible.last_seq)
     const merged = mergePage(visible, next, "after", firstIndexRef.current)
     assignPage(merged.page, merged.firstItemIndex)
-  }, [assignPage, markNewMessages, replaceWindow])
+  }, [assignPage, markEntering, markNewMessages, replaceWindow])
 
   const synchronize = useCallback(async (reset = false) => {
     const token = lifecycle.current
@@ -206,7 +235,8 @@ export function useChatSession() {
       assignSnapshot(next)
       await synchronize()
     } else if (event.payload.kind === "message_changed") {
-      await synchronize()
+      // 撤回就地替换该条，content_epoch 的变化随 room 一起更新，不再重建整个窗口。
+      applyRecall(event.payload.message_id, event.payload.room)
     } else if (event.payload.kind === "message_committed") {
       if (compareSequence(event.payload.message_seq, current.latest_message_seq) > 0) {
         next.latest_message_seq = event.payload.message_seq
@@ -216,7 +246,7 @@ export function useChatSession() {
     } else {
       assignSnapshot(next)
     }
-  }, [assignSnapshot, synchronize, synchronizeMessages])
+  }, [applyRecall, assignSnapshot, synchronize, synchronizeMessages])
 
   const activateEvents = useCallback((token: number) => {
     if (token !== lifecycle.current) return
@@ -277,6 +307,7 @@ export function useChatSession() {
       unsubscribe?.()
       window.removeEventListener("focus", onFocus)
       if (highlightTimer.current) clearTimeout(highlightTimer.current)
+      if (enteringTimer.current) clearTimeout(enteringTimer.current)
     }
   }, [activateEvents, enqueue, processEvent, report, synchronize])
 
@@ -315,6 +346,7 @@ export function useChatSession() {
       if (!chatActive.current || navigation !== navigationEpoch.current) return
       const visible = pageRef.current
       if (!visible) return
+      if (direction === "after") markEntering(next.items, visible.last_seq)
       const merged = mergePage(visible, next, direction, firstIndexRef.current)
       assignPage(merged.page, merged.firstItemIndex)
       if (!merged.page.has_more_after && atBottomRef.current) setHasNewMessages(false)
@@ -324,7 +356,7 @@ export function useChatSession() {
       paginationBusy.current = false
       if (token === lifecycle.current) setLoadingMore(false)
     }
-  }, [assignPage, report])
+  }, [assignPage, markEntering, report])
 
   const send = useCallback(async (text: string, requestId: string, options: SendOptions = EMPTY_SEND_OPTIONS): Promise<ChatSendResult> => {
     const current = snapshotRef.current
@@ -351,9 +383,10 @@ export function useChatSession() {
     if (!current) throw generationError()
     const result = await ipc.recall({ data_generation_id: current.data_generation_id, client_request_id: requestId, message_id: messageId })
     if (result.data_generation_id !== snapshotRef.current?.data_generation_id) throw generationError()
-    await enqueue(() => synchronize())
+    // 就地更新，避免撤回时整个消息列表重新加载闪烁。
+    applyRecall(messageId, result.room)
     return result
-  }, [enqueue, synchronize])
+  }, [applyRecall])
 
   const applyRoom = useCallback((room: Room, generation: string) => {
     const current = snapshotRef.current
@@ -400,7 +433,7 @@ export function useChatSession() {
 
   return {
     snapshot, page, loading, loadingMore, error, hasNewMessages, atBottom,
-    firstItemIndex, windowRevision, targetMessageId, restoreAnchor,
+    firstItemIndex, windowRevision, targetMessageId, restoreAnchor, enteringIds,
     reload, send, recall, goToLatest, jumpTo, updateAtBottom, updateRenderedAnchor, setChatActive, applyRoom, applyAppearance,
     loadOlder: () => loadPage("before"),
     loadNewer: () => loadPage("after"),

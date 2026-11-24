@@ -88,6 +88,8 @@ pub enum ErrorCode {
     SearchCancelled,
     SearchTimeout,
     CapabilityUnsupported,
+    /// 模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。
+    ModelOutputInvalid,
     InternalError,
 }
 

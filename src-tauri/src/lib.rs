@@ -54,6 +54,7 @@ pub fn run() {
             app::commands::development_model_import,
             app::commands::avatar_import,
             app::commands::avatar_read,
+            app::commands::clipboard_read_text,
             app::commands::app_request_exit,
             app::commands::app_exit_ready,
         ])

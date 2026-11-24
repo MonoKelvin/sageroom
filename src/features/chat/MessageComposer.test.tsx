@@ -164,4 +164,95 @@ describe("消息输入", () => {
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(2))
     expect(onSend.mock.calls[1]?.[1]).not.toBe(onSend.mock.calls[0]?.[1])
   })
+
+  it("右键菜单按选区启用操作，执行后保留光标位置", async () => {
+    render(<MessageComposer dataGenerationId="generation" disabled={false} onSend={vi.fn()} />)
+    const input = screen.getByRole("textbox", { name: "消息输入" }) as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: "你好世界" } })
+
+    // 无选区：复制/剪切/删除禁用，全选可用
+    input.setSelectionRange(4, 4)
+    fireEvent.select(input)
+    fireEvent.contextMenu(input)
+    await screen.findByRole("menu", { name: "输入框编辑" })
+    // 菜单打开不能让输入框失焦，否则选区高亮会消失
+    expect(input).toHaveFocus()
+    const item = (name: string) => screen.getByRole("menuitem", { name })
+    expect(item("复制")).toBeDisabled()
+    expect(item("剪切")).toBeDisabled()
+    expect(item("删除")).toBeDisabled()
+    expect(item("全选")).toBeEnabled()
+
+    // 全选后复制/剪切/删除应可用
+    fireEvent.click(item("全选"))
+    await waitFor(() => expect(input.selectionStart).toBe(0))
+    expect(input.selectionEnd).toBe(4)
+
+    fireEvent.contextMenu(input)
+    expect(await screen.findByRole("menuitem", { name: "复制" })).toBeEnabled()
+    expect(screen.getByRole("menuitem", { name: "剪切" })).toBeEnabled()
+    expect(screen.getByRole("menuitem", { name: "删除" })).toBeEnabled()
+
+    // 删除选区后内容与光标正确
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除" }))
+    expect(input).toHaveValue("")
+  })
+
+  it("输入框禁用时右键菜单不可编辑操作", async () => {
+    render(<MessageComposer dataGenerationId="generation" disabled onSend={vi.fn()} />)
+    const input = screen.getByRole("textbox", { name: "消息输入" }) as HTMLTextAreaElement
+    fireEvent.contextMenu(input)
+    const menu = await screen.findByRole("menu", { name: "输入框编辑" })
+    expect(menu).toBeInTheDocument()
+    expect(screen.getByRole("menuitem", { name: "粘贴" })).toBeDisabled()
+    expect(screen.getByRole("menuitem", { name: "全选" })).toBeDisabled()
+  })
+
+  it("滚轮按行滚动：普通一行，Ctrl 加速", () => {
+    render(<MessageComposer dataGenerationId="generation" disabled={false} onSend={vi.fn()} />)
+    const input = screen.getByRole("textbox", { name: "消息输入" }) as HTMLTextAreaElement
+    // 伪造可滚动状态与行高（jsdom 不做真实布局）
+    Object.defineProperty(input, "scrollHeight", { configurable: true, value: 400 })
+    Object.defineProperty(input, "clientHeight", { configurable: true, value: 100 })
+    vi.spyOn(window, "getComputedStyle").mockReturnValue({ lineHeight: "21px", fontSize: "14px" } as CSSStyleDeclaration)
+    input.scrollTop = 60
+
+    fireEvent.wheel(input, { deltaY: 100 })
+    expect(input.scrollTop).toBe(81)
+    fireEvent.wheel(input, { deltaY: 100, ctrlKey: true })
+    expect(input.scrollTop).toBe(165)
+    fireEvent.wheel(input, { deltaY: -100 })
+    expect(input.scrollTop).toBe(144)
+    vi.mocked(window.getComputedStyle).mockRestore()
+  })
+
+  it("双击手柄在最小与聊天区一半之间切换", () => {
+    // 挂载时就会测量，需在渲染前拦截，让聊天区报告 600 高度
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains("chat-conversation")) return { height: 600, width: 800, top: 0, left: 0, bottom: 600, right: 800, x: 0, y: 0, toJSON: () => ({}) } as DOMRect
+      // textarea 高度跟随当前 style.height，模拟真实布局
+      const height = this.tagName === "TEXTAREA" ? (Number.parseFloat((this as HTMLTextAreaElement).style.height) || 76) : 0
+      return { height, width: 100, top: 0, left: 0, bottom: 0, right: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect
+    })
+    try {
+      render(
+        <div className="chat-conversation">
+          <MessageComposer dataGenerationId="generation" disabled={false} onSend={vi.fn()} />
+        </div>,
+      )
+      const handle = screen.getByRole("separator", { name: "拖动上边界调整输入框高度" })
+      const input = screen.getByRole("textbox", { name: "消息输入" }) as HTMLTextAreaElement
+
+      // 最小态（76）双击 → 展开到一半（300）
+      fireEvent.doubleClick(handle)
+      expect(input.style.height).toBe("300px")
+
+      // 已展开再双击 → 收回最小
+      fireEvent.doubleClick(handle)
+      expect(input.style.height).toBe("76px")
+    } finally {
+      // 必须在原型上还原，否则会影响后续用例
+      vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockRestore()
+    }
+  })
 })

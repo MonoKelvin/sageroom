@@ -72,3 +72,8 @@ commands.allow = ["experience_list", "experience_add", "experience_delete", "exp
 identifier = "avatar-manage"
 description = "原生选择头像并以不透明对象标识读取"
 commands.allow = ["avatar_import", "avatar_read"]
+
+[[permission]]
+identifier = "clipboard-read"
+description = "读取系统剪贴板纯文本，用于输入框粘贴"
+commands.allow = ["clipboard_read_text"]

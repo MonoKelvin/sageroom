@@ -506,3 +506,76 @@ pub async fn app_exit_ready(
     .await;
     Ok(result.into())
 }
+
+/// 读取系统剪贴板纯文本。
+/// WebView2 里 navigator.clipboard.readText 需要额外运行时授权，常被拒绝；
+/// 走原生剪贴板可避免权限提示，也与系统右键菜单行为一致。
+#[tauri::command]
+pub async fn clipboard_read_text(window: WebviewWindow) -> Result<ApiResponse<String>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        read_clipboard_text()
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[cfg(windows)]
+fn read_clipboard_text() -> AppResult<String> {
+    use windows_sys::Win32::System::DataExchange::{
+        CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+    };
+    use windows_sys::Win32::System::Memory::{GlobalLock, GlobalUnlock};
+    use windows_sys::Win32::System::Ole::CF_UNICODETEXT;
+
+    // 剪贴板可能被其他进程短暂占用，最多重试若干次。
+    let mut opened = false;
+    for _ in 0..8 {
+        if unsafe { OpenClipboard(std::ptr::null_mut()) } != 0 {
+            opened = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(15));
+    }
+    if !opened {
+        return Err(AppError::new(
+            ErrorCode::CapabilityUnsupported,
+            "剪贴板正被其他程序占用，请稍后重试。",
+        ));
+    }
+
+    // 无论读取是否成功都要关闭剪贴板。
+    let read = (|| -> AppResult<String> {
+        if unsafe { IsClipboardFormatAvailable(CF_UNICODETEXT as u32) } == 0 {
+            return Ok(String::new());
+        }
+        let handle = unsafe { GetClipboardData(CF_UNICODETEXT as u32) };
+        if handle.is_null() {
+            return Ok(String::new());
+        }
+        let pointer = unsafe { GlobalLock(handle) } as *const u16;
+        if pointer.is_null() {
+            return Ok(String::new());
+        }
+        let mut length = 0usize;
+        unsafe {
+            while *pointer.add(length) != 0 {
+                length += 1;
+            }
+        }
+        let text = unsafe { String::from_utf16_lossy(std::slice::from_raw_parts(pointer, length)) };
+        unsafe { GlobalUnlock(handle) };
+        Ok(text)
+    })();
+
+    unsafe { CloseClipboard() };
+    read
+}
+
+#[cfg(not(windows))]
+fn read_clipboard_text() -> AppResult<String> {
+    Err(AppError::new(
+        ErrorCode::CapabilityUnsupported,
+        "当前平台暂不支持读取剪贴板。",
+    ))
+}

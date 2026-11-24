@@ -281,7 +281,7 @@ var schema418 = {
 	],
 	"type": "object"
 };
-var schema419 = {
+var schema419 = { "oneOf": [{
 	"enum": [
 		"INVALID_INPUT",
 		"PERMISSION_DENIED",
@@ -303,7 +303,11 @@ var schema419 = {
 		"INTERNAL_ERROR"
 	],
 	"type": "string"
-};
+}, {
+	"const": "MODEL_OUTPUT_INVALID",
+	"description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+	"type": "string"
+}] };
 var schema420 = {
 	"enum": [
 		"never",
@@ -314,155 +318,233 @@ var schema420 = {
 };
 function validate319(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
+	let errors = 0;
 	const evaluated0 = validate319.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
-	if (data && typeof data == "object" && !Array.isArray(data)) {
-		let missing0;
-		if (data.code === void 0 && (missing0 = "code") || data.message === void 0 && (missing0 = "message") || data.retryability === void 0 && (missing0 = "retryability") || data.field_path === void 0 && (missing0 = "field_path") || data.trace_id === void 0 && (missing0 = "trace_id") || data.may_have_been_charged === void 0 && (missing0 = "may_have_been_charged")) {
-			validate319.errors = [{
-				instancePath,
-				schemaPath: "#/required",
-				keyword: "required",
-				params: { missingProperty: missing0 },
-				message: "must have required property '" + missing0 + "'"
-			}];
-			return false;
-		} else {
-			for (const key0 in data) if (!(key0 === "code" || key0 === "field_path" || key0 === "may_have_been_charged" || key0 === "message" || key0 === "retryability" || key0 === "trace_id")) {
+	if (errors === 0) {
+		if (data && typeof data == "object" && !Array.isArray(data)) {
+			let missing0;
+			if (data.code === void 0 && (missing0 = "code") || data.message === void 0 && (missing0 = "message") || data.retryability === void 0 && (missing0 = "retryability") || data.field_path === void 0 && (missing0 = "field_path") || data.trace_id === void 0 && (missing0 = "trace_id") || data.may_have_been_charged === void 0 && (missing0 = "may_have_been_charged")) {
 				validate319.errors = [{
 					instancePath,
-					schemaPath: "#/additionalProperties",
-					keyword: "additionalProperties",
-					params: { additionalProperty: key0 },
-					message: "must NOT have additional properties"
+					schemaPath: "#/required",
+					keyword: "required",
+					params: { missingProperty: missing0 },
+					message: "must have required property '" + missing0 + "'"
 				}];
 				return false;
-			}
-			if (data.code !== void 0) {
-				let data0 = data.code;
-				if (typeof data0 !== "string") {
+			} else {
+				const _errs1 = errors;
+				for (const key0 in data) if (!(key0 === "code" || key0 === "field_path" || key0 === "may_have_been_charged" || key0 === "message" || key0 === "retryability" || key0 === "trace_id")) {
 					validate319.errors = [{
-						instancePath: instancePath + "/code",
-						schemaPath: "#/$defs/ErrorCode/type",
-						keyword: "type",
-						params: { type: "string" },
-						message: "must be string"
+						instancePath,
+						schemaPath: "#/additionalProperties",
+						keyword: "additionalProperties",
+						params: { additionalProperty: key0 },
+						message: "must NOT have additional properties"
 					}];
 					return false;
 				}
-				if (!(data0 === "INVALID_INPUT" || data0 === "PERMISSION_DENIED" || data0 === "DATA_GENERATION_CHANGED" || data0 === "IDEMPOTENCY_CONFLICT" || data0 === "CONFIG_CONFLICT" || data0 === "BACKPRESSURE" || data0 === "SHUTTING_DOWN" || data0 === "DB_BUSY" || data0 === "DB_CORRUPT" || data0 === "DISK_FULL" || data0 === "IO_ERROR" || data0 === "SCHEMA_UNSUPPORTED" || data0 === "DATA_ROOT_INVALID" || data0 === "MESSAGE_NOT_FOUND" || data0 === "SEARCH_CANCELLED" || data0 === "SEARCH_TIMEOUT" || data0 === "CAPABILITY_UNSUPPORTED" || data0 === "INTERNAL_ERROR")) {
-					validate319.errors = [{
-						instancePath: instancePath + "/code",
-						schemaPath: "#/$defs/ErrorCode/enum",
-						keyword: "enum",
-						params: { allowedValues: schema419.enum },
-						message: "must be equal to one of the allowed values"
-					}];
-					return false;
-				}
-				var valid0 = true;
-			} else var valid0 = true;
-			if (valid0) {
-				if (data.field_path !== void 0) {
-					let data1 = data.field_path;
-					if (typeof data1 !== "string" && data1 !== null) {
-						validate319.errors = [{
-							instancePath: instancePath + "/field_path",
-							schemaPath: "#/properties/field_path/type",
-							keyword: "type",
-							params: { type: schema418.properties.field_path.type },
-							message: "must be string,null"
-						}];
-						return false;
-					}
-					var valid0 = true;
-				} else var valid0 = true;
-				if (valid0) {
-					if (data.may_have_been_charged !== void 0) {
-						if (typeof data.may_have_been_charged !== "boolean") {
-							validate319.errors = [{
-								instancePath: instancePath + "/may_have_been_charged",
-								schemaPath: "#/properties/may_have_been_charged/type",
+				if (_errs1 === errors) {
+					if (data.code !== void 0) {
+						let data0 = data.code;
+						const _errs2 = errors;
+						const _errs4 = errors;
+						let valid2 = false;
+						let passing0 = null;
+						const _errs5 = errors;
+						if (typeof data0 !== "string") {
+							const err0 = {
+								instancePath: instancePath + "/code",
+								schemaPath: "#/$defs/ErrorCode/oneOf/0/type",
 								keyword: "type",
-								params: { type: "boolean" },
-								message: "must be boolean"
-							}];
-							return false;
+								params: { type: "string" },
+								message: "must be string"
+							};
+							if (vErrors === null) vErrors = [err0];
+							else vErrors.push(err0);
+							errors++;
 						}
-						var valid0 = true;
+						if (!(data0 === "INVALID_INPUT" || data0 === "PERMISSION_DENIED" || data0 === "DATA_GENERATION_CHANGED" || data0 === "IDEMPOTENCY_CONFLICT" || data0 === "CONFIG_CONFLICT" || data0 === "BACKPRESSURE" || data0 === "SHUTTING_DOWN" || data0 === "DB_BUSY" || data0 === "DB_CORRUPT" || data0 === "DISK_FULL" || data0 === "IO_ERROR" || data0 === "SCHEMA_UNSUPPORTED" || data0 === "DATA_ROOT_INVALID" || data0 === "MESSAGE_NOT_FOUND" || data0 === "SEARCH_CANCELLED" || data0 === "SEARCH_TIMEOUT" || data0 === "CAPABILITY_UNSUPPORTED" || data0 === "INTERNAL_ERROR")) {
+							const err1 = {
+								instancePath: instancePath + "/code",
+								schemaPath: "#/$defs/ErrorCode/oneOf/0/enum",
+								keyword: "enum",
+								params: { allowedValues: schema419.oneOf[0].enum },
+								message: "must be equal to one of the allowed values"
+							};
+							if (vErrors === null) vErrors = [err1];
+							else vErrors.push(err1);
+							errors++;
+						}
+						var _valid0 = _errs5 === errors;
+						if (_valid0) {
+							valid2 = true;
+							passing0 = 0;
+						}
+						const _errs7 = errors;
+						if (typeof data0 !== "string") {
+							const err2 = {
+								instancePath: instancePath + "/code",
+								schemaPath: "#/$defs/ErrorCode/oneOf/1/type",
+								keyword: "type",
+								params: { type: "string" },
+								message: "must be string"
+							};
+							if (vErrors === null) vErrors = [err2];
+							else vErrors.push(err2);
+							errors++;
+						}
+						if ("MODEL_OUTPUT_INVALID" !== data0) {
+							const err3 = {
+								instancePath: instancePath + "/code",
+								schemaPath: "#/$defs/ErrorCode/oneOf/1/const",
+								keyword: "const",
+								params: { allowedValue: "MODEL_OUTPUT_INVALID" },
+								message: "must be equal to constant"
+							};
+							if (vErrors === null) vErrors = [err3];
+							else vErrors.push(err3);
+							errors++;
+						}
+						var _valid0 = _errs7 === errors;
+						if (_valid0 && valid2) {
+							valid2 = false;
+							passing0 = [passing0, 1];
+						} else if (_valid0) {
+							valid2 = true;
+							passing0 = 1;
+						}
+						if (!valid2) {
+							const err4 = {
+								instancePath: instancePath + "/code",
+								schemaPath: "#/$defs/ErrorCode/oneOf",
+								keyword: "oneOf",
+								params: { passingSchemas: passing0 },
+								message: "must match exactly one schema in oneOf"
+							};
+							if (vErrors === null) vErrors = [err4];
+							else vErrors.push(err4);
+							errors++;
+							validate319.errors = vErrors;
+							return false;
+						} else {
+							errors = _errs4;
+							if (vErrors !== null) {
+								if (_errs4) vErrors.length = _errs4;
+								else vErrors = null;
+							}
+						}
+						var valid0 = _errs2 === errors;
 					} else var valid0 = true;
 					if (valid0) {
-						if (data.message !== void 0) {
-							if (typeof data.message !== "string") {
+						if (data.field_path !== void 0) {
+							let data1 = data.field_path;
+							const _errs9 = errors;
+							if (typeof data1 !== "string" && data1 !== null) {
 								validate319.errors = [{
-									instancePath: instancePath + "/message",
-									schemaPath: "#/properties/message/type",
+									instancePath: instancePath + "/field_path",
+									schemaPath: "#/properties/field_path/type",
 									keyword: "type",
-									params: { type: "string" },
-									message: "must be string"
+									params: { type: schema418.properties.field_path.type },
+									message: "must be string,null"
 								}];
 								return false;
 							}
-							var valid0 = true;
+							var valid0 = _errs9 === errors;
 						} else var valid0 = true;
 						if (valid0) {
-							if (data.retryability !== void 0) {
-								let data4 = data.retryability;
-								if (typeof data4 !== "string") {
+							if (data.may_have_been_charged !== void 0) {
+								const _errs11 = errors;
+								if (typeof data.may_have_been_charged !== "boolean") {
 									validate319.errors = [{
-										instancePath: instancePath + "/retryability",
-										schemaPath: "#/$defs/Retryability/type",
+										instancePath: instancePath + "/may_have_been_charged",
+										schemaPath: "#/properties/may_have_been_charged/type",
 										keyword: "type",
-										params: { type: "string" },
-										message: "must be string"
+										params: { type: "boolean" },
+										message: "must be boolean"
 									}];
 									return false;
 								}
-								if (!(data4 === "never" || data4 === "retry" || data4 === "after_user_action")) {
-									validate319.errors = [{
-										instancePath: instancePath + "/retryability",
-										schemaPath: "#/$defs/Retryability/enum",
-										keyword: "enum",
-										params: { allowedValues: schema420.enum },
-										message: "must be equal to one of the allowed values"
-									}];
-									return false;
-								}
-								var valid0 = true;
+								var valid0 = _errs11 === errors;
 							} else var valid0 = true;
 							if (valid0) {
-								if (data.trace_id !== void 0) {
-									if (typeof data.trace_id !== "string") {
+								if (data.message !== void 0) {
+									const _errs13 = errors;
+									if (typeof data.message !== "string") {
 										validate319.errors = [{
-											instancePath: instancePath + "/trace_id",
-											schemaPath: "#/properties/trace_id/type",
+											instancePath: instancePath + "/message",
+											schemaPath: "#/properties/message/type",
 											keyword: "type",
 											params: { type: "string" },
 											message: "must be string"
 										}];
 										return false;
 									}
-									var valid0 = true;
+									var valid0 = _errs13 === errors;
 								} else var valid0 = true;
+								if (valid0) {
+									if (data.retryability !== void 0) {
+										let data4 = data.retryability;
+										const _errs15 = errors;
+										if (typeof data4 !== "string") {
+											validate319.errors = [{
+												instancePath: instancePath + "/retryability",
+												schemaPath: "#/$defs/Retryability/type",
+												keyword: "type",
+												params: { type: "string" },
+												message: "must be string"
+											}];
+											return false;
+										}
+										if (!(data4 === "never" || data4 === "retry" || data4 === "after_user_action")) {
+											validate319.errors = [{
+												instancePath: instancePath + "/retryability",
+												schemaPath: "#/$defs/Retryability/enum",
+												keyword: "enum",
+												params: { allowedValues: schema420.enum },
+												message: "must be equal to one of the allowed values"
+											}];
+											return false;
+										}
+										var valid0 = _errs15 === errors;
+									} else var valid0 = true;
+									if (valid0) {
+										if (data.trace_id !== void 0) {
+											const _errs18 = errors;
+											if (typeof data.trace_id !== "string") {
+												validate319.errors = [{
+													instancePath: instancePath + "/trace_id",
+													schemaPath: "#/properties/trace_id/type",
+													keyword: "type",
+													params: { type: "string" },
+													message: "must be string"
+												}];
+												return false;
+											}
+											var valid0 = _errs18 === errors;
+										} else var valid0 = true;
+									}
+								}
 							}
 						}
 					}
 				}
 			}
+		} else {
+			validate319.errors = [{
+				instancePath,
+				schemaPath: "#/type",
+				keyword: "type",
+				params: { type: "object" },
+				message: "must be object"
+			}];
+			return false;
 		}
-	} else {
-		validate319.errors = [{
-			instancePath,
-			schemaPath: "#/type",
-			keyword: "type",
-			params: { type: "object" },
-			message: "must be object"
-		}];
-		return false;
 	}
 	validate319.errors = vErrors;
-	return true;
+	return errors === 0;
 }
 validate319.evaluated = {
 	"props": true,

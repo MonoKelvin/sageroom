@@ -52,9 +52,14 @@ pub enum Participation {
 #[serde(deny_unknown_fields)]
 pub struct PlannedMessage {
     pub parts: Vec<MessagePart>,
+    // 以下字段模型经常省略，缺失时用安全默认值兜底，避免整轮决策作废。
+    #[serde(default)]
     pub quote_message_id: Option<String>,
+    #[serde(default)]
     pub mention_ids: Vec<String>,
+    #[serde(default)]
     pub mention_all: bool,
+    #[serde(default)]
     pub send_after_ms: u64,
 }
 
@@ -63,13 +68,16 @@ pub struct PlannedMessage {
 pub struct WakePlan {
     pub after_seconds: u64,
     pub reason_code: String,
+    #[serde(default)]
     pub review_message_ordinal: Option<u32>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExtraData {
+    #[serde(default)]
     pub message_annotations: Vec<Value>,
+    #[serde(default)]
     pub memory_candidates: Vec<Value>,
 }
 
@@ -84,24 +92,35 @@ pub struct DecisionExperience {
 #[serde(deny_unknown_fields)]
 pub struct Decision {
     pub participation: Participation,
+    #[serde(default)]
     pub messages: Vec<PlannedMessage>,
+    #[serde(default)]
     pub recalls: Vec<String>,
+    #[serde(default)]
     pub tool_requests: Vec<Value>,
+    #[serde(default)]
     pub group_patch: Option<Value>,
+    #[serde(default)]
     pub announcement: Option<Value>,
+    #[serde(default)]
     pub profile_patch: Option<Value>,
+    #[serde(default)]
     pub wake_plan: Option<WakePlan>,
     // 历史字段，当前未消费；保留兼容但不再要求模型输出。
     #[serde(default)]
     pub topic_hint: Option<String>,
+    #[serde(default)]
     pub extra_data: ExtraData,
+    #[serde(default)]
     pub experience: Option<DecisionExperience>,
 }
 
 fn invalid() -> AppError {
+    // 用可重试的专用错误码：这是「本轮输出不合协议」，不是能力缺失，
+    // 若复用 CapabilityUnsupported 会让智能体被判为待配置而永久停摆。
     AppError::new(
-        ErrorCode::CapabilityUnsupported,
-        "模型未返回合法的自主聊天决策，请检查模型能力或更换配置后重试。",
+        ErrorCode::ModelOutputInvalid,
+        "模型未返回合法的自主聊天决策，本轮跳过。",
     )
 }
 
@@ -131,27 +150,8 @@ pub fn parse(text: &str, input: &RuntimeInput) -> AppResult<Decision> {
         return Err(invalid());
     }
     let value: Value = serde_json::from_str(text).map_err(|_| invalid())?;
-    let fields = [
-        "participation",
-        "messages",
-        "recalls",
-        "tool_requests",
-        "group_patch",
-        "announcement",
-        "profile_patch",
-        "wake_plan",
-        "extra_data",
-        "experience",
-    ];
-    if fields.iter().any(|key| value.get(key).is_none())
-        || value["messages"].as_array().is_some_and(|messages| {
-            messages
-                .iter()
-                .any(|message| message.get("quote_message_id").is_none())
-        })
-        || (!value["wake_plan"].is_null()
-            && value["wake_plan"].get("review_message_ordinal").is_none())
-    {
+    // 只要求核心字段存在；其余由 serde 默认值兜底，避免轻量模型漏字段就整轮作废。
+    if value.get("participation").is_none() {
         return Err(invalid());
     }
     let mut decision: Decision = serde_json::from_str(text).map_err(|_| invalid())?;
@@ -395,6 +395,39 @@ mod tests {
             "extra_data":{"message_annotations":[],"memory_candidates":[]},"experience":null})
     }
     #[test]
+    fn minimal_model_output_is_accepted() {
+        // 轻量模型常见的省略写法：只给核心字段、消息只给 parts。
+        // 这些都必须能通过，否则模型会一轮轮失败直到被判为「待配置」。
+        let (_dir, input) = input();
+        for text in [
+            r#"{"participation":"observe"}"#,
+            r#"{"participation":"speak","messages":[{"parts":[{"kind":"text","text":"在"}]}]}"#,
+            r#"{"participation":"speak","messages":[{"parts":[{"kind":"text","text":"刚忙完"}],"send_after_ms":0}]}"#,
+            r#"{"participation":"observe","messages":[],"wake_plan":{"after_seconds":300,"reason_code":"check_later"}}"#,
+        ] {
+            assert!(parse(text, &input).is_ok(), "应接受最小输出：{text}");
+        }
+        // 仍然拒绝越权字段：安全边界不能因为宽松而丢失
+        assert!(parse(r#"{"participation":"observe","agent_id":"someone"}"#, &input).is_err());
+        assert!(
+            parse(
+                r#"{"participation":"observe","tool_requests":[{"tool_name":"shell"}]}"#,
+                &input
+            )
+            .is_err()
+        );
+        // speak 却没有消息、或 observe 却带消息，语义矛盾仍要拒绝
+        assert!(parse(r#"{"participation":"speak"}"#, &input).is_err());
+        assert!(
+            parse(
+                r#"{"participation":"observe","messages":[{"parts":[{"kind":"text","text":"x"}]}]}"#,
+                &input
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn experiences_are_scored_data_and_all_input_is_bounded() {
         let (_dir, mut input) = input();
         let mut value = observe();
@@ -405,7 +438,8 @@ mod tests {
             assert!(parse(&value.to_string(), &input).is_err());
         }
         value.as_object_mut().unwrap().remove("experience");
-        assert!(parse(&value.to_string(), &input).is_err());
+        // 缺省即「没有经历」：轻量模型常省略字段，不应因此整轮作废
+        assert!(parse(&value.to_string(), &input).unwrap().experience.is_none());
         input.experiences = (0..32).map(|index| ExperienceEntry {
             id: format!("entry-{index}"), recorded_at: "2026/11/22 12:00".into(),
             content: "有界经历正文".repeat(200), score: if index == 0 { 99 } else { 50 },
@@ -434,7 +468,8 @@ mod tests {
         assert!(parse(&value.to_string(), &input).is_err());
         value = observe();
         value.as_object_mut().unwrap().remove("wake_plan");
-        assert!(parse(&value.to_string(), &input).is_err());
+        // 缺省 wake_plan 视为不做计划；observe 不要求它
+        assert!(parse(&value.to_string(), &input).is_ok());
         assert!(
             parse(
                 &observe().to_string().replacen(
@@ -452,11 +487,13 @@ mod tests {
         let (_dir, input) = input();
         let mut value = observe();
         value["wake_plan"] = json!({"after_seconds":300,"reason_code":"check_later"});
-        assert!(parse(&value.to_string(), &input).is_err());
+        // review_message_ordinal 缺省不再要求显式 null，仅 self_review 才校验
+        assert!(parse(&value.to_string(), &input).is_ok());
         value["wake_plan"] = Value::Null;
         value["participation"] = json!("speak");
-        value["messages"] = json!([{"parts":[{"kind":"text","text":"正文"}],"mention_ids":[],"mention_all":false,"send_after_ms":0}]);
-        assert!(parse(&value.to_string(), &input).is_err());
+        // 只写最小消息体（parts + 正文）也应被接受，其余字段由默认值兜底
+        value["messages"] = json!([{"parts":[{"kind":"text","text":"正文"}]}]);
+        assert!(parse(&value.to_string(), &input).is_ok());
     }
     #[test]
     fn sleep_defer_and_wake_are_checked_against_local_preferences() {

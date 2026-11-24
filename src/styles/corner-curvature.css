@@ -1,0 +1,72 @@
+/*
+ * 连续圆角代理层（D1 曲率连续 / iOS squircle）
+ * ---------------------------------------------------------------------------
+ * 原生 border-radius 是「直边 + 圆弧相切」：切线连续(G1)，但曲率在切点
+ * 从 0 突跳到 1/r，所以视觉上不够顺滑。corner-shape 让角部曲线按超椭圆
+ * 过渡，曲率连续变化(D1)；它只改变曲线几何，半径仍由 border-radius 决定，
+ * 并且边框 / outline / box-shadow / 背景裁剪会自动跟随新形状。
+ *
+ * 设计原则
+ *  1. 唯一开关：改下面 --corner-curve 一处即可全局切换，无需逐处修改。
+ *  2. 全局代理：任何元素（含以后新增的）只要写了 border-radius，就自动
+ *     获得连续曲率，不需要额外 class 或逐元素声明。
+ *  3. 几何例外集中在此表，不散落到各组件样式里。
+ *  4. 渐进增强：不支持的引擎忽略该属性，退回普通圆弧，布局不受影响。
+ *     Tauri 使用系统 WebView2 / Chromium >= 139 已原生支持。
+ *
+ * 半径体系仍复用 index.css 的 --radius / --radius-card / --radius-pill，
+ * 本层不新增任何半径数值，只提供一个整体补偿倍数。
+ *
+ * 为什么需要放大：在相同的 border-radius 参数下，squircle (x^4+y^4=1)
+ * 在角盒内切掉的角面积约为圆弧的 34%，角平分线切距约为 54%，
+ * 因此视觉上圆角会「显得小」。纯几何等效需要 1.7～1.8 倍，但那会明显
+ * 偏大；人眼感知的偏差远小于几何量，故默认取温和的 1.2 倍。
+ * 这是唯一的半径调节旋钮，改这里即可整体放大或还原。
+ */
+:root {
+  /* round = 普通圆弧 | squircle = superellipse(2) iOS 观感 | superellipse(1.6) 更柔和 */
+  --corner-curve: squircle;
+}
+
+@supports (corner-shape: squircle) {
+  /* 曲率本体的全局代理；半径补偿倍数 --corner-scale 定义在 index.css，与其派生的 --radius 同处 */
+
+  /* 零特异性：组件自身若需要覆盖，可随时用常规选择器改写。 */
+  :where(*),
+  :where(*)::before,
+  :where(*)::after {
+    corner-shape: var(--corner-curve, round);
+  }
+
+  /*
+   * 集中例外表：只有三类几何语义需要保持圆弧，套超椭圆反而失真。
+   *  - 窗口外框：圆角需与 window_frame.rs 的原生绘制严格一致；
+   *  - 正圆 / 圆点：50% 半径是等曲率圆，超椭圆会把它压成方圆形；
+   *  - 小于 4px 的装饰件：squircle 与圆弧像素级无差，保持默认避免边缘发虚。
+   * 胶囊（--radius-pill）与各类卡片、气泡、下拉、抽屉全部应用连续曲率。
+   */
+  :where(.canvas, .application-layers),
+  :where(.settings-switch-thumb, .chat-typing-dots i),
+  :where(.chat-search-match) {
+    corner-shape: round;
+  }
+  /* 伪元素不可置于 :where() 参数内，单独声明（特异性更高，稳定覆盖）。 */
+  .chat-message-quote::before,
+  .composer-resize-handle::after,
+  .search-calendar-day[aria-current="date"]::after {
+    corner-shape: round;
+  }
+
+  /* 通用关闭钩子：以后某个元素需要圆弧，只需加 data-corner="round"。
+     这样例外不必回头改本文件，代理层保持单一入口。 */
+  [data-corner="round"],
+  [data-corner="round"]::before,
+  [data-corner="round"]::after {
+    corner-shape: round;
+  }
+}
+
+/* 不支持连续曲率的引擎：撤销半径补偿，避免「没变成 squircle 却被放大」 */
+@supports not (corner-shape: squircle) {
+  :root { --corner-scale: 1; }
+}

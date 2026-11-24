@@ -38,8 +38,8 @@ type MessageActions = {
   onLocateQuote?: (seq: string, id: string) => Promise<void>
 }
 
-const MessageRow = memo(function MessageRow({ message, participant, participants, self, highlighted, generation, quotes, onQuote, onRecall, onLocateQuote }: {
-  message: ChatMessage; participant: Participant; participants: ReadonlyMap<string, Participant>; self: boolean; highlighted: boolean; generation?: string
+const MessageRow = memo(function MessageRow({ message, participant, participants, self, highlighted, entering, generation, quotes, onQuote, onRecall, onLocateQuote }: {
+  message: ChatMessage; participant: Participant; participants: ReadonlyMap<string, Participant>; self: boolean; highlighted: boolean; entering: boolean; generation?: string
 } & MessageActions) {
   const toast = useToast()
   const [pending, setPending] = useState(false)
@@ -104,7 +104,7 @@ const MessageRow = memo(function MessageRow({ message, participant, participants
   const chatBoundary = useCallback(() => bubbleRef.current?.closest<HTMLElement>(".chat-card") ?? null, [])
 
   return (
-    <article data-message-id={message.id} data-message-seq={message.seq} className={cn("chat-message", highlighted && "chat-message-highlight")} aria-label={`${participant.display_name}的消息`}>
+    <article data-message-id={message.id} data-message-seq={message.seq} className={cn("chat-message", highlighted && "chat-message-highlight", entering && "chat-message-enter")} aria-label={`${participant.display_name}的消息`}>
       {message.state === "recalled" ? <SystemMessageTag kind="recall">{participant.display_name}撤回了一条消息</SystemMessageTag> : <div className="chat-message-row" data-self={self}>
         <div className="chat-message-avatar"><Avatar name={participant.display_name} avatarId={participant.avatar_id} colorId={participant.kind === "agent" ? participant.id : undefined} generation={generation} size={40} radius={10} /></div>
         <div className="chat-message-stack">
@@ -139,6 +139,7 @@ type Props = MessageActions & {
   firstItemIndex: number
   targetMessageId: string | null
   restoreAnchor: ScrollAnchor | null
+  enteringIds?: ReadonlySet<string>
   followLatest: boolean
   hasNewMessages: boolean
   scrollToBottomSignal?: number
@@ -155,7 +156,7 @@ type ViewportProps = Props & {
 }
 
 function MessageViewport({
-  generation, page, participants, localUserId, firstItemIndex, targetMessageId, restoreAnchor, followLatest,
+  generation, page, participants, localUserId, firstItemIndex, targetMessageId, restoreAnchor, enteringIds, followLatest,
   scrollToBottomSignal = 0, loadingMore, onLoadOlder, onLoadNewer, onAtBottomChange, onRenderedAnchorChange, initialSaved,
   quotes, onQuote, onRecall, onLocateQuote,
 }: ViewportProps) {
@@ -292,7 +293,7 @@ function MessageViewport({
       const previous = page.items[index - firstItemIndex - 1]
       return <>
         {shouldInsertTimeTag(previous?.created_at, message.created_at) && <SystemMessageTag kind="time">{formatMessageTime(message.created_at)}</SystemMessageTag>}
-        <MessageRow message={message} participant={participants.get(message.sender_id)!} participants={participants} self={message.sender_id === localUserId} highlighted={message.id === targetMessageId} generation={generation} quotes={quotes} onQuote={onQuote} onRecall={onRecall} onLocateQuote={onLocateQuote} />
+        <MessageRow message={message} participant={participants.get(message.sender_id)!} participants={participants} self={message.sender_id === localUserId} highlighted={message.id === targetMessageId} entering={enteringIds?.has(message.id) ?? false} generation={generation} quotes={quotes} onQuote={onQuote} onRecall={onRecall} onLocateQuote={onLocateQuote} />
       </>
     }}
   />

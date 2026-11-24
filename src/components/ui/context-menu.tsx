@@ -30,6 +30,8 @@ type Props = {
   boundary?: () => HTMLElement | null
   /** 菜单关闭时是否把焦点交还给触发元素；preventDefault 可阻止。 */
   onCloseAutoFocus?: (event: ContextMenuCloseEvent) => void
+  /** 触发器本身可聚焦（如输入框）时置 true：不注入 tabIndex=-1，避免破坏焦点与选区。 */
+  preserveTriggerFocus?: boolean
   children: React.ReactElement<React.HTMLAttributes<HTMLElement>>
 }
 
@@ -39,7 +41,7 @@ const COLLISION_PADDING = 12
  * 右键菜单：在子元素上右键时，于指针位置弹出应用内菜单。
  * 与 DropdownMenu 共用同一套浮层与菜单项样式，但由 contextmenu 事件驱动。
  */
-export function ContextMenu({ items, label, disabled = false, boundary, onCloseAutoFocus, children }: Props) {
+export function ContextMenu({ items, label, disabled = false, boundary, onCloseAutoFocus, preserveTriggerFocus = false, children }: Props) {
   const [point, setPoint] = React.useState<{ x: number; y: number } | null>(null)
   const [activeIndex, setActiveIndex] = React.useState(-1)
   const menuRef = React.useRef<HTMLDivElement | null>(null)
@@ -90,16 +92,43 @@ export function ContextMenu({ items, label, disabled = false, boundary, onCloseA
   }, [open, point])
 
   // 打开时聚焦高亮项；高亮随鼠标悬停与键盘操作移动。
+  // preserveTriggerFocus 模式（输入框）不抢焦点，否则 textarea 失焦会让选区高亮消失。
   React.useLayoutEffect(() => {
-    if (!open || highlighted < 0) return
+    if (!open || highlighted < 0 || preserveTriggerFocus) return
     itemRefs.current[highlighted]?.focus({ preventScroll: true })
-  }, [open, highlighted])
+  }, [open, highlighted, preserveTriggerFocus])
+
+  // 菜单项启用索引与当前高亮，供 document 级键盘导航读取。
+  const navRef = React.useRef<{ enabled: number[]; highlighted: number }>({ enabled: [], highlighted: -1 })
+  React.useEffect(() => { navRef.current = { enabled: enabledIndexes, highlighted } })
 
   // 打开期间：点击菜单外、Esc、窗口失焦/缩放/滚动都关闭菜单。
+  // preserveTriggerFocus 模式下焦点仍在输入框，方向键/Enter 需在捕获阶段接管菜单导航。
   React.useEffect(() => {
     if (!open) return
+    function move(step: 1 | -1) {
+      const { enabled, highlighted: current } = navRef.current
+      if (!enabled.length) return
+      const index = enabled.indexOf(current)
+      const next = enabled[(index + step + enabled.length) % enabled.length]
+      setActiveIndex(next)
+    }
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") { event.stopPropagation(); close() }
+      if (event.key === "Escape") { event.stopPropagation(); close(); return }
+      if (!preserveTriggerFocus) return
+      const { enabled, highlighted: current } = navRef.current
+      if (!enabled.length) return
+      if (event.key === "ArrowDown") { event.preventDefault(); event.stopPropagation(); move(1) }
+      else if (event.key === "ArrowUp") { event.preventDefault(); event.stopPropagation(); move(-1) }
+      else if (event.key === "Home") { event.preventDefault(); event.stopPropagation(); setActiveIndex(enabled[0]) }
+      else if (event.key === "End") { event.preventDefault(); event.stopPropagation(); setActiveIndex(enabled[enabled.length - 1]) }
+      else if (event.key === "Enter" || event.key === " ") {
+        const item = items[current]
+        if (!item || item.disabled) return
+        event.preventDefault(); event.stopPropagation()
+        item.onSelect?.()
+        close()
+      }
     }
     function onPointerDown(event: PointerEvent) {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) close()
@@ -116,7 +145,7 @@ export function ContextMenu({ items, label, disabled = false, boundary, onCloseA
       window.removeEventListener("resize", close)
       window.removeEventListener("scroll", close, true)
     }
-  }, [open, close])
+  }, [open, close, preserveTriggerFocus, items])
 
   function select(item: ContextMenuItem) {
     if (item.disabled) return
@@ -149,7 +178,7 @@ export function ContextMenu({ items, label, disabled = false, boundary, onCloseA
 
   const child = React.Children.only(children)
   const triggerProps: Partial<React.HTMLAttributes<HTMLElement>> & { "data-state"?: string; "data-app-context-menu"?: string } = {
-    tabIndex: -1,
+    ...(preserveTriggerFocus ? {} : { tabIndex: -1 }),
     "aria-haspopup": "menu",
     "aria-expanded": open,
     "data-state": open ? "open" : "closed",
