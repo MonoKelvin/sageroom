@@ -62,6 +62,19 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
 
 `pnpm contracts:generate` 重新生成 `src/contracts/generated` 下的 TypeScript 类型、JSON schema 与校验器。`pnpm test:desktop` 会构建隔离的桌面测试实例，并把证据写入 `.test-results/`，不会使用普通聊天数据目录。`pnpm build` 构建 Tauri 使用的前端产物。
 
+## 聊天风格校准
+
+普通闲聊的长度和话术由本地风格校准约束，而不是只靠提示词要求“像真人”：
+
+- `scripts/train_chat_style.py` 可从本地 `agent/chat_corpus_zh/` 读取中文多轮对话的人类正例，清洗隐私、广告、机器人和低质内容后，训练一个只含数值参数的轻量判别器；训练在本地完成，不联网，不上传语料或聊天记录。仅重训时需要 Python 3.10+，运行应用本身不依赖 Python。
+- 产物放在应用数据目录的 `chat-style/model.json`，只包含均值、权重、阈值和句长分位等数字，不含例句、词表或路径。模型缺失或损坏时退回内置的短回复与话术规则。
+- 运行时只把抽象的长度预算和“是否已决定发言”等状态放进提示词；语料原句、训练样本和模型权重不会发送给模型服务。
+- `--evaluate-db` 只在明确指定本地数据库时使用只读连接，只输出统计指标，不打印或导出用户与 AI 正文。
+
+这是可重复的离线重训流程，不是应用运行中自动吸收用户聊天或模型输出的持续训练；AI 自己的回复不能回灌成“真人样本”。本机 GTX 1060 6GB 暂不适合为这类风格问题先引入独立生成式模型，当前采用“本地判别与校准 + 外部模型生成”的轻量方案。校准只借鉴 [Imprint](https://pypi.org/project/imprint-layer/) 的稳定短画像与 [CPR](https://github.com/TheShadowRose/cpr) 的防讨好、防漂移思路，没有引入其 Python 依赖或复制代码；CPR 中会强化语气词和微型叙事的恢复模式没有整套采用。
+
+`agent/chat_corpus_zh/` 是用户自行下载的本地评测/训练目录，已在 `.gitignore` 中排除。其汇总项目许可证不能替代每条上游内容的授权，本仓库不复制、不提交、不分发原始语料或训练样本；使用前请自行确认来源条款。外部参考：[chinese-chatbot-corpus](https://github.com/codemayq/chinese-chatbot-corpus)（仅研究思路，未复制源码）。
+
 ## 目录结构
 
 | 路径 | 用途 |

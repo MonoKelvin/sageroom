@@ -200,7 +200,7 @@ describe("智能体实时运行状态", () => {
     expect(detail("Sage").getByRole("status")).toHaveTextContent("在线观察")
     expect(detail("Sage").queryByText("正在判断是否接话")).not.toBeInTheDocument()
     expect(detail("Sage").getByText("等待新消息")).toBeInTheDocument()
-    expect(detail("Sage").getByText("今日请求：5 次")).toBeInTheDocument()
+    expect(detail("Sage").getByText("今日模型请求：5 次（含观察判断，非回复条数）")).toBeInTheDocument()
     expect(detail("Sage").getByText(`下次唤醒：${new Date(nextWake).toLocaleString("zh-CN", { hour12: false })}`)).toBeInTheDocument()
     expect(detail("Sage").getByLabelText("语言风格", { selector: "textarea" })).toHaveValue("尚未失焦的局部草稿")
     expect(ipc.listAgents).toHaveBeenCalledTimes(1)
@@ -210,7 +210,7 @@ describe("智能体实时运行状态", () => {
   it.each([
     ["needs_configuration", "待配置"], ["observing", "在线观察"], ["deciding", "正在思考"],
     ["waiting_to_send", "准备发送"], ["sleeping", "休息中"], ["paused", "已暂停"],
-    ["protected", "达到保护上限"], ["offline", "离线"],
+    ["protected", "运行受限"], ["offline", "离线"],
   ] satisfies [AgentRuntimeStatus, string][])("运行状态%s显示%s并保留已配置导航文案", async (status, label) => {
     render(page(configuredProps(runtimeState(status))))
     await userEvent.click(await sidebar().findByRole("button", { name: new RegExp(`Sage.*已配置.*${label}`) }))
@@ -274,10 +274,10 @@ describe("智能体实时运行状态", () => {
     const props = configuredProps(runtimeState("protected", { detail: "已达到今日请求上限", requests_today: 12 }))
     vi.mocked(ipc.controlAgentRuntime).mockRejectedValueOnce(new IpcError({ code: "INVALID_INPUT", message: "今日请求额度尚未恢复。", retryability: "after_user_action", field_path: null, trace_id: "runtime-test", may_have_been_charged: false }))
     render(page(props))
-    await userEvent.click(await sidebar().findByRole("button", { name: /Sage.*已配置.*达到保护上限/ }))
+    await userEvent.click(await sidebar().findByRole("button", { name: /Sage.*已配置.*运行受限/ }))
     await userEvent.click(detail("Sage").getByRole("button", { name: "重试启动" }))
     expect(await detail("Sage").findByRole("alert")).toHaveTextContent("今日请求额度尚未恢复。")
-    expect(detail("Sage").getByRole("status")).toHaveTextContent("达到保护上限")
+    expect(detail("Sage").getByRole("status")).toHaveTextContent("运行受限")
     expect(detail("Sage").getByRole("button", { name: "重试启动" })).toBeEnabled()
     expect(ipc.controlAgentRuntime).toHaveBeenCalledWith({ data_generation_id: "generation-test", agent_id: "sage-test", paused: false })
   })

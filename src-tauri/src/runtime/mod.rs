@@ -1,4 +1,5 @@
 mod decision;
+mod style;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -58,11 +59,7 @@ enum RetryKind {
     Split,
 }
 
-/// 房间级冷场时钟：用实际冷场时长动态调整「多久没人说话就该有人开口」。
-///
-/// 反向反馈：冷场比目标更长，说明大家确实没话聊，下次应该更早主动开口，目标调小；
-/// 对话很热闹、间隔比目标短，则可以更从容，目标调大。始终夹在合理区间内，
-/// 保证既不会长时间没人说话，也不会一直自己说。
+/// 房间共享的冷场间隔，随实际聊天频率缓慢调整。
 pub struct IdleClock {
     last_message_at: Option<i64>,
     target_ms: u64,
@@ -70,7 +67,7 @@ pub struct IdleClock {
 
 impl IdleClock {
     const INITIAL_MS: u64 = 10 * 60_000;
-    const MIN_MS: u64 = 90_000;
+    const MIN_MS: u64 = 3 * 60_000;
     const MAX_MS: u64 = 45 * 60_000;
     /// 小于此间隔视为连续对话，不计入冷场统计。
     const MIN_GAP_MS: i64 = 30_000;
@@ -93,8 +90,7 @@ impl IdleClock {
     fn adjust(&mut self, observed: u64) {
         let target = self.target_ms as i64;
         let observed = observed.min(Self::MAX_MS) as i64;
-        // 朝反向修正三分之一，避免单次异常把目标拉得太远。
-        let next = target + (target - observed) / 3;
+        let next = target + (observed - target) / 3;
         self.target_ms = next.clamp(Self::MIN_MS as i64, Self::MAX_MS as i64) as u64;
     }
 
@@ -128,10 +124,16 @@ fn idle_interval_ms(activity: u8, target_ms: u64, seed: u64, sleeping: bool, mis
     interval.clamp(45_000, 120 * 60_000)
 }
 
-/// 空闲条目真正触发主动发言的概率：高活跃近乎必然，低活跃也保留机会。
+fn random_seed() -> u64 {
+    Uuid::now_v7().as_u128() as u64
+}
+
+fn reading_delay_ms(addressed: bool, seed: u64) -> u64 {
+    if addressed { 800 + seed % 2200 } else { 1500 + seed % 7000 }
+}
+
 fn idle_trigger_chance(activity: u8) -> u64 {
-    // 0 → 30%，100 → 90%
-    30 + u64::from(activity.min(100)) * 60 / 100
+    15 + u64::from(activity.min(100)) * 40 / 100
 }
 
 struct Actor {
@@ -262,7 +264,7 @@ impl RuntimeSupervisor {
                                 .unwrap_or_else(|_| Uuid::now_v7().to_string());
                             let page = worker
                                 .list_messages(ChatListRequest {
-                                    data_generation_id: event.data_generation_id,
+                                    data_generation_id: event.data_generation_id.clone(),
                                     before_seq: None,
                                     after_seq: None,
                                     around_seq: Some(message_seq.clone()),
@@ -272,8 +274,16 @@ impl RuntimeSupervisor {
                             let mentions = page
                                 .ok()
                                 .and_then(|p| p.items.into_iter().next())
-                                .map(|m| (m.mention_ids, m.mention_all))
+                                .map(|m| (m.mention_ids, m.mention_all, m.quote_message_id))
                                 .unwrap_or_default();
+                            let quote_sender = if let Some(id) = &mentions.2 {
+                                worker.resolve_quotes(ChatResolveQuotesRequest {
+                                    data_generation_id: event.data_generation_id,
+                                    message_ids: vec![id.clone()],
+                                }).await.ok().and_then(|messages| messages.into_iter().next()).map(|message| message.sender_id)
+                            } else {
+                                None
+                            };
                             if actors.values().any(|actor| actor.opportunities.is_closed()) {
                                 let _ = reconcile(
                                     &worker,
@@ -288,7 +298,7 @@ impl RuntimeSupervisor {
                             }
                             for (id, actor) in &actors {
                                 if id != &sender_id {
-                                    let mention_seq = if mentions.1 || mentions.0.contains(id) {
+                                    let mention_seq = if mentions.1 || mentions.0.contains(id) || quote_sender.as_ref() == Some(id) {
                                         message_seq.clone()
                                     } else {
                                         actor.opportunities.borrow().mention_seq.clone()
@@ -604,7 +614,7 @@ async fn run_actor(
     // 连续「被叫醒但选择沉默」的次数，用于逐步放慢下一次空闲发起。
     let mut idle_misses: u32 = 0;
     let mut idle_at = tokio::time::Instant::now()
-        + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, sleeping, idle_misses));
+        + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), random_seed(), sleeping, idle_misses));
     loop {
         if cancellation.is_cancelled() {
             break;
@@ -622,7 +632,7 @@ async fn run_actor(
                     let incoming=opportunities.borrow_and_update().clone();
                     // 有真实新消息时重置空闲计时，避免刚聊过又主动插话。
                     idle_at = tokio::time::Instant::now()
-                        + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, sleeping, idle_misses));
+                        + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), random_seed(), sleeping, idle_misses));
                     if sequence(&incoming.message_seq) <= sequence(&observed_through_seq)
                         || (sleeping && sequence(&incoming.mention_seq) <= sequence(&observed_through_seq)) {continue;}
                     Some(incoming)
@@ -635,7 +645,7 @@ async fn run_actor(
                             let _=worker.save_runtime_plan(agent.agent_id.clone(),agent.revision.clone(),Some(at),chain).await;
                             sleeping = true;
                             idle_at = tokio::time::Instant::now()
-                                + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, sleeping, idle_misses));
+                                + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), random_seed(), sleeping, idle_misses));
                             let _=state(&worker,&agent,AgentRuntimeStatus::Sleeping,Some("自主检查已达到两次/滚动小时，将按既有计划稍后继续。".into()),Some(at),count,&cancellation).await;
                             continue;
                         },
@@ -644,7 +654,7 @@ async fn run_actor(
                     }
                 }
                 _=tokio::time::sleep_until(idle_at)=>{
-                    let seed = now_ms() as u64;
+                    let seed = random_seed();
                     idle_at = tokio::time::Instant::now()
                         + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), seed, sleeping, idle_misses));
                     // 按活跃度概率决定这一次是否真的主动开口；没中就先跳过。
@@ -658,11 +668,13 @@ async fn run_actor(
                 }
             };
         }
-        let anchor = tokio::time::Instant::now() + Duration::from_millis(500);
+        let addressed = opportunity.as_ref().is_some_and(|current| sequence(&current.mention_seq) > sequence(&observed_through_seq));
+        let anchor = tokio::time::Instant::now()
+            + Duration::from_millis(reading_delay_ms(addressed, random_seed()));
         while tokio::time::Instant::now() < anchor {
             tokio::select! {biased;_=cancellation.cancelled()=>return,_=tokio::time::sleep_until(anchor)=>break,changed=opportunities.changed()=>{if changed.is_err(){return;}opportunity=Some(opportunities.borrow_and_update().clone());}}
         }
-        let mut current = opportunity.take().expect("需要有效观察机会");
+        let current = opportunity.take().expect("需要有效观察机会");
         // 被空闲机会叫醒却选择沉默时，下一次要更晚打扰。
         let idle_opportunity = current.reason == "idle_tick";
         let _ = worker
@@ -674,86 +686,45 @@ async fn run_actor(
             )
             .await;
         next = None;
-        let mut completed = None;
-        let mut throttle = false;
-        for competition in 0..=2 {
-            if opportunities.has_changed().unwrap_or(false) {
-                current = opportunities.borrow_and_update().clone();
+        let decision_cancellation = cancellation.child_token();
+        let result = tokio::select! {
+            biased;
+            _=cancellation.cancelled()=>return,
+            changed=opportunities.changed()=>{
+                decision_cancellation.cancel();
+                if changed.is_err() { return; }
+                opportunity = Some(opportunities.borrow_and_update().clone());
+                Err(AppError::new(ErrorCode::ConfigConflict, "有新消息，停止旧候选并重新观察。"))
+            },
+            result=make_decision(&agent, &worker, &models, &secrets, &current,
+                &observed_through_seq, &decision_cancellation, &mut count)=>result,
+        };
+        let completed = match result {
+            Ok(completed) => completed,
+            Err(error) if error.code == ErrorCode::ConfigConflict => {
+                report_failure(&worker, &agent, error, count, &cancellation).await;
+                continue;
             }
-            let result = make_decision(
-                &agent,
-                &worker,
-                &models,
-                &secrets,
-                &current,
-                &cancellation,
-                &mut count,
-            )
-            .await;
-            match result {
-                Ok(decision) => {
-                    completed = Some(decision);
-                    break;
+            Err(error) => {
+                report_failure(&worker, &agent, error, count, &cancellation).await;
+                let blocking = matches!(
+                    worker.runtime_states().await.ok()
+                        .and_then(|states| states.into_iter().find(|s| s.agent_id == agent.agent_id))
+                        .map(|s| s.status),
+                    Some(AgentRuntimeStatus::NeedsConfiguration | AgentRuntimeStatus::Paused | AgentRuntimeStatus::Protected)
+                );
+                if blocking || cancellation.is_cancelled() {
+                    return;
                 }
-                Err(error)
-                    if error.code == ErrorCode::ConfigConflict
-                        && competition < 2
-                        && !cancellation.is_cancelled() => {}
-                Err(error) if error.code == ErrorCode::Backpressure => {
-                    // 频率/额度保护是暂时的：记录观察状态并稍后重试，不把智能体永久停用。
-                    let _ = state(
-                        &worker,
-                        &agent,
-                        AgentRuntimeStatus::Observing,
-                        Some(error.message),
-                        None,
-                        count,
-                        &cancellation,
-                    )
-                    .await;
-                    throttle = true;
-                    break;
+                tokio::select! {
+                    biased;
+                    _=cancellation.cancelled()=>return,
+                    _=tokio::time::sleep(Duration::from_secs(30))=>{}
                 }
-                Err(error) => {
-                    report_failure(&worker, &agent, error, count, &cancellation).await;
-                    // 一次失败不等于永久停用：只有真正需要人工介入的状态才退出，
-                    // 其余（如模型本轮没给出合法决策）退回观察，继续等下一条消息。
-                    let blocking = matches!(
-                        worker
-                            .runtime_states()
-                            .await
-                            .ok()
-                            .and_then(|states| {
-                                states.into_iter().find(|s| s.agent_id == agent.agent_id)
-                            })
-                            .map(|s| s.status),
-                        Some(
-                            AgentRuntimeStatus::NeedsConfiguration
-                                | AgentRuntimeStatus::Paused
-                                | AgentRuntimeStatus::Protected
-                        )
-                    );
-                    if blocking {
-                        return;
-                    }
-                    throttle = true;
-                    break;
-                }
+                idle_at = tokio::time::Instant::now()
+                    + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), random_seed(), false, idle_misses));
+                continue;
             }
-        }
-        if throttle {
-            // 冷却一段时间再回到等待机会，避免立刻重试继续撞上限。
-            tokio::select! {
-                biased;
-                _=cancellation.cancelled()=>return,
-                _=tokio::time::sleep(Duration::from_secs(30))=>{}
-            }
-            idle_at = tokio::time::Instant::now()
-                + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, false, idle_misses));
-            continue;
-        }
-        let Some(completed) = completed else {
-            break;
         };
         if cancellation.is_cancelled() {
             return;
@@ -773,7 +744,7 @@ async fn run_actor(
             0
         };
         idle_at = tokio::time::Instant::now()
-            + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), now_ms() as u64, sleeping, idle_misses));
+            + Duration::from_millis(idle_interval_ms(activity, idle_target_ms(), random_seed(), sleeping, idle_misses));
         if let Some(plan) = decision.wake_plan {
             let at = completed
                 .validated_at
@@ -820,12 +791,29 @@ async fn make_decision(
     models: &AppResult<Arc<ModelGateway>>,
     secrets: &AppResult<Arc<SecretStore>>,
     opportunity: &Opportunity,
+    observed_through_seq: &DecimalString,
     cancellation: &CancellationToken,
     count: &mut u32,
 ) -> AppResult<CompletedDecision> {
     let mut input = worker.runtime_input(agent.agent_id.clone()).await?;
     if input.agent.revision != agent.revision {
         return Err(AppError::new(ErrorCode::ConfigConflict, "成员配置已改变。"));
+    }
+    let addressed = sequence(&opportunity.mention_seq) > sequence(observed_through_seq)
+        || decision::addressed_since(&input, observed_through_seq);
+    if (opportunity.reason == "initialized" && !input.messages.is_empty())
+        || (matches!(opportunity.reason, "new_message" | "resynchronize")
+            && random_seed() % 100 >= decision::participation_chance(&input, addressed, now_ms()))
+    {
+        return Ok(CompletedDecision {
+            decision: decision::parse(r#"{"participation":"observe"}"#, &input)?,
+            validated_at: now_ms(),
+            observed_through_seq: if matches!(opportunity.reason, "new_message" | "resynchronize") {
+                sequence(&opportunity.message_seq).min(sequence(&input.snapshot.latest_message_seq)).into()
+            } else {
+                input.snapshot.latest_message_seq.clone()
+            },
+        });
     }
     let source = input.agent.model.as_ref().expect("模型已由运行输入校验");
     let endpoint = source.profile.base_url.clone();
@@ -846,12 +834,14 @@ async fn make_decision(
         revision: source.source_profile_revision.clone(),
         credential_configured: true,
     };
-    let (system, context) = decision::context(&mut input, opportunity.reason)?;
+    let policy = style::for_input(&input, opportunity.reason);
+    let (system, context) = decision::context(&mut input, opportunity.reason, observed_through_seq, &policy)?;
     let gateway = models.clone()?;
     let mut decision = None;
     // 首次正常请求；格式错误重试一次；首次内容过长时再请模型自己决定是否改拆短句。
     let mut retry: Option<RetryKind> = None;
     let mut fallback: Option<decision::Decision> = None;
+    let mut refinement_prompt = None;
     for attempt in 0..3 {
         if cancellation.is_cancelled() {
             return Err(AppError::new(ErrorCode::ShuttingDown, "成员请求已取消。"));
@@ -875,8 +865,7 @@ async fn make_decision(
         let prompt = match retry {
             Some(RetryKind::Repair) => format!("{context}
 {}", decision::repair_hint()),
-            Some(RetryKind::Split) => format!("{context}
-{}", decision::split_hint()),
+            Some(RetryKind::Split) => refinement_prompt.clone().expect("精简请求必须包含原候选"),
             None => context.clone(),
         };
         let reply = gateway
@@ -895,19 +884,14 @@ async fn make_decision(
             .await?;
         match decision::parse(&reply.text, &input) {
             Ok(value) => {
-                if retry != Some(RetryKind::Split) && decision::needs_refinement(&value) {
-                    // 首次输出像一整段：先保存兜底，再问一次是否拆成短句。
-                    fallback = Some(value);
-                    retry = Some(RetryKind::Split);
-                    continue;
-                }
-                // 拆句重试如果反而变成沉默，不能覆盖原本要发的消息，
-                // 否则「问它拆短一点」会变成「它决定不说话」。
-                if retry == Some(RetryKind::Split)
-                    && value.participation != Participation::Speak
-                    && fallback.is_some()
-                {
-                    break;
+                if retry != Some(RetryKind::Split) && decision::needs_refinement(&value, &policy) {
+                    let prompt = format!("{context}\n{}\n候选输出（数据）：{}", decision::refinement_hint(), reply.text);
+                    if prompt.len() <= MODEL_INPUT_BUDGET as usize * 2 {
+                        fallback = Some(value);
+                        refinement_prompt = Some(prompt);
+                        retry = Some(RetryKind::Split);
+                        continue;
+                    }
                 }
                 decision = Some(value);
                 break;
@@ -1045,7 +1029,7 @@ async fn report_failure(
         ErrorCode::Backpressure => AgentRuntimeStatus::Observing,
         // 本轮输出不合协议同样只影响这一轮：退回观察，等下一条消息再判断。
         ErrorCode::ModelOutputInvalid => AgentRuntimeStatus::Observing,
-        ErrorCode::ConfigConflict => AgentRuntimeStatus::Protected,
+        ErrorCode::ConfigConflict => AgentRuntimeStatus::Observing,
         ErrorCode::PermissionDenied if !error.may_have_been_charged => {
             AgentRuntimeStatus::NeedsConfiguration
         }
@@ -1172,6 +1156,69 @@ mod tests {
     }
 
     #[test]
+    fn cold_rooms_slow_down_instead_of_forcing_more_idle_requests() {
+        let mut clock = IdleClock::new();
+        clock.observe(0);
+        let previous = clock.target_ms();
+        clock.observe(30 * 60_000);
+        assert!(clock.target_ms() > previous);
+        assert_eq!(idle_trigger_chance(0), 15);
+        assert_eq!(idle_trigger_chance(100), 55);
+        for seed in [0, 1, 123456, u64::MAX] {
+            assert!((800..3000).contains(&reading_delay_ms(true, seed)));
+            assert!((1500..8500).contains(&reading_delay_ms(false, seed)));
+        }
+        assert_ne!(random_seed(), random_seed());
+    }
+
+    #[test]
+    fn observation_conflicts_never_protect_or_stop_a_live_actor() {
+        tauri::async_runtime::block_on(async {
+            let (_directory, worker, agent, _events) = fixture().await;
+            let shutdown = CancellationToken::new();
+            let (existing, _receiver) = actor(&agent);
+            let token = existing.cancellation.clone();
+            let mut actors = HashMap::from([(agent.agent_id.clone(), existing)]);
+            for _ in 0..3 {
+                report_failure(&worker, &agent,
+                    AppError::new(ErrorCode::ConfigConflict, "有新的外部消息，旧候选已丢弃。"),
+                    0, &token,
+                ).await;
+            }
+            assert_eq!(worker.runtime_states().await.unwrap().into_iter()
+                .find(|s| s.agent_id == agent.agent_id).unwrap().status, AgentRuntimeStatus::Observing);
+            reconcile(&worker, &unavailable(), &unavailable(), &shutdown, &mut actors,
+                None, ReconcileTrigger::NewMessage,
+            ).await.unwrap();
+            assert!(!token.is_cancelled());
+            assert!(!actors[&agent.agent_id].opportunities.is_closed());
+            shutdown.cancel();
+            worker.shutdown().await.unwrap();
+        });
+    }
+
+    #[test]
+    fn initialization_does_not_reanswer_history_or_charge_a_model_request() {
+        tauri::async_runtime::block_on(async {
+            let (_directory, worker, agent, _events) = fixture().await;
+            worker.call(|db| db.send_message(ChatSendRequest {
+                data_generation_id: "actor-tests".into(),
+                client_request_id: Uuid::now_v7().to_string(),
+                parts: vec![MessagePart::Text { text: "过去聊过的事。".into() }],
+                quote_message_id: None, mention_ids: vec![], mention_all: false,
+            })).await.unwrap();
+            let mut count = 0;
+            let completed = make_decision(&agent, &worker, &unavailable(), &unavailable(),
+                &initialized(), &0.into(), &CancellationToken::new(), &mut count,
+            ).await.unwrap();
+            assert_eq!(completed.decision.participation, Participation::Observe);
+            assert_eq!(count, 0);
+            assert_eq!(completed.observed_through_seq, 1.into());
+            worker.shutdown().await.unwrap();
+        });
+    }
+
+    #[test]
     fn content_epoch_reconciliation_cancels_cached_actor_even_when_configuration_is_unchanged() {
         tauri::async_runtime::block_on(async {
             let (_directory, worker, agent, _events) = fixture().await;
@@ -1280,9 +1327,9 @@ mod tests {
                 chain_id: "fresh-message-chain".into(),
                 reason: "new_message",
                 message_seq: 1.into(),
-                mention_seq: 0.into(),
+                mention_seq: 1.into(),
             });
-            tokio::time::timeout(Duration::from_secs(2), recovered.opportunities.closed())
+            tokio::time::timeout(Duration::from_secs(5), recovered.opportunities.closed())
                 .await
                 .unwrap();
             let latest = worker
@@ -1308,10 +1355,10 @@ mod tests {
                 chain_id: "queued-fresh-message".into(),
                 reason: "new_message",
                 message_seq: 1.into(),
-                mention_seq: 0.into(),
+                mention_seq: 1.into(),
             });
             tokio::time::timeout(
-                Duration::from_secs(2),
+                Duration::from_secs(5),
                 run_actor(
                     agent.clone(),
                     worker.clone(),

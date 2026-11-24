@@ -1,9 +1,12 @@
 .chat-card { position: relative; container-type: inline-size; overflow: hidden; }
+/* 聊天主卡片圆角比通用 surface-card 加大一档；特异性高于 index.css 的 .workspace-layout .surface-card */
+.chat-workspace .surface-card.chat-card { border-radius: var(--radius-lg); }
 .chat-body { display: flex; position: relative; flex: 1; min-height: 0; min-width: 0; }
 .chat-conversation { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .chat-workspace .workspace-list .panel-heading { padding: var(--space-3); }
 .chat-scene-avatar { display: grid; place-items: center; flex: 0 0 calc(var(--size-unit) * 11); height: calc(var(--size-unit) * 11); border-radius: var(--radius); background: var(--accent); color: var(--text-primary); }
-.message-composer { flex: 0 0 auto; padding: 0 var(--space-5) var(--space-4); }
+/* 输入框四周直接间距统一为 12px，用自身 margin 表达；祖先聊天面板无 padding，故无额外叠加 */
+.message-composer { flex: 0 0 auto; margin: 0 var(--space-3) var(--space-3); padding: 0; }
 .composer-field { --composer-background: var(--surface-canvas); position: relative; border-radius: var(--radius); overflow: clip; background: var(--composer-background); transition: background-color var(--motion-duration) ease; }
 .dark .composer-field { --composer-background: var(--surface-workspace); }
 .composer-field:focus-within { background: color-mix(in srgb, var(--text-primary) 4%, var(--composer-background)); }
@@ -23,9 +26,9 @@
   /* 列表折叠后：收掉第一列轨道与外侧内边距，聊天面板真正铺满，不留残余间距 */
   .chat-workspace.workspace-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); padding: 0; }
   /* 铺满后沿用外层轮廓圆角，避免内外两层圆角错位露出背景 */
-  .chat-workspace .chat-card { border-radius: inherit; }
+  .chat-workspace .surface-card.chat-card { border-radius: inherit; }
   .chat-workspace .chat-scene-list { display: none; }
-  .message-composer { padding: 0 var(--space-3) var(--space-3); }
+  /* 输入框 margin 已由主规则统一为 12px，窄屏沿用，此处无需重复声明 */
 }
 @media (max-height: 420px) {
   .chat-card .chat-heading { padding-block: var(--space-2); }
@@ -58,11 +61,17 @@ html[data-reduced-motion="true"] .chat-message-enter { animation: none; }
 .chat-message-bubble { max-width: 100%; padding: var(--space-2) var(--space-3); border-radius: calc(var(--radius) * 1.05); color: var(--text-primary); font-size: var(--font-body); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .chat-message-bubble-self { background: var(--self-bubble-bg); color: var(--self-bubble-foreground); border-top-right-radius: calc(var(--radius) * .2); }
 .chat-message-bubble-self ::selection { background: var(--self-bubble-selection-bg); color: #ffffff; text-shadow: none; }
-.chat-message-bubble-other { background: var(--surface-content); border-top-left-radius: calc(var(--radius) * .2); }
+.chat-message-bubble-other { background: var(--other-bubble-bg); border-top-left-radius: calc(var(--radius) * .2); }
 .chat-message-time { flex: 0 0 auto; align-self: flex-start; white-space: nowrap; padding-top: calc(var(--size-unit) * .5); color: var(--text-secondary); font-size: var(--font-caption); font-variant-numeric: tabular-nums; opacity: 0; transition: opacity var(--motion-duration) ease; }
 .chat-message-row[data-self="false"] .chat-message-time { margin-top: calc(var(--font-body) * 1.4 + var(--space-1)); padding-top: 0; }
 .chat-message:hover .chat-message-time, .chat-message:focus-within .chat-message-time { opacity: 1; }
-.chat-workspace .chat-scene-list { padding-top: var(--space-2); padding-left: calc(var(--space-3) - var(--space-2)); padding-right: var(--space-3); }
+/* 直接间距 = 对象自身外边距 + 容器 padding + 外层 grid padding/gap，必须整体核算。
+   目标：列表项高亮块四周均为 10px。
+     上/左/下 = workspace padding(8) + 容器 padding(0) + 列表项 margin(2) = 10
+     右      = 列表项 margin(2) + 容器 padding-right(8) + 列间 gap(0) + 卡片 margin(0) = 10
+   优先调列表项自身 margin，容器右侧 padding 仅用于补齐 gap=0 的差额。 */
+.chat-workspace .chat-scene-list { padding: 0 var(--space-2) 0 0; }
+.chat-scene-list .list-entry { width: auto; margin: calc(var(--size-unit) * .5); }
 .chat-card .chat-heading { position: relative; padding: var(--space-2) var(--space-5); gap: var(--space-3); }
 .chat-heading[data-typing="true"] .chat-heading-main { max-width: 30%; }
 .chat-heading-main { min-width: 0; flex: 1; }
@@ -71,7 +80,9 @@ html[data-reduced-motion="true"] .chat-message-enter { animation: none; }
 .chat-member-count { flex: none; color: var(--text-secondary); font-size: var(--font-body); font-weight: 400; }
 .chat-heading-actions { display: flex; align-items: center; flex: none; gap: var(--space-2); }
 .chat-search { display: flex; align-items: center; position: relative; min-width: 0; gap: var(--space-2); }
-.chat-search-content { position: relative; width: clamp(calc(var(--size-unit) * 35), 30cqw, calc(var(--size-unit) * 70)); min-width: 0; outline: none; }
+/* 固定层级：入场动画的 transform/opacity 会创建层叠上下文，若 z-index 为 auto
+   会让结果面板在动画期间跌到 .chat-body / 群信息抽屉之下，出现先置底后恢复的闪烁 */
+.chat-search-content { position: relative; z-index: 40; width: clamp(calc(var(--size-unit) * 35), 30cqw, calc(var(--size-unit) * 70)); min-width: 0; outline: none; }
 .chat-search-content[data-state="open"] { animation: chat-search-enter var(--motion-duration-medium) var(--motion-ease); }
 .chat-search-content[data-state="closed"] { pointer-events: none; animation: chat-search-exit var(--motion-duration) var(--motion-ease); }
 .chat-search-content[data-state="open"] .chat-search-input { animation: chat-search-field-enter var(--motion-duration-medium) var(--motion-ease) both; }
@@ -101,10 +112,13 @@ html[data-reduced-motion="true"] .chat-message-enter { animation: none; }
 .group-info-overlay { position: absolute; inset: 0; z-index: 20; background: var(--overlay-bg); opacity: 1; transition: opacity calc(var(--motion-duration) * 2) var(--motion-ease); }
 .group-info-overlay[data-state="closed"] { opacity: 0; transition-duration: calc(var(--motion-duration) * 1.75); }
 .group-info-drawer { position: absolute; inset: var(--space-3) var(--space-3) var(--space-3) auto; z-index: 30; display: flex; flex-direction: column; width: min(calc(var(--size-unit) * 84), calc(100% - var(--size-unit) * 6)); min-width: 0; border-radius: var(--radius-card); outline: none; overflow: hidden; opacity: 1; transform: translateX(0); transform-origin: right center; transition: transform calc(var(--motion-duration) * 2.25) var(--motion-ease-drawer), opacity calc(var(--motion-duration) * 2) var(--motion-ease); }
-.group-info-drawer[data-state="closed"] { pointer-events: none; opacity: 0; transform: translateX(calc(100% + var(--space-3))); transition-duration: calc(var(--motion-duration) * 2), calc(var(--motion-duration) * 1.75); }
+/* 入场/退场位移必须让抽屉始终留在 .chat-card 内：该容器 overflow:hidden 且带
+   backdrop-filter，整幅滑出会先被裁掉一条右侧区域再瞬间恢复。右侧已有 12px inset，
+   位移 8px 后右边缘距卡片边界仍有 4px，不会被 squircle 圆角裁切。 */
+.group-info-drawer[data-state="closed"] { pointer-events: none; opacity: 0; transform: translateX(var(--space-2)); transition-duration: calc(var(--motion-duration) * 2), calc(var(--motion-duration) * 1.75); }
 @starting-style {
   .group-info-overlay[data-state="open"] { opacity: 0; }
-  .group-info-drawer[data-state="open"] { opacity: 0; transform: translateX(calc(100% + var(--space-3))); }
+  .group-info-drawer[data-state="open"] { opacity: 0; transform: translateX(var(--space-2)); }
 }
 .group-info-heading { display: flex; flex: none; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4) calc(var(--size-unit) * 5) var(--space-3); }
 .group-info-content { min-height: 0; flex: 1; padding: var(--space-2) calc(var(--size-unit) * 5) calc(var(--size-unit) * 5); overflow: auto; }

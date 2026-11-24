@@ -23,7 +23,7 @@ function sessionFor(agents: { name: string; status: AgentRuntimeStatus }[] = [])
 
 describe("群聊输入提示", () => {
   it("单人提示位于群聊天信息标题栏，动画点在最后且不包含省略号字符", () => {
-    const { container } = render(<ChatView session={sessionFor([{ name: "小夏", status: "deciding" }])} active onNavigate={vi.fn()} />)
+    const { container } = render(<ChatView session={sessionFor([{ name: "小夏", status: "waiting_to_send" }])} active onNavigate={vi.fn()} />)
     const status = screen.getByRole("status")
     expect(status).toHaveTextContent("小夏正在输入")
     expect(status.textContent).not.toMatch(/…|\.\.\./)
@@ -34,11 +34,22 @@ describe("群聊输入提示", () => {
   })
 
   it("多人只显示一个昵称与输入总人数，不展示其他昵称", () => {
-    render(<ChatView session={sessionFor([{ name: "小夏", status: "deciding" }, { name: "小林", status: "waiting_to_send" }, { name: "小雨", status: "deciding" }])} active onNavigate={vi.fn()} />)
+    render(<ChatView session={sessionFor([{ name: "小夏", status: "waiting_to_send" }, { name: "小林", status: "waiting_to_send" }, { name: "小雨", status: "waiting_to_send" }])} active onNavigate={vi.fn()} />)
     const status = screen.getByRole("status")
     expect(status).toHaveTextContent("小夏等3人正在输入")
     expect(status).not.toHaveTextContent("小林")
     expect(status).not.toHaveTextContent("小雨")
+  })
+
+  it("模型观察与判断不显示正在输入，只计入确定要发送的成员", () => {
+    const props = { active: true, onNavigate: vi.fn() }
+    const view = render(<ChatView {...props} session={sessionFor([{ name: "小夏", status: "deciding" }])} />)
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
+    view.rerender(<ChatView {...props} session={sessionFor([{ name: "小夏", status: "deciding" }, { name: "小林", status: "waiting_to_send" }])} />)
+    expect(screen.getByRole("status")).toHaveTextContent("小林正在输入")
+    expect(screen.getByRole("status")).not.toHaveTextContent("小夏")
+    view.rerender(<ChatView {...props} session={sessionFor([{ name: "小夏", status: "observing" }])} />)
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
   })
 
   it("未处于输入状态的成员不计数，状态结束后移除提示", () => {

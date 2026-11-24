@@ -28,6 +28,7 @@ let current
 let builder
 let modelServer
 let realProfile
+let debugPort
 
 function passed(name, detail) {
   report.tests.push({ name, status: "Passed", ...(detail ? { detail } : {}) })
@@ -80,7 +81,7 @@ function native(session, action, extra = []) {
 }
 
 async function launch(index) {
-  const port = await freePort()
+  const port = debugPort
   const userData = path.join(output, `webview-${index}`)
   mkdirSync(userData, { recursive: true })
   const child = spawn(executable, [], { cwd: root, shell: false, env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`, WEBVIEW2_USER_DATA_FOLDER: userData } })
@@ -163,14 +164,15 @@ try {
   config.identifier = identifier
   config.productName = productName
   config.build = { ...config.build, beforeBuildCommand: "node node_modules/typescript/bin/tsc -b && node node_modules/vite/bin/vite.js build" }
-  config.app.windows[0].additionalBrowserArgs = "--remote-debugging-address=127.0.0.1"
+  debugPort = await freePort()
+  config.app.windows[0].additionalBrowserArgs = `--remote-debugging-address=127.0.0.1 --remote-debugging-port=${debugPort}`
   const configFile = path.join(output, "tauri-test-config.json")
   writeFileSync(configFile, JSON.stringify(config))
   const buildLog = createWriteStream(path.join(output, "build.log"))
   builder = spawn(process.execPath, [path.join(root, "node_modules/@tauri-apps/cli/tauri.js"), "build", "--debug", "--no-bundle", "--config", configFile], { cwd: root, shell: false, env: { ...process.env, NODE_ENV: "production", CARGO_TARGET_DIR: desktopTarget, CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "2" } })
   builder.stdout.pipe(buildLog, { end: false })
   builder.stderr.pipe(buildLog, { end: false })
-  await waitExit(builder, 600_000)
+  await waitExit(builder, 1_200_000)
   buildLog.end()
   assert.equal(builder.exitCode, 0, "桌面构建失败，详见 build.log")
   assert.ok(readFileSync(executable).includes(Buffer.from(identifier)), "构建未包含隔离测试标识，不启动应用")
@@ -187,7 +189,8 @@ try {
   assert.equal(snapshot.participants.filter((member) => member.kind === "user").length, 1)
   assert.deepEqual(snapshot.participants.filter((member) => member.kind === "agent").map((member) => member.display_name).sort(), defaultAgents.map((agent) => agent.display_name).sort())
   for (const member of snapshot.participants.filter((member) => member.kind === "agent")) assert.equal(member.status, "needs_configuration")
-  await expect(page.getByText("这里还很安静", { exact: true })).toBeVisible()
+  await expect(page.getByRole("region", { name: "聊天记录", exact: true })).toBeVisible()
+  await expect(page.locator("[data-message-id]")).toHaveCount(0)
   passed("无凭据首启与两位内置成员未配置，无假聊天")
   const input = page.getByRole("textbox", { name: "消息输入" })
   await expect(page.getByRole("button", { name: "发送消息", exact: true })).toBeDisabled()
@@ -471,11 +474,16 @@ try {
   await page.getByRole("combobox", { name: "搜索成员", exact: true }).click()
   await page.getByRole("option", { name: "本地测试者", exact: true }).click()
   const today = new Date()
+  const dayLabel = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`
+  const startDateDialog = page.getByRole("dialog", { name: "搜索开始日期" })
   await page.getByRole("button", { name: "搜索开始日期", exact: true }).click()
-  await page.getByRole("button", { name: `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`, exact: true }).click()
-  await page.getByRole("button", { name: "确定", exact: true }).click()
+  await startDateDialog.getByRole("button", { name: dayLabel, exact: true }).click()
+  await startDateDialog.getByRole("button", { name: "确定", exact: true }).click()
+  const endDateDialog = page.getByRole("dialog", { name: "搜索结束日期" })
   await page.getByRole("button", { name: "搜索结束日期", exact: true }).click()
-  await page.getByRole("button", { name: "今天", exact: true }).click()
+  await endDateDialog.getByRole("button", { name: dayLabel, exact: true }).click()
+  await endDateDialog.getByRole("button", { name: "确定", exact: true }).click()
+  blocked("搜索结束日期重复选择当前时间", "已确认现有问题：结束日期为当前时间(null)时再次点击今天，筛选值未变但清空结果并设置pending，自动搜索不重启；日期过滤验收改用明确结束日期，不将该问题视为通过。")
   const result = page.getByRole("list", { name: "搜索结果" }).getByRole("button")
   await expect(result).toHaveCount(1)
   await screenshot(page, "chat-search-filtered")
@@ -625,12 +633,19 @@ try {
   const betaId = randomUUID()
   const syntheticKey = "synthetic-desktop-model-key-not-a-real-secret"
   const emptyDecision = () => ({ participation: "observe", messages: [], recalls: [], tool_requests: [], group_patch: null, announcement: null, profile_patch: null, wake_plan: null, topic_hint: null, extra_data: { message_annotations: [], memory_candidates: [] }, experience: null })
+  const longReply = "这是一条用于验证实际中文打字时间的本地测试消息，模型会立即完成输出，但正文应当经过完整的打字等待后再发送，不能一看到新消息就显示正在输入，也不能在生成完之后瞬间刷出整段文字。"
+  const waitingReply = "这是一条已完成生成但应在新消息出现时立即取消的旧候选消息。它保留足够长的正文，用来核对正在输入期间是否仍能及时接收新消息，而不是等待旧回复完整打完再处理。"
+  let heldAlphaResponse
+  function holdAlphaResponse(trigger) {
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    const held = { trigger, gate, release, received: false, respondedAt: null }
+    heldAlphaResponse = held
+    return held
+  }
   function fixtureDecision(model, context) {
     const decision = emptyDecision()
-    if (context.opportunity === "initialized") {
-      if (model === "alpha") decision.wake_plan = { after_seconds: 300, reason_code: "check_later", review_message_ordinal: null }
-      return decision
-    }
+    if (context.opportunity === "initialized") return decision
     const messages = context.recent_messages ?? []
     const userIds = new Set(context.participants.filter((member) => member.kind === "user").map((member) => member.id))
     const latestUser = messages.findLast((message) => userIds.has(message.sender_id))
@@ -639,6 +654,12 @@ try {
     const alreadySent = (body, since) => messages.some((message) => message.sender_id === ownId && BigInt(message.seq) > BigInt(since.seq) && text(message) === body)
     let reply
     let sendAfter = 0
+    if (model === "alpha" && context.opportunity === "new_message" && text(latestUser) === "运行器计划测试") decision.wake_plan = { after_seconds: 300, reason_code: "check_later", review_message_ordinal: null }
+    if (model === "alpha" && text(latestUser) === "运行器输入状态测试" && !alreadySent(longReply, latestUser)) reply = longReply
+    if (model === "alpha" && text(latestUser) === "运行器待发竞争测试") reply = waitingReply
+    if (model === "alpha" && text(latestUser) === "运行器待发竞争新消息" && !alreadySent("待发竞争已恢复", latestUser)) reply = "待发竞争已恢复"
+    if (model === "alpha" && text(latestUser) === "运行器过时竞争测试") reply = "旧候选不得发送"
+    if (model === "alpha" && text(latestUser) === "运行器竞争新消息" && !alreadySent("新消息重新判断完成", latestUser)) reply = "新消息重新判断完成"
     if (model === "alpha" && text(latestUser) === "运行器互聊测试" && !alreadySent("本地成员甲收到了", latestUser)) reply = "本地成员甲收到了"
     if (model === "beta" && text(latestUser) === "运行器互聊测试") {
       const alphaReply = messages.findLast((message) => message.sender_id === alphaId && BigInt(message.seq) > BigInt(latestUser.seq) && text(message) === "本地成员甲收到了")
@@ -650,7 +671,7 @@ try {
     if (model === "alpha" && context.opportunity === "planned_wake") reply = "持久计划到期回复"
     if (reply) {
       decision.participation = "speak"
-      decision.messages = [{ parts: [{ kind: "text", text: reply }], quote_message_id: null, mention_ids: [], mention_all: false, send_after_ms: sendAfter }]
+      decision.messages = [{ parts: [{ kind: "text", text: reply }], quote_message_id: null, mention_ids: reply === "本地成员甲收到了" ? [betaId] : reply === "本地成员乙接上了" ? [alphaId] : [], mention_all: false, send_after_ms: sendAfter }]
     }
     return decision
   }
@@ -678,7 +699,17 @@ try {
         return
       }
       const context = JSON.parse(prompt.split("\n")[0])
-      hits.push({ model: body.model, opportunity: context.opportunity })
+      const latest = context.recent_messages?.at(-1)
+      const latestText = latest?.parts.filter((part) => part.kind === "text").map((part) => part.text).join("") ?? ""
+      const hit = { model: body.model, opportunity: context.opportunity, message_seq: latest?.seq, received_at: Date.now() }
+      hits.push(hit)
+      const held = body.model === "alpha" && heldAlphaResponse?.trigger === latestText ? heldAlphaResponse : null
+      if (held) {
+        held.received = true
+        await held.gate
+        held.respondedAt = Date.now()
+        if (heldAlphaResponse === held) heldAlphaResponse = null
+      }
       if (body.model === "alpha" && failNextAlpha) {
         failNextAlpha = false
         response.writeHead(503, { "Content-Type": "application/json" })
@@ -695,7 +726,12 @@ try {
   })
   await new Promise((resolve, reject) => { modelServer.once("error", reject); modelServer.listen(0, "127.0.0.1", resolve) })
   const runtimeGeneration = () => running.snapshot.data_generation_id
-  async function runtimeSnapshot() { return data(await invoke(running.page, "app_get_snapshot", { data_generation_id: runtimeGeneration(), last_event_seq: null })) }
+  const observedRuntimeStates = []
+  async function runtimeSnapshot() {
+    const snapshot = data(await invoke(running.page, "app_get_snapshot", { data_generation_id: runtimeGeneration(), last_event_seq: null }))
+    observedRuntimeStates.push(...snapshot.participants.filter((member) => member.runtime).map((member) => ({ id: member.id, status: member.runtime.status })))
+    return snapshot
+  }
   async function runtimeMessages() { return data(await invoke(running.page, "chat_list", { data_generation_id: runtimeGeneration(), before_seq: null, after_seq: null, around_seq: null, limit: 200 })).items }
   async function runtimeControl(agentId, paused) { return data(await invoke(running.page, "agent_runtime_control", { data_generation_id: runtimeGeneration(), agent_id: agentId, paused })) }
   async function waitRuntime(agentId, status, timeout = 20_000) {
@@ -718,7 +754,7 @@ try {
     assert.equal(participant.kind, "agent")
     await expect(running.page.getByText(body, { exact: false }).first()).toBeVisible({ timeout })
   }
-  const runtimeRequest = (text) => ({ data_generation_id: runtimeGeneration(), client_request_id: randomUUID(), parts: [{ kind: "text", text }], quote_message_id: null, mention_ids: [], mention_all: false })
+  const runtimeRequest = (text, mentionIds = [alphaId]) => ({ data_generation_id: runtimeGeneration(), client_request_id: randomUUID(), parts: [{ kind: "text", text }], quote_message_id: null, mention_ids: mentionIds, mention_all: false })
   const profileInput = ({ id, name, protocol, base_url, model_name }) => ({ id, name, protocol, base_url, model_name })
   const existingAgents = data(await invoke(running.page, "agent_list", { data_generation_id: runtimeGeneration() }))
   for (const agent of existingAgents) await runtimeControl(agent.agent_id, true)
@@ -750,14 +786,19 @@ try {
   await expect(running.page.getByRole("textbox", { name: "消息输入" })).toBeEnabled({ timeout: 30_000 })
   await waitRuntime(alphaId, "observing")
   await waitRuntime(betaId, "observing")
-  assert.equal(hits.filter((hit) => hit.model === "alpha" && hit.opportunity === "initialized").length, 1)
-  assert.equal(hits.filter((hit) => hit.model === "beta" && hit.opportunity === "initialized").length, 1)
-  await expect.poll(async () => (await runtimeSnapshot()).participants.find((member) => member.id === alphaId)?.runtime.next_wake_at).toBeGreaterThan(Date.now())
-  const startupCalls = hits.length
+  assert.equal(hits.filter((hit) => hit.opportunity === "initialized").length, 0, "已有历史时初始化不能重新回答旧消息或调用模型")
+  await runtimeControl(betaId, true)
+  await waitRuntime(betaId, "paused")
+  const initialCalls = hits.length
   for (let index = 0; index < 3; index += 1) await runtimeSnapshot()
-  await delay(1500)
-  assert.equal(hits.length, startupCalls, "状态事件和快照查询不能触发模型调用")
-  passed("已配置社交成员真实启动，观察成功且模型自主计划持久化，无状态事件调用循环")
+  assert.equal(hits.length, initialCalls, "状态事件和快照查询不能触发模型调用")
+  passed("已有历史的社交成员初始化只恢复观察，不重播旧回复、不调用模型")
+  data(await invoke(running.page, "chat_send", runtimeRequest("运行器计划测试")))
+  await expect.poll(async () => (await runtimeSnapshot()).participants.find((member) => member.id === alphaId)?.runtime.next_wake_at, { timeout: 20_000 }).toBeGreaterThan(Date.now())
+  await waitRuntime(alphaId, "observing")
+  const startupCalls = hits.length
+  assert.equal(hits.filter((hit) => hit.model === "alpha").length, 1)
+  passed("明确提及触发一次观察判断，模型自主计划持久化，无状态事件调用循环")
 
   const startupWakeAt = (await runtimeSnapshot()).participants.find((member) => member.id === alphaId).runtime.next_wake_at
   const unrelatedGlobal = data(await invoke(running.page, "global_configuration_get", { data_generation_id: runtimeGeneration() }))
@@ -768,6 +809,57 @@ try {
   assert.equal(hits.length, startupCalls, "无关人格预设保存不能重启成员或增加模型调用")
   assert.equal((await runtimeSnapshot()).participants.find((member) => member.id === alphaId).runtime.next_wake_at, startupWakeAt, "无关全局配置保存必须保留现有唤醒计划")
   passed("无关人格预设保存不增加调用且保留成员既有计划")
+
+  const typingHold = holdAlphaResponse("运行器输入状态测试")
+  data(await invoke(running.page, "chat_send", runtimeRequest("运行器输入状态测试")))
+  await expect(running.page.locator(".chat-heading")).not.toContainText("正在输入")
+  await expect.poll(() => typingHold.received, { timeout: 20_000 }).toBe(true)
+  await waitRuntime(alphaId, "deciding")
+  await expect(running.page.locator(".chat-heading")).not.toContainText("正在输入")
+  await screenshot(running.page, "runtime-deciding-no-typing")
+  typingHold.release()
+  await waitRuntime(alphaId, "waiting_to_send")
+  await expect(running.page.locator(".chat-heading")).toContainText("本地成员甲正在输入")
+  assert.ok(!(await runtimeMessages()).some((message) => message.parts.some((part) => part.kind === "text" && part.text === longReply)))
+  await screenshot(running.page, "runtime-typing-delay")
+  await waitReply(longReply, alphaId, 45_000)
+  await waitRuntime(alphaId, "observing")
+  await expect(running.page.locator(".chat-heading")).not.toContainText("正在输入")
+  const timedReply = (await runtimeMessages()).find((message) => message.sender_id === alphaId && message.parts.some((part) => part.kind === "text" && part.text === longReply))
+  const typingElapsed = timedReply.created_at - typingHold.respondedAt
+  assert.ok(typingElapsed >= [...longReply].length * 180, "长消息必须在模型完成后留出按中文长度计算的实际打字时间")
+  passed("模型判断不显示输入，确定发言才显示输入，长消息经过实际打字等待", { characters: [...longReply].length, elapsed_ms: typingElapsed })
+
+  const competitionHold = holdAlphaResponse("运行器过时竞争测试")
+  const callsBeforeCompetition = hits.filter((hit) => hit.model === "alpha").length
+  data(await invoke(running.page, "chat_send", runtimeRequest("运行器过时竞争测试")))
+  await expect.poll(() => competitionHold.received, { timeout: 20_000 }).toBe(true)
+  await waitRuntime(alphaId, "deciding")
+  data(await invoke(running.page, "chat_send", runtimeRequest("运行器竞争新消息")))
+  competitionHold.release()
+  await waitReply("新消息重新判断完成", alphaId)
+  await waitRuntime(alphaId, "observing")
+  assert.ok(!(await runtimeMessages()).some((message) => message.sender_id === alphaId && message.parts.some((part) => part.kind === "text" && part.text === "旧候选不得发送")), "过时候选不能发送")
+  assert.equal(hits.filter((hit) => hit.model === "alpha").length, callsBeforeCompetition + 2, "新消息竞争应合并机会，不进行额外连续重试")
+  assert.ok(!observedRuntimeStates.some((state) => state.id === alphaId && state.status === "protected"), "观察竞争不能将成员标记为保护状态")
+  await screenshot(running.page, "runtime-conflict-recovered")
+  passed("生成期间收到新消息会丢弃旧候选并恢复观察，不误报保护、不重复发送")
+
+  const callsBeforeWaitingCompetition = hits.filter((hit) => hit.model === "alpha").length
+  data(await invoke(running.page, "chat_send", runtimeRequest("运行器待发竞争测试")))
+  await waitRuntime(alphaId, "waiting_to_send")
+  await expect(running.page.locator(".chat-heading")).toContainText("本地成员甲正在输入")
+  const waitingCompetitionAt = Date.now()
+  data(await invoke(running.page, "chat_send", runtimeRequest("运行器待发竞争新消息")))
+  await waitReply("待发竞争已恢复", alphaId, 12_000)
+  await waitRuntime(alphaId, "observing")
+  const waitingRecovery = (await runtimeMessages()).find((message) => message.sender_id === alphaId && message.parts.some((part) => part.kind === "text" && part.text === "待发竞争已恢复"))
+  assert.ok(waitingRecovery.created_at - waitingCompetitionAt < [...waitingReply].length * 180, "新消息应及时取消旧打字候选，不等待旧正文打完")
+  assert.ok(!(await runtimeMessages()).some((message) => message.sender_id === alphaId && message.parts.some((part) => part.kind === "text" && part.text === waitingReply)))
+  assert.equal(hits.filter((hit) => hit.model === "alpha").length, callsBeforeWaitingCompetition + 3, "长候选先经历一次本地风格精简，再在新消息到达时及时取消")
+  assert.ok(!observedRuntimeStates.some((state) => state.id === alphaId && state.status === "protected"))
+  await screenshot(running.page, "runtime-waiting-conflict-recovered")
+  passed("正在输入时新消息及时取消旧长候选，不等待旧打字截止、不误报保护", { recovery_ms: waitingRecovery.created_at - waitingCompetitionAt })
 
   failNextAlpha = true
   data(await invoke(running.page, "chat_send", runtimeRequest("运行器临时故障测试")))
@@ -782,19 +874,22 @@ try {
   await screenshot(running.page, "runtime-transient-offline")
   await running.page.getByRole("button", { name: "聊天", exact: true }).click()
   data(await invoke(running.page, "chat_send", runtimeRequest("运行器新消息恢复测试")))
-  await waitReply("临时故障后已恢复", alphaId)
+  await waitReply("临时故障后已恢复", alphaId, 45_000)
   await waitRuntime(alphaId, "observing")
   assert.equal(hits.filter((hit) => hit.model === "alpha").length, failedCalls + 1)
   assert.equal(hits.filter((hit) => hit.model === "alpha").at(-1).opportunity, "new_message")
   passed("临时模型故障显示重试而非暂停，新消息自动恢复且只新增一次请求")
 
+  await runtimeControl(betaId, false)
+  await waitRuntime(betaId, "observing")
+  const alphaBeforeMutual = hits.filter((hit) => hit.model === "alpha").length
   const mutualRequest = runtimeRequest("运行器互聊测试")
   const mutualResult = data(await invoke(running.page, "chat_send", mutualRequest))
   await waitReply("本地成员甲收到了", alphaId)
   await waitReply("本地成员乙接上了", betaId)
+  await expect.poll(() => hits.filter((hit) => hit.model === "alpha").length, { timeout: 20_000 }).toBe(alphaBeforeMutual + 2)
   await waitRuntime(alphaId, "observing")
   await waitRuntime(betaId, "observing")
-  await delay(1500)
   const mutualCalls = hits.length
   assert.deepEqual(data(await invoke(running.page, "chat_send", mutualRequest)), mutualResult)
   for (let index = 0; index < 3; index += 1) await runtimeSnapshot()
@@ -804,6 +899,9 @@ try {
   passed("双成员按真人消息与同伴回复自主接话，真实成员身份落库并显示，无自回复和幂等重复调用")
 
   const runtimeInput = running.page.getByRole("textbox", { name: "消息输入" })
+  await running.page.getByRole("button", { name: "提及成员", exact: true }).click()
+  await running.page.getByRole("menuitemcheckbox", { name: "本地成员甲", exact: true }).click()
+  await running.page.keyboard.press("Escape")
   await runtimeInput.fill("运行器延迟暂停测试")
   await runtimeInput.press("Enter")
   await waitRuntime(alphaId, "waiting_to_send")
@@ -817,17 +915,16 @@ try {
   await delay(1500)
   assert.equal(hits.filter((hit) => hit.model === "alpha").length, pausedAlphaCalls)
   await runtimeControl(alphaId, false)
-  await expect.poll(() => hits.filter((hit) => hit.model === "alpha").length).toBe(pausedAlphaCalls + 1)
   await waitRuntime(alphaId, "observing")
-  assert.equal(hits.filter((hit) => hit.model === "alpha").length, pausedAlphaCalls + 1)
-  passed("待发分条暂停即取消、暂停期间不调用模型，恢复提供一次初始化机会")
+  assert.equal(hits.filter((hit) => hit.model === "alpha").length, pausedAlphaCalls, "有历史时恢复只恢复观察，不重新初始化调用模型")
+  passed("待发分条暂停即取消、暂停期间不调用模型，恢复不重播历史或追加模型请求")
 
   try {
     native(running, "status")
     await running.page.getByRole("button", { name: "关闭到托盘", exact: true }).click()
     await expect.poll(() => native(running, "status").visible).toBe(false)
     data(await invoke(running.page, "chat_send", runtimeRequest("运行器后台测试")))
-    await expect.poll(async () => (await runtimeMessages()).some((message) => message.sender_id === alphaId && message.parts.some((part) => part.kind === "text" && part.text === "后台仍在处理"))).toBe(true)
+    await expect.poll(async () => (await runtimeMessages()).some((message) => message.sender_id === alphaId && message.parts.some((part) => part.kind === "text" && part.text === "后台仍在处理")), { timeout: 20_000 }).toBe(true)
     assert.equal(native(running, "status").visible, false)
     native(running, "show")
     await waitReply("后台仍在处理", alphaId)
@@ -852,15 +949,18 @@ try {
 
   const alphaBeforeResume = hits.filter((hit) => hit.model === "alpha").length
   await runtimeControl(alphaId, false)
-  await expect.poll(() => hits.filter((hit) => hit.model === "alpha").length).toBe(alphaBeforeResume + 1)
   await waitRuntime(alphaId, "observing")
-  await expect.poll(async () => (await runtimeSnapshot()).participants.find((member) => member.id === alphaId)?.runtime.next_wake_at).toBeGreaterThan(Date.now())
+  assert.equal(hits.filter((hit) => hit.model === "alpha").length, alphaBeforeResume, "恢复运行不能为旧历史追加请求")
+  data(await invoke(running.page, "chat_send", runtimeRequest("运行器计划测试")))
+  await expect.poll(async () => (await runtimeSnapshot()).participants.find((member) => member.id === alphaId)?.runtime.next_wake_at, { timeout: 20_000 }).toBeGreaterThan(Date.now())
+  await waitRuntime(alphaId, "observing")
+  assert.equal(hits.filter((hit) => hit.model === "alpha").length, alphaBeforeResume + 1)
   const savedWakeAt = (await runtimeSnapshot()).participants.find((member) => member.id === alphaId).runtime.next_wake_at
   assert.ok(savedWakeAt > Date.now())
   const betaBeforeResume = hits.filter((hit) => hit.model === "beta").length
   await runtimeControl(betaId, false)
-  await expect.poll(() => hits.filter((hit) => hit.model === "beta").length).toBe(betaBeforeResume + 1)
   await waitRuntime(betaId, "observing")
+  assert.equal(hits.filter((hit) => hit.model === "beta").length, betaBeforeResume, "无计划成员恢复时不能重新回答历史")
   assert.equal((await runtimeSnapshot()).participants.find((member) => member.id === betaId).runtime.next_wake_at, null)
   const idleBetaCalls = hits.filter((hit) => hit.model === "beta").length
   const plannedCalls = hits.length

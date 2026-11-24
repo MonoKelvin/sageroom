@@ -347,7 +347,7 @@ fn request_quota_counts_silence_failures_and_survives_restart_and_utc_day_change
 }
 
 #[test]
-fn global_request_quota_is_five_hundred_across_agents_and_not_reset_on_restart() {
+fn each_agent_has_five_hundred_requests_and_quota_survives_restart() {
     let (directory, mut database, agent) = fixture();
     let mut second = agent.clone();
     second.agent_id = "second-quota-agent".into();
@@ -392,7 +392,7 @@ fn global_request_quota_is_five_hundred_across_agents_and_not_reset_on_restart()
 }
 
 #[test]
-fn connection_test_quota_is_separate_durable_and_included_in_the_global_cap() {
+fn connection_test_quota_is_separate_durable_and_does_not_reduce_agent_quota() {
     let (directory, mut database, agent) = fixture();
     let owner = "test:runtime-test-model";
     for count in 1..=20 {
@@ -422,7 +422,7 @@ fn connection_test_quota_is_separate_durable_and_included_in_the_global_cap() {
         database.reserve_runtime_request(&agent.agent_id, 500),
         ErrorCode::Backpressure,
     );
-    // 连接测试的 20 次与智能体自身的调用记在同一份每日总账里。
+    // 调用记在同一张表里，但测试与每个成员独立限额。
     let total: u32 = database
         .conn
         .query_row(
@@ -439,6 +439,39 @@ fn connection_test_quota_is_separate_durable_and_included_in_the_global_cap() {
             .unwrap(),
         1
     );
+}
+
+#[test]
+fn deleted_agent_history_and_connection_tests_cannot_use_another_agents_daily_quota() {
+    let (directory, mut database, agent) = fixture();
+    let deleted = database
+        .list_agents(&database.generation_id)
+        .unwrap()
+        .into_iter()
+        .find(|other| other.agent_id != agent.agent_id)
+        .unwrap();
+    for count in 1..=500 {
+        assert_eq!(database.reserve_runtime_request(&deleted.agent_id, 500).unwrap(), count);
+    }
+    let transaction = database.conn.transaction().unwrap();
+    for table in ["agent_runtime_states", "agent_config_versions", "agent_configurations"] {
+        transaction.execute(&format!("DELETE FROM {table} WHERE agent_id=?1"), [&deleted.agent_id]).unwrap();
+    }
+    transaction.execute("DELETE FROM participants WHERE id=?1", [&deleted.agent_id]).unwrap();
+    transaction.commit().unwrap();
+    for count in 1..=500 {
+        assert_eq!(database.reserve_runtime_request(&agent.agent_id, 500).unwrap(), count);
+    }
+    let owner = "test:runtime-test-model";
+    for count in 1..=20 {
+        assert_eq!(database.reserve_runtime_request(owner, 500).unwrap(), count);
+    }
+    drop(database);
+    let mut restarted = Database::open(directory.path(), "deleted-quota-restart".into()).unwrap();
+    assert_eq!(restarted.list_agents(&restarted.generation_id).unwrap().len(), 1);
+    assert_eq!(count_today(&restarted.conn, &deleted.agent_id, now_ms()).unwrap(), 500);
+    code(restarted.reserve_runtime_request(&agent.agent_id, 500), ErrorCode::Backpressure);
+    code(restarted.reserve_runtime_request(owner, 20), ErrorCode::Backpressure);
 }
 
 #[test]
@@ -834,7 +867,7 @@ fn wake_log_has_two_reservations_per_rolling_hour_across_restart_and_boundary() 
 }
 
 #[test]
-fn minute_and_chain_limits_are_global_durable_and_count_every_split_part() {
+fn minute_limit_is_global_durable_and_counts_every_split_part() {
     let (directory, mut database, agent) = fixture();
     let now = now_ms();
     // 分钟总量上限（40）：4 个决策 × 10 条分条，各自独立话题链，避开链限制。
@@ -849,6 +882,14 @@ fn minute_and_chain_limits_are_global_durable_and_count_every_split_part() {
                 .unwrap();
         }
     }
+    let error = database
+        .commit_runtime_message_at(
+            candidate(&agent, 30, "minute-3", 10, "minute-chain-3"),
+            now,
+        )
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::Backpressure);
+    assert!(error.message.contains("一分钟"));
     let observed = allocated_seq(&database.conn, "messages").unwrap();
     code(
         database.commit_runtime_message_at(
@@ -866,24 +907,59 @@ fn minute_and_chain_limits_are_global_durable_and_count_every_split_part() {
         ),
         ErrorCode::Backpressure,
     );
-    // 话题链上限：30 分钟窗口内同一链最多 20 条，跨分钟继续累计。
-    let observed = allocated_seq(&restarted.conn, "messages").unwrap();
-    for ordinal in 0..20 {
-        restarted
-            .commit_runtime_message_at(
-                candidate(&agent, observed, "chain", ordinal, "limited-chain"),
-                now + MINUTE_MS,
-            )
-            .unwrap();
+    assert_eq!(rows(&restarted.conn, "runtime_messages"), 40);
+}
+
+#[test]
+fn chain_limit_counts_reply_rounds_and_allows_the_final_round_to_finish() {
+    let (directory, mut database, agent) = fixture();
+    let now = now_ms();
+    let mut final_observed = 0;
+    for decision in 0..20 {
+        let observed = allocated_seq(&database.conn, "messages").unwrap();
+        final_observed = observed;
+        for ordinal in 0..2 {
+            database
+                .commit_runtime_message_at(
+                    candidate(&agent, observed, &format!("chain-{decision}"), ordinal, "limited-chain"),
+                    now + decision * MINUTE_MS,
+                )
+                .unwrap();
+        }
     }
+    let observed = allocated_seq(&database.conn, "messages").unwrap();
+    let error = database
+        .commit_runtime_message_at(
+            candidate(&agent, observed, "chain-extra", 0, "limited-chain"),
+            now + 20 * MINUTE_MS,
+        )
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::Backpressure);
+    assert!(error.message.contains("20 回合"));
+    assert_eq!(rows(&database.conn, "runtime_messages"), 40);
+    drop(database);
+    let mut restarted = Database::open(directory.path(), "chain-restart".into()).unwrap();
+    restarted
+        .commit_runtime_message_at(
+            candidate(&agent, final_observed, "chain-19", 2, "limited-chain"),
+            now + 20 * MINUTE_MS,
+        )
+        .unwrap();
+    let observed = allocated_seq(&restarted.conn, "messages").unwrap();
     code(
         restarted.commit_runtime_message_at(
-            candidate(&agent, observed, "chain", 20, "limited-chain"),
-            now + 2 * MINUTE_MS,
+            candidate(&agent, observed, "chain-extra", 0, "limited-chain"),
+            now + 20 * MINUTE_MS,
         ),
         ErrorCode::Backpressure,
     );
-    assert_eq!(rows(&restarted.conn, "runtime_messages"), 60);
+    restarted
+        .commit_runtime_message_at(
+            candidate(&agent, observed, "chain-extra", 0, "limited-chain"),
+            now + CHAIN_WINDOW_MS,
+        )
+        .unwrap();
+    assert_eq!(rows(&restarted.conn, "runtime_messages"), 42);
 }
 
 #[test]
@@ -909,6 +985,14 @@ fn global_hour_limit_persists_across_restart_and_chain_changes() {
                 .unwrap();
         }
     }
+    let error = database
+        .commit_runtime_message_at(
+            candidate(&agent, 390, "hour-39", 10, "chain-39"),
+            now,
+        )
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::Backpressure);
+    assert!(error.message.contains("一小时"));
     let observed = allocated_seq(&database.conn, "messages").unwrap();
     drop(database);
     let mut restarted = Database::open(directory.path(), "hour-restart".into()).unwrap();
@@ -1170,6 +1254,23 @@ fn recalled_observation_invalidates_stale_runtime_parts_without_advancing_messag
     );
     fresh.observed_content_epoch = 1.into();
     database.commit_runtime_message(fresh).unwrap();
+}
+
+#[test]
+fn quoted_questions_remain_addressed_outside_the_recent_context_window() {
+    let (_directory, mut database, agent) = fixture();
+    let own = database.commit_runtime_message(candidate(&agent, 0, "quote-own", 0, "quote-chain")).unwrap().0;
+    let question = database.send_message(ChatSendRequest {
+        data_generation_id: database.generation_id.clone(),
+        client_request_id: Uuid::now_v7().to_string(),
+        parts: vec![MessagePart::Text { text: "你说的是哪件事？".into() }],
+        quote_message_id: Some(own.message_id.clone()), mention_ids: vec![], mention_all: false,
+    }).unwrap().0;
+    for _ in 0..35 { human(&mut database); }
+    assert!(!database.runtime_input(&agent.agent_id).unwrap().messages.iter().any(|message| message.id == question.message_id));
+    assert_eq!(database.runtime_mention_seq(&agent.agent_id, own.message_seq).unwrap(), question.message_seq);
+    database.conn.execute("UPDATE messages SET state='recalled' WHERE id=?1", [&own.message_id]).unwrap();
+    assert_eq!(database.runtime_mention_seq(&agent.agent_id, 0.into()).unwrap(), 0.into());
 }
 
 #[test]

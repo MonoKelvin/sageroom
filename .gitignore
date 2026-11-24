@@ -3,6 +3,8 @@ dist/
 coverage/
 *.tsbuildinfo
 *.log
+__pycache__/
+*.pyc
 .env
 .env.*
 /src-tauri/target/
@@ -11,5 +13,7 @@ coverage/
 /playwright-report/
 /.test-results/
 /.cache/
+/agent/chat_corpus_zh/
+/agent/chat_corpus_zh/**
 /.claude/
 /.workbuddy/

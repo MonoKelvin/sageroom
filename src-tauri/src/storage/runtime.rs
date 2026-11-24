@@ -380,7 +380,7 @@ impl Database {
         validate_id(id, "agent_id")?;
         let after = parse_counter(&after_seq, "after_seq")?;
         let seq: i64 = self.conn.query_row(
-            "SELECT COALESCE(MAX(m.seq),0) FROM messages m WHERE m.room_id=?1 AND m.seq>?2 AND m.sender_id<>?3 AND m.state='visible' AND (m.mention_all=1 OR EXISTS(SELECT 1 FROM mentions n WHERE n.message_id=m.id AND n.target_participant_id=?3))",
+            "SELECT COALESCE(MAX(m.seq),0) FROM messages m WHERE m.room_id=?1 AND m.seq>?2 AND m.sender_id<>?3 AND m.state='visible' AND (m.mention_all=1 OR EXISTS(SELECT 1 FROM mentions n WHERE n.message_id=m.id AND n.target_participant_id=?3) OR EXISTS(SELECT 1 FROM messages q WHERE q.id=m.quote_message_id AND q.sender_id=?3 AND q.state='visible'))",
             params![self.room_id, after, id], |row| row.get(0),
         )?;
         Ok(seq.into())
@@ -526,24 +526,11 @@ impl Database {
             daily_limit.min(DAILY_REQUEST_LIMIT)
         };
         let day = now.div_euclid(UTC_DAY_MS);
-        let total: u32 = transaction.query_row(
-            "SELECT COALESCE(SUM(requests),0) FROM runtime_request_counts WHERE utc_day=?1",
-            [day],
-            |row| row.get(0),
-        )?;
-        // 额度按智能体计：每个智能体各自拥有 DAILY_REQUEST_LIMIT，
-        // 全局上限随智能体数量放大，避免两个成员互相挤占对方的额度。
-        let agent_count: i64 = transaction.query_row(
-            "SELECT COUNT(*) FROM agent_configurations",
-            [],
-            |row| row.get(0),
-        )?;
-        let global_limit = DAILY_REQUEST_LIMIT.saturating_mul(agent_count.max(1) as u32);
         let current = count_today(&transaction, owner, now)?;
-        if total >= global_limit || current >= limit {
+        if current >= limit {
             return Err(AppError::new(
                 ErrorCode::Backpressure,
-                "今日模型请求额度已用完，等待下一个 UTC 日。",
+                format!("今日模型请求已达 {limit} 次上限，等待下一个 UTC 日。"),
             ));
         }
         transaction.execute(
@@ -775,11 +762,14 @@ impl Database {
                 ));
             }
         }
-        // 频率保护都按滚动窗口统计：话题链只在最近一段时间内限流，
-        // 避免长对话被永久锁死；分钟/小时窗口也放到不会误伤正常拆条的量级。
         let chain_count: u32 = transaction.query_row(
-            "SELECT COUNT(*) FROM runtime_messages WHERE chain_id=?1 AND committed_at>?2",
+            "SELECT COUNT(DISTINCT decision_id) FROM runtime_messages WHERE chain_id=?1 AND committed_at>?2",
             params![&message.chain_id, now.saturating_sub(CHAIN_WINDOW_MS)],
+            |row| row.get(0),
+        )?;
+        let continuing_decision: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM runtime_messages WHERE decision_id=?1)",
+            [&message.decision_id],
             |row| row.get(0),
         )?;
         let minute_count: u32 = transaction.query_row(
@@ -792,11 +782,17 @@ impl Database {
             [now.saturating_sub(HOUR_MS)],
             |row| row.get(0),
         )?;
-        if chain_count >= 20 || minute_count >= 40 || hour_count >= 400 {
-            return Err(AppError::new(
-                ErrorCode::Backpressure,
-                "自动消息发送过于频繁，已暂时放缓，稍后自动恢复。",
-            ));
+        let limit_detail = if chain_count >= 20 && !continuing_decision {
+            Some("该话题最近 30 分钟已回复 20 回合，稍后自动恢复。")
+        } else if minute_count >= 40 {
+            Some("自动消息最近一分钟已发送 40 条，稍后自动恢复。")
+        } else if hour_count >= 400 {
+            Some("自动消息最近一小时已发送 400 条，稍后自动恢复。")
+        } else {
+            None
+        };
+        if let Some(detail) = limit_detail {
+            return Err(AppError::new(ErrorCode::Backpressure, detail));
         }
         let (result, event) = insert_message(
             &transaction,

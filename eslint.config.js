@@ -17,6 +17,7 @@ export default defineConfig([
     ".test-results/**",
     ".claude/**",
     ".workbuddy/**",
+    "agent/chat_corpus_zh/**",
   ]),
   {
     files: ["**/*.{ts,tsx}"],

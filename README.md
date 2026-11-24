@@ -62,6 +62,16 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
 
 `pnpm contracts:generate` regenerates the TypeScript types, JSON schema, and validators in `src/contracts/generated`. `pnpm test:desktop` builds an isolated desktop test instance and writes evidence under `.test-results/`; it does not use the normal chat data directory. `pnpm build` builds the frontend used by Tauri.
 
+## Chat-style calibration
+
+Everyday chat length and phrasing are constrained by a local style calibrator, not only by prompt instructions:
+
+- `scripts/train_chat_style.py` reads the human turn-taking data you place under `agent/chat_corpus_zh/`, filters private, advertising, robot-like, and low-quality content, then trains a small numeric-only classifier. Training is local, offline, and never uploads the corpus or your chat history. Python 3.10+ is needed only for retraining; the app itself does not depend on Python.
+- The output lives in the app data directory as `chat-style/model.json` and contains only numbers (means, weights, thresholds, length quantiles) — no example sentences, vocabularies, or paths. If the model is missing or invalid, the app falls back to built-in short-reply and phrasing rules.
+- At runtime only abstract budgets (e.g. the current `response_style`, next-message length targets) are placed in the prompt; raw corpus lines, training samples, and model weights are never sent to the model provider.
+
+This is a repeatable offline retraining workflow, not a process that silently absorbs user chats or model output while the app runs. Re-trains must be validated on a held-out set and by human review. The local calibrator borrows the stable short-profile and anti-sycophancy/anti-drift ideas from [Imprint](https://pypi.org/project/imprint-layer/) and [CPR](https://github.com/TheShadowRose/cpr) without adding their Python dependencies or copying code; CPR's filler-word and mini-narrative restoration patterns are intentionally not adopted wholesale. `agent/chat_corpus_zh/` is your local evaluation/training area and is excluded from Git; its aggregator license does not clear rights for every upstream source, and this repository does not copy, commit, or redistribute the raw corpus or training samples. Reference (ideas only, no code copied): [chinese-chatbot-corpus](https://github.com/codemayq/chinese-chatbot-corpus).
+
 ## Repository layout
 
 | Path | Purpose |

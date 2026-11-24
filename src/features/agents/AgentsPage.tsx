@@ -28,7 +28,7 @@ const runtimeStatusLabels: Record<AgentRuntimeStatus, string> = {
   waiting_to_send: "准备发送",
   sleeping: "休息中",
   paused: "已暂停",
-  protected: "达到保护上限",
+  protected: "运行受限",
   offline: "离线",
 }
 
@@ -113,7 +113,7 @@ function AgentEditor({ resource, global, active, session, onCopy, onOpenGlobal }
     <div className="panel-content panel-scroll">
       {(agentRuntime || agent.agent_type === "tool" || runtimeError) && <div className="config-stack">
         {agentRuntime?.detail && <p className="form-caption">{agentRuntime.detail}</p>}
-        {agentRuntime && <p className="form-caption">今日请求：{agentRuntime.requests_today} 次</p>}
+        {agentRuntime && <p className="form-caption">今日模型请求：{agentRuntime.requests_today} 次（含观察判断，非回复条数）</p>}
         {agentRuntime?.next_wake_at != null && <p className="form-caption">下次唤醒：{new Date(agentRuntime.next_wake_at).toLocaleString("zh-CN", { hour12: false })}</p>}
         {agent.agent_type === "tool" && <p className="form-caption">工具任务尚未启用，不参与闲聊。</p>}
         {runtimeError && <p role="alert">{runtimeError}</p>}

@@ -44,10 +44,9 @@ export function ChatView({ session, active, onNavigate }: ApplicationPageProps) 
   }, [loadedMessages, resolvedQuotes, quotesIdentity])
   const quote = quoteId ? quotes.get(quoteId) ?? (selectedQuote?.epoch === contentEpoch ? selectedQuote.message : null) : null
   const participants = useMemo(() => new Map(snapshot?.participants.map((participant) => [participant.id, participant])), [snapshot?.participants])
-  // 正在思考或准备发送的智能体，像真人聊天那样显示「正在输入」。
   const typingNames = useMemo(
     () => (snapshot?.participants ?? [])
-      .filter((participant) => participant.kind === "agent" && participant.runtime?.status != null && ["deciding", "waiting_to_send"].includes(participant.runtime.status))
+      .filter((participant) => participant.kind === "agent" && participant.runtime?.status === "waiting_to_send")
       .map((participant) => participant.display_name),
     [snapshot?.participants],
   )

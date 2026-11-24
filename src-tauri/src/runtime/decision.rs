@@ -12,6 +12,8 @@ use crate::{
     storage::{configuration::BASE_SKILL, runtime::RuntimeInput},
 };
 
+use super::style;
+
 /// 决策协议提示词已并入 `agent/SKILL.md`（`BASE_SKILL`），此处不再单独注入。
 
 #[derive(Deserialize)]
@@ -33,9 +35,8 @@ pub(super) fn repair_hint() -> &'static str {
     &hints().repair
 }
 
-/// 首次输出像一整段文字时，再请模型自己决定是否改写成更短的多条消息。
-/// 这是兜底：正常情况下首次就该是短句，只有偶尔的大段叙述才走到这里。
-pub(super) fn split_hint() -> &'static str {
+/// 内容过多时请求精简，而不是拆成更多消息。
+pub(super) fn refinement_hint() -> &'static str {
     &hints().split
 }
 
@@ -124,25 +125,71 @@ fn invalid() -> AppError {
     )
 }
 
-/// 首次输出是否像「一整段」而需要兜底细化。
-/// 正常一条消息是几个字到二十来字；单条明显偏长、或只有一条且内容很多，就值得再问一次。
-pub(super) fn needs_refinement(decision: &Decision) -> bool {
-    let lengths: Vec<usize> = decision
-        .messages
-        .iter()
-        .map(|message| {
-            message
-                .parts
-                .iter()
-                .map(|part| match part {
-                    MessagePart::Text { text } => text.chars().count(),
-                    _ => 0,
-                })
-                .sum()
-        })
-        .collect();
-    let longest = lengths.iter().copied().max().unwrap_or(0);
-    longest > 70 || (lengths.len() == 1 && longest > 40)
+pub(super) fn needs_refinement(decision: &Decision, policy: &style::Policy) -> bool {
+    policy.assess(decision).is_some()
+}
+
+pub(super) fn addressed_since(input: &RuntimeInput, observed: &DecimalString) -> bool {
+    let agent_id = &input.agent.agent_id;
+    input.messages.iter().any(|message| {
+        message.state == MessageState::Visible
+            && &message.sender_id != agent_id
+            && super::sequence(&message.seq) > super::sequence(observed)
+            && (message.mention_all || message.mention_ids.contains(agent_id)
+                || message.quote_message_id.as_ref().is_some_and(|id| {
+                    input.messages.iter().chain(&input.quoted_messages).any(|quote| {
+                        &quote.id == id && &quote.sender_id == agent_id && quote.state == MessageState::Visible
+                    })
+                }))
+    })
+}
+
+pub(super) fn participation_chance(input: &RuntimeInput, addressed: bool, now: i64) -> u64 {
+    let agent_id = &input.agent.agent_id;
+    let latest = input.messages.iter().rfind(|message| message.state == MessageState::Visible);
+    let quote_sender = latest
+        .and_then(|message| message.quote_message_id.as_ref())
+        .and_then(|id| input.messages.iter().chain(&input.quoted_messages).find(|message| &message.id == id))
+        .map(|message| &message.sender_id);
+    let one_to_one = input.snapshot.participants.len() == 2
+        && latest.is_some_and(|message| &message.sender_id != agent_id);
+    if addressed || one_to_one || latest.is_some_and(|message| {
+        message.mention_all || message.mention_ids.contains(agent_id)
+    }) || quote_sender == Some(agent_id) {
+        return 100;
+    }
+    let mut chance = 20 + u64::from(input.agent.dimensions.activity.min(100)) * 45 / 100;
+    if latest.is_some_and(|message| !message.mention_ids.is_empty())
+        || quote_sender.is_some_and(|sender| sender != agent_id)
+    {
+        chance /= 4;
+    }
+    if let Some(own) = input.messages.iter().rfind(|message| &message.sender_id == agent_id) {
+        let age = now.saturating_sub(own.created_at);
+        if age < 20_000 {
+            chance /= 4;
+        } else if age < 60_000 {
+            chance /= 2;
+        }
+    }
+    chance
+}
+
+fn schedule_messages(messages: &mut [PlannedMessage], seed: u64) {
+    let mut elapsed = 0u64;
+    for (index, message) in messages.iter_mut().enumerate() {
+        let body: String = message.parts.iter().filter_map(|part| match part {
+            MessagePart::Text { text } => Some(text.as_str()),
+            _ => None,
+        }).collect();
+        let mixed = seed.rotate_right((index as u32 * 7) % 64);
+        let per_char = 180 + mixed % 141;
+        let pauses = body.chars().filter(|c| matches!(c, '，' | ',' | '。' | '！' | '？' | '!' | '?' | '；' | ';')).count() as u64 * 180;
+        let typing = (body.chars().count() as u64 * per_char + pauses).clamp(900, 90_000);
+        let gap = if index == 0 { 800 + mixed % 1400 } else { 500 + mixed % 1800 };
+        elapsed = elapsed.saturating_add(gap + typing);
+        message.send_after_ms = elapsed;
+    }
 }
 
 pub fn parse(text: &str, input: &RuntimeInput) -> AppResult<Decision> {
@@ -256,40 +303,11 @@ pub fn parse(text: &str, input: &RuntimeInput) -> AppResult<Decision> {
             return Err(invalid());
         }
     }
-    // 模型不擅长估算毫秒，这里按字数与标点重算节奏：首条留出反应时间，
-    // 之后按打字速度累加，长停顿落在句读处，避免匀速的机械感。
-    if !decision.messages.is_empty() {
-        let seed = now_ms() as u64;
-        let mut elapsed = 0u64;
-        for (index, message) in decision.messages.iter_mut().enumerate() {
-            let mut body = String::new();
-            for part in &message.parts {
-                if let MessagePart::Text { text } = part {
-                    body.push_str(text);
-                }
-            }
-            let chars = body.chars().count() as u64;
-            // 标点带来自然停顿：逗号短停顿，句末长停顿，省略号表示犹豫。
-            let short_pauses = body
-                .chars()
-                .filter(|c| matches!(c, '，' | ',' | '、' | '；' | ';'))
-                .count() as u64;
-            let end_pauses = body
-                .chars()
-                .filter(|c| matches!(c, '。' | '！' | '？' | '!' | '?' | '.'))
-                .count() as u64;
-            let hesitations = body.matches('…').count() as u64;
-            let punctuation = short_pauses * 120 + end_pauses * 350 + hesitations * 220;
-            let reaction = if index == 0 { 600 + seed % 700 } else { 220 + seed % 260 };
-            let per_char = 85 + (seed >> (index * 3)) % 75;
-            elapsed = elapsed.saturating_add(reaction + chars * per_char + punctuation);
-            message.send_after_ms = elapsed.min(30_000);
-        }
-    }
+    schedule_messages(&mut decision.messages, uuid::Uuid::now_v7().as_u128() as u64);
     Ok(decision)
 }
 
-pub fn context(input: &mut RuntimeInput, opportunity: &str) -> AppResult<(String, String)> {
+pub fn context(input: &mut RuntimeInput, opportunity: &str, observed: &DecimalString, policy: &style::Policy) -> AppResult<(String, String)> {
     let identity = json!({
         "agent_id": input.agent.agent_id, "name": input.agent.display_name,
         "gender_description": input.agent.gender_description,
@@ -307,21 +325,13 @@ pub fn context(input: &mut RuntimeInput, opportunity: &str) -> AppResult<(String
         .map(|p| json!({"id":p.id,"name":p.display_name,"kind":p.kind}))
         .collect();
     let to_message = |message: &ChatMessage| json!({
-        "id":message.id,"seq":message.seq,"sender_id":message.sender_id,
+        "id":message.id,"seq":message.seq,"sender_id":message.sender_id,"created_at":message.created_at,
         "parts":message.parts,"quote_message_id":message.quote_message_id,
         "mention_ids":message.mention_ids,"mention_all":message.mention_all,
     });
     let mut messages: Vec<_> = input.messages.iter().filter(|message| message.state == MessageState::Visible).map(to_message).collect();
     let mut quoted: Vec<_> = input.quoted_messages.iter().filter(|message| message.state == MessageState::Visible).map(to_message).collect();
-    // 最新一条消息是否明确 @ 了我：被 @ 时应回应，@ 的是别人时通常不必抢答。
-    let addressed_to_me = input
-        .messages
-        .iter()
-        .filter(|message| message.state == MessageState::Visible)
-        .last()
-        .is_some_and(|message| {
-            message.mention_all || message.mention_ids.iter().any(|id| id == &input.agent.agent_id)
-        });
+    let addressed_to_me = addressed_since(input, observed);
     let mut used_experience_bytes = 0;
     let mut experiences = Vec::new();
     for entry in &input.experiences {
@@ -336,8 +346,8 @@ pub fn context(input: &mut RuntimeInput, opportunity: &str) -> AppResult<(String
         quoted.retain(|quote| messages.iter().any(|message| message["quote_message_id"] == quote["id"]));
         let context = json!({"schema_version":"0.3","opportunity":opportunity,"utc_millis":now_ms(),
             "room":input.snapshot.room,"participants":participants,
-            "autonomous_wake_allowed":true,"addressed_to_me":addressed_to_me,"recent_messages":messages,
-            "quoted_messages":quoted,"experiences":experiences,
+            "autonomous_wake_allowed":true,"addressed_to_me":addressed_to_me,"unread_after_seq":observed,"recent_messages":messages,
+            "quoted_messages":quoted,"experiences":experiences,"response_style":policy,
         }).to_string();
         if context.len() + repair_hint().len() <= budget {
             input.messages.retain(|message| messages.iter().any(|visible| visible["id"] == message.id));
@@ -395,6 +405,89 @@ mod tests {
             "extra_data":{"message_annotations":[],"memory_candidates":[]},"experience":null})
     }
     #[test]
+    fn typing_time_scales_with_length_without_collapsing_later_messages() {
+        let (_dir, input) = input();
+        let output = |texts: Vec<String>| json!({"participation":"speak","messages":texts.into_iter().map(|text| json!({"parts":[{"kind":"text","text":text}]})).collect::<Vec<_>>()});
+        let mut short = parse(&output(vec!["好".into()]).to_string(), &input).unwrap();
+        let mut long = parse(&output(vec!["长".repeat(200), "再".repeat(200), "最后一句。".into()]).to_string(), &input).unwrap();
+        schedule_messages(&mut short.messages, 0);
+        schedule_messages(&mut long.messages, 0);
+        assert!(short.messages[0].send_after_ms >= 1700);
+        assert!(long.messages[0].send_after_ms > 30_000);
+        assert!(long.messages.windows(2).all(|pair| pair[1].send_after_ms > pair[0].send_after_ms));
+        assert!(long.messages[2].send_after_ms - long.messages[1].send_after_ms >= 1500);
+    }
+
+    #[test]
+    fn refinement_targets_excess_content_not_normal_punctuation_or_sentence_length() {
+        let (_dir, input) = input();
+        let output = |texts: Vec<String>| json!({"participation":"speak","messages":texts.into_iter().map(|text| json!({"parts":[{"kind":"text","text":text}]})).collect::<Vec<_>>()});
+        for texts in [vec!["有".repeat(45)], vec!["第一件事。".into(), "另一件事。".into()]] {
+            assert!(!needs_refinement(&parse(&output(texts).to_string(), &input).unwrap(), &style::Policy::default()));
+        }
+        for texts in [vec!["多".repeat(101)], vec!["有".repeat(50); 3], vec!["一句。".into(); 4]] {
+            assert!(needs_refinement(&parse(&output(texts).to_string(), &input).unwrap(), &style::Policy::default()));
+        }
+    }
+
+    #[test]
+    fn unsolicited_participation_is_lower_after_speaking_but_mentions_and_quotes_take_priority() {
+        let (_dir, mut input) = input();
+        let now = now_ms();
+        input.agent.dimensions.activity = 100;
+        assert_eq!(participation_chance(&input, false, now), 65);
+        input.agent.dimensions.activity = 0;
+        assert_eq!(participation_chance(&input, false, now), 20);
+        input.messages.push(ChatMessage {
+            id: "own".into(), seq: 1.into(), sender_id: input.agent.agent_id.clone(),
+            created_at: now - 1000, state: MessageState::Visible,
+            parts: vec![MessagePart::Text { text: "说过了。".into() }],
+            quote_message_id: None, mention_ids: vec![], mention_all: false,
+        });
+        input.messages.push(ChatMessage {
+            id: "other".into(), seq: 2.into(), sender_id: "other".into(),
+            created_at: now, state: MessageState::Visible,
+            parts: vec![MessagePart::Text { text: "知道了。".into() }],
+            quote_message_id: None, mention_ids: vec![], mention_all: false,
+        });
+        assert_eq!(participation_chance(&input, false, now), 5);
+        assert_eq!(participation_chance(&input, true, now), 100);
+        input.messages[1].mention_ids = vec!["someone-else".into()];
+        assert_eq!(participation_chance(&input, false, now), 1);
+        input.messages[1].mention_ids.clear();
+        input.messages[1].quote_message_id = Some("own".into());
+        assert_eq!(participation_chance(&input, false, now), 100);
+        input.messages[1].quote_message_id = None;
+        input.snapshot.participants.retain(|participant| participant.kind == ParticipantKind::User || participant.id == input.agent.agent_id);
+        assert_eq!(participation_chance(&input, false, now), 100);
+    }
+
+    #[test]
+    fn unread_mentions_and_quotes_survive_coalescing_even_when_the_latest_message_is_unaddressed() {
+        let (_dir, mut input) = input();
+        let agent_id = input.agent.agent_id.clone();
+        let message = |seq: i64, sender_id: String| ChatMessage {
+            id: format!("message-{seq}"), seq: seq.into(), sender_id, created_at: now_ms(),
+            state: MessageState::Visible, parts: vec![MessagePart::Text { text: "一件事。".into() }],
+            quote_message_id: None, mention_ids: vec![], mention_all: false,
+        };
+        input.messages = vec![message(1, agent_id.clone()), message(2, "other".into()), message(3, "other".into())];
+        input.messages[1].mention_ids.push(agent_id.clone());
+        assert!(addressed_since(&input, &1.into()));
+        assert!(!addressed_since(&input, &2.into()));
+        assert_eq!(participation_chance(&input, addressed_since(&input, &1.into()), now_ms()), 100);
+        let (_, prompt) = context(&mut input, "new_message", &1.into(), &style::Policy::default()).unwrap();
+        let context: Value = serde_json::from_str(&prompt).unwrap();
+        assert_eq!(context["addressed_to_me"], true);
+        assert_eq!(context["unread_after_seq"], "1");
+        input.messages[1].mention_ids.clear();
+        input.messages[1].quote_message_id = Some("message-1".into());
+        assert!(addressed_since(&input, &1.into()));
+        input.messages[1].state = MessageState::Recalled;
+        assert!(!addressed_since(&input, &1.into()));
+    }
+
+    #[test]
     fn minimal_model_output_is_accepted() {
         // 轻量模型常见的省略写法：只给核心字段、消息只给 parts。
         // 这些都必须能通过，否则模型会一轮轮失败直到被判为「待配置」。
@@ -445,7 +538,7 @@ mod tests {
             content: "有界经历正文".repeat(200), score: if index == 0 { 99 } else { 50 },
         }).collect();
         input.agent.language_style = "简短自然".repeat(200);
-        let (_, prompt) = context(&mut input, "new_message").unwrap();
+        let (_, prompt) = context(&mut input, "new_message", &0.into(), &style::Policy::default()).unwrap();
         assert!(prompt.len() + repair_hint().len() <= MODEL_INPUT_BUDGET as usize * 2);
         let data: Value = serde_json::from_str(&prompt).unwrap();
         assert!(data["experiences"].as_array().unwrap().len() < 32);
@@ -590,7 +683,7 @@ mod tests {
         });
         input.agent.dimensions.activity = 90;
         input.agent.dimensions.social_energy = 30;
-        let (system, prompt) = context(&mut input, "new_message").unwrap();
+        let (system, prompt) = context(&mut input, "new_message", &0.into(), &style::Policy::default()).unwrap();
         assert!(system.contains("Sageroom 通用智能体约定"));
         assert!(system.contains("social_energy"));
         assert!(system.contains("参与主动性与保持关注的意愿"));
@@ -600,6 +693,10 @@ mod tests {
         assert_eq!(personality["dimensions"]["social_energy"], 30);
         assert!(prompt.len() + repair_hint().len() <= MODEL_INPUT_BUDGET as usize * 2);
         assert!(prompt.contains("必须保留最新消息"));
+        let style: Value = serde_json::from_str(&prompt).unwrap();
+        assert_eq!(style["response_style"]["mode"], "casual");
+        assert!(!prompt.contains("weights"));
+        assert!(!prompt.contains("training_samples"));
         let mut value = observe();
         value["participation"] = json!("speak");
         value["messages"] = json!([{"parts":[{"kind":"text","text":"回复"}],"quote_message_id":"invented-id","mention_ids":[],"mention_all":false,"send_after_ms":0}]);
