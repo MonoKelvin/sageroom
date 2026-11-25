@@ -126,6 +126,43 @@ impl SecretStore {
         }
     }
 
+    /// 新闻凭据按固定 provider 槽位保存，不复用或暴露模型密钥。
+    fn news_entry(&self, provider: &crate::domain::contracts::NewsProvider) -> AppResult<Entry> {
+        use crate::domain::contracts::NewsProvider;
+        let slot = match provider {
+            NewsProvider::Tavily => "news-tavily",
+            NewsProvider::Serper => "news-serper",
+            _ => return Err(AppError::invalid("provider", "此新闻来源不需要 API Key。")),
+        };
+        self.store.build(&self.namespace, slot, Some(&HashMap::from([("persistence", "Local")]))).map_err(|_| storage_error())
+    }
+
+    pub(crate) fn read_news(&self, provider: &crate::domain::contracts::NewsProvider) -> AppResult<Option<String>> {
+        let _gate = self.gate.lock().map_err(|_| storage_error())?;
+        match self.news_entry(provider)?.get_password() {
+            Ok(value) => Ok(Some(value)),
+            Err(keyring_core::Error::NoEntry) => Ok(None),
+            Err(_) => Err(storage_error()),
+        }
+    }
+
+    pub(crate) fn set_news(&self, provider: &crate::domain::contracts::NewsProvider, value: Option<&str>) -> AppResult<()> {
+        if let Some(value) = value
+            && (value.trim().is_empty() || value.len() > 2048 || value.chars().any(char::is_control))
+        {
+            return Err(AppError::invalid("api_key", "API Key 不能为空、过长或包含控制字符。"));
+        }
+        let _gate = self.gate.lock().map_err(|_| storage_error())?;
+        let entry = self.news_entry(provider)?;
+        match value {
+            Some(value) => entry.set_password(value.trim()).map_err(|_| storage_error()),
+            None => match entry.delete_credential() {
+                Ok(()) | Err(keyring_core::Error::NoEntry) => Ok(()),
+                Err(_) => Err(storage_error()),
+            },
+        }
+    }
+
     pub fn delete(&self, reference: &str) -> AppResult<()> {
         let _gate = self.gate.lock().map_err(|_| storage_error())?;
         match self.entry(reference)?.delete_credential() {

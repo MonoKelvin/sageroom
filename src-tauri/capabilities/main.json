@@ -18,6 +18,7 @@
     "configuration-write",
     "credentials-manage",
     "model-test",
+    "news-preview",
     "experience-manage",
     "avatar-manage",
     "clipboard-read",
@@ -28,6 +29,9 @@
     "chat-list",
     "chat-search",
     "search-cancel",
+    "inbox-read",
+    "inbox-write",
+    "tray-sync",
     "appearance-save",
     "app-exit"
   ]

@@ -37,7 +37,7 @@ function recent(seq = 1, age = 0): ChatMessage { return { ...message(seq, `消�
 function propsFor(items: ChatMessage[] = [recent()], overrides: Partial<ComponentProps<typeof MessageList>> = {}): ComponentProps<typeof MessageList> {
   return {
     generation: GENERATION, participants, page: page([], { items }), localUserId: USER_ID, firstItemIndex: 0,
-    targetMessageId: null, restoreAnchor: null, followLatest: true, hasNewMessages: false, loadingMore: false,
+    targetMessageId: null, restoreAnchor: null, followLatest: true, hasNewMessages: false, newMessageCount: 0, loadingMore: false,
     onLoadOlder: vi.fn(), onLoadNewer: vi.fn(), onAtBottomChange: vi.fn(), onRenderedAnchorChange: vi.fn(),
     onGoToLatest: vi.fn(), onQuote: vi.fn(), onRecall: vi.fn().mockResolvedValue(undefined), ...overrides,
   }
@@ -187,5 +187,17 @@ describe("消息复制反馈", () => {
     expect(screen.getByRole("alert")).toHaveClass("toast-item")
     expect(screen.getByRole("alert")).toHaveTextContent("复制失败，请重试。")
     expect(container.querySelector(".chat-message-feedback")).toBeNull()
+  })
+})
+
+describe("底部新消息提示", () => {
+  it("停留期间收到新消息时显示具体条数", () => {
+    mount(propsFor([recent()], { hasNewMessages: true, newMessageCount: 3 }))
+    expect(screen.getByRole("button", { name: /3 条新消息/ })).toBeInTheDocument()
+  })
+
+  it("只有更多历史而没有新消息时保持回到最新", () => {
+    mount(propsFor([recent()], { page: page([], { items: [recent()], has_more_after: true }) }))
+    expect(screen.getByRole("button", { name: /回到最新/ })).toBeInTheDocument()
   })
 })

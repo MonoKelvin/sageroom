@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react"
 import { IconX } from "@tabler/icons-react"
+import { ipc } from "@/app/ipc"
 import { useChatSession } from "@/features/chat/useChatSession"
+import { useInbox } from "@/features/chat/useInbox"
 import { useAppearance } from "./useAppearance"
 import { applicationPages, type PageId } from "./navigation"
 import { NavigationRail } from "./NavigationRail"
@@ -16,12 +18,15 @@ const resizeDirections = ["North", "NorthEast", "East", "SouthEast", "South", "S
 export function AppShell() {
   const session = useChatSession()
   return <ConfigurationProvider snapshot={session.snapshot}><ApplicationShell session={session} /></ConfigurationProvider>
+
 }
 
 function ApplicationShell({ session }: { session: ReturnType<typeof useChatSession> }) {
+  const inbox = useInbox(session.snapshot?.data_generation_id ?? null, session.snapshot?.latest_message_seq ?? null)
   const runtime = useConfigurationRuntime()
   const previewAppearance = useConfigurationAppearance()
   const [currentPage, setCurrentPage] = useState<PageId>("chat")
+  const [focused, setFocused] = useState(() => document.hasFocus())
   const windowState = useWindowState()
   const [pixelRatio, setPixelRatio] = useState(() => window.devicePixelRatio)
   useEffect(() => {
@@ -38,6 +43,31 @@ function ApplicationShell({ session }: { session: ReturnType<typeof useChatSessi
     setChatActive(page === "chat")
     setCurrentPage(page)
   }, [setChatActive])
+
+  // 托盘只在窗口未激活、或激活但不在聊天页时闪动；免打扰未读不计入汇总。
+  const generation = session.snapshot?.data_generation_id ?? null
+  const unreadTotal = inbox.summary?.unread_total ?? 0
+  const conversationCount = inbox.summary?.conversations.length ?? 0
+  const trayFlashing = unreadTotal > 0 && (!focused || currentPage !== "chat")
+  useEffect(() => {
+    if (!generation) return
+    void ipc.traySync({ data_generation_id: generation, flashing: trayFlashing, conversation_count: conversationCount }).catch(() => {})
+  }, [generation, trayFlashing, conversationCount])
+
+  // 托盘面板点击会话后由 Rust 派发事件，主窗口落到聊天页而不是停在别的页面。
+  useEffect(() => {
+    const handler = () => navigate("chat")
+    window.addEventListener("sageroom-open-chat", handler)
+    return () => window.removeEventListener("sageroom-open-chat", handler)
+  }, [navigate])
+
+  useEffect(() => {
+    const onFocus = () => setFocused(true)
+    const onBlur = () => setFocused(false)
+    window.addEventListener("focus", onFocus)
+    window.addEventListener("blur", onBlur)
+    return () => { window.removeEventListener("focus", onFocus); window.removeEventListener("blur", onBlur) }
+  }, [])
 
   useEffect(() => {
     const pointer = () => { document.documentElement.dataset.inputModality = "pointer" }
@@ -70,13 +100,13 @@ function ApplicationShell({ session }: { session: ReturnType<typeof useChatSessi
         )}
         {runtime.exiting && <div className="exit-progress" role="status">正在完成已应用修改并退出…</div>}
         <div className="application-body">
-          <NavigationRail pages={applicationPages} current={currentPage} onNavigate={navigate} />
+          <NavigationRail pages={applicationPages} current={currentPage} unreadTotal={unreadTotal} onNavigate={navigate} />
           <main className="application-pages">
             {applicationPages.map(({ id, title, component: Page }) => {
               const active = id === currentPage
               return (
                 <section key={id} className="application-page" aria-label={title} hidden={!active} inert={!active}>
-                  <Page session={session} active={active} onNavigate={navigate} />
+                  <Page session={session} inbox={inbox} active={active} onNavigate={navigate} />
                 </section>
               )
             })}

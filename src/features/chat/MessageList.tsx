@@ -142,6 +142,8 @@ type Props = MessageActions & {
   enteringIds?: ReadonlySet<string>
   followLatest: boolean
   hasNewMessages: boolean
+  /** 停留期间新到达的条数，用于底部提示；为 0 时退化为通用文案。 */
+  newMessageCount: number
   scrollToBottomSignal?: number
   loadingMore: boolean
   onLoadOlder: () => Promise<void>
@@ -306,7 +308,7 @@ export function MessageList(props: Props) {
     {(props.hasNewMessages || props.page.has_more_after) && <div className="chat-latest-position">
       <Button size="sm" variant="secondary" className="chat-latest-button" onClick={() => void props.onGoToLatest()}>
         <IconArrowDown size={16} aria-hidden="true" />
-        {props.hasNewMessages ? "有新消息" : "回到最新"}
+        {props.hasNewMessages ? (props.newMessageCount > 0 ? `${props.newMessageCount} 条新消息` : "有新消息") : "回到最新"}
       </Button>
     </div>}
   </section>

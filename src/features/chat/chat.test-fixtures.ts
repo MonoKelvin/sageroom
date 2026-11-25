@@ -1,8 +1,49 @@
+import { vi } from "vitest"
 import { APP_METADATA } from "@/app/metadata"
-import type { AppSnapshot, ChatMessage, DomainEvent, MessagePage, SearchPage } from "@/contracts/generated"
+import type { AppSnapshot, ChatMessage, DomainEvent, InboxConversation, InboxSummary, MessagePage, SearchPage } from "@/contracts/generated"
+import type { InboxApi } from "./useInbox"
 
 export const GENERATION = "generation-test"
 export const USER_ID = "user-test"
+
+export function inboxConversation(overrides: Partial<InboxConversation> = {}): InboxConversation {
+  return {
+    id: "room-test",
+    name: "测试群",
+    kind: "group",
+    unread_count: 0,
+    muted: false,
+    last_read_seq: "0",
+    latest_seq: "0",
+    latest_at: 0,
+    latest_sender: null,
+    latest_preview: "暂无消息",
+    first_unread_seq: null,
+    first_unread_id: null,
+    ...overrides,
+  }
+}
+
+export function inboxSummary(conversations: InboxConversation[] = []): InboxSummary {
+  return {
+    revision: "1",
+    conversations,
+    unread_total: conversations.reduce((sum, item) => (item.muted ? sum : sum + item.unread_count), 0),
+  }
+}
+
+/** 测试用 InboxApi；各方法默认无副作用，需要断言的用例可自行覆盖。 */
+export function inboxFixture(summary: InboxSummary | null = null): InboxApi {
+  return {
+    summary,
+    loading: false,
+    error: null,
+    conversation: (id: string) => summary?.conversations.find((item) => item.id === id),
+    markRead: vi.fn(async () => {}),
+    setMuted: vi.fn(async () => {}),
+    refresh: vi.fn(async () => {}),
+  }
+}
 
 export function message(seq: string | number, text = `测试消息 ${seq}`): ChatMessage {
   return {

@@ -123,6 +123,52 @@ impl AppState {
         self.worker()?.save_news_configuration(request).await
     }
 
+    pub async fn preview_news(
+        &self,
+        request: NewsPreviewRequest,
+    ) -> AppResult<NewsPreviewResponse> {
+        // 测试入口也不接受过期世代的配置。
+        self.worker()?
+            .call(move |database| database.check_generation(&request.data_generation_id))
+            .await?;
+        crate::news::validate_configuration(&request.configuration)?;
+        Ok(crate::news::preview(&request.configuration, self.secrets.clone().ok()).await)
+    }
+
+    pub async fn news_secret_status(&self, request: NewsSecretStatusRequest) -> AppResult<NewsSecretStatus> {
+        self.worker()?.call(move |database| database.check_generation(&request.data_generation_id)).await?;
+        let secrets = self.secrets.clone()?;
+        tauri::async_runtime::spawn_blocking(move || {
+            let configured = secrets.read_news(&request.provider)?.is_some();
+            Ok(NewsSecretStatus { provider: request.provider, configured })
+        }).await.map_err(|_| AppError::new(ErrorCode::InternalError, "读取新闻凭据状态未完成。"))?
+    }
+
+    pub async fn set_news_secret(&self, request: NewsSecretSetRequest) -> AppResult<NewsSecretStatus> {
+        self.worker()?.call(move |database| database.check_generation(&request.data_generation_id)).await?;
+        let secrets = self.secrets.clone()?;
+        tauri::async_runtime::spawn_blocking(move || {
+            secrets.set_news(&request.provider, request.api_key.as_deref())?;
+            crate::news::invalidate_credentials();
+            Ok(NewsSecretStatus { provider: request.provider, configured: request.api_key.is_some() })
+        }).await.map_err(|_| AppError::new(ErrorCode::InternalError, "更新新闻凭据未完成。"))?
+    }
+
+    pub async fn inbox(&self, request: InboxGetRequest) -> AppResult<InboxSummary> {
+        self.worker()?.get_inbox(request).await
+    }
+
+    pub async fn mark_inbox_read(
+        &self,
+        request: InboxMarkReadRequest,
+    ) -> AppResult<InboxSummary> {
+        self.worker()?.mark_inbox_read(request).await
+    }
+
+    pub async fn set_inbox_muted(&self, request: InboxMuteRequest) -> AppResult<InboxSummary> {
+        self.worker()?.set_inbox_muted(request).await
+    }
+
     pub async fn global_configuration(
         &self,
         request: GlobalConfigurationGetRequest,

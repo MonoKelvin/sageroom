@@ -256,6 +256,21 @@ impl DbWorker {
             .await
     }
 
+    pub async fn get_inbox(&self, request: InboxGetRequest) -> AppResult<InboxSummary> {
+        self.call(move |database| database.get_inbox(&request.data_generation_id))
+            .await
+    }
+
+    pub async fn mark_inbox_read(&self, request: InboxMarkReadRequest) -> AppResult<InboxSummary> {
+        self.call(move |database| database.mark_inbox_read(request))
+            .await
+    }
+
+    pub async fn set_inbox_muted(&self, request: InboxMuteRequest) -> AppResult<InboxSummary> {
+        self.call(move |database| database.set_inbox_muted(request))
+            .await
+    }
+
     pub async fn get_global_configuration(
         &self,
         request: GlobalConfigurationGetRequest,

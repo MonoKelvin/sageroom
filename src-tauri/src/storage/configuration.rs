@@ -1,11 +1,11 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::{
-    chat::{record_event, record_request, replay_request},
+    chat::{load_messages, record_event, record_request, replay_request},
     database::{Database, fingerprint},
 };
 use crate::domain::{
@@ -298,7 +298,14 @@ fn read_news(conn: &Connection) -> AppResult<NewsConfigurationState> {
     )?;
     let value: serde_json::Value = serde_json::from_str(&json)?;
     match value.get(NEWS_PREFERENCES_KEY) {
-        Some(state) => serde_json::from_value(state.clone()).map_err(Into::into),
+        Some(state) => {
+            // 旧配置里的用户关键词已取消；只兼容读取，不带回新合同。
+            let mut state = state.clone();
+            if let Some(configuration) = state.get_mut("configuration").and_then(|value| value.as_object_mut()) {
+                configuration.remove("query");
+            }
+            serde_json::from_value(state).map_err(Into::into)
+        },
         None => Ok(NewsConfigurationState {
             revision: 0_i64.into(),
             configuration: NewsConfiguration::default(),
@@ -318,13 +325,7 @@ impl Database {
     ) -> AppResult<NewsConfigurationState> {
         self.check_generation(&request.data_generation_id)?;
         validate_id(&request.client_request_id, "client_request_id")?;
-        bounded(&request.configuration.query, "query", 80, false)?;
-        if !(5..=720).contains(&request.configuration.refresh_minutes) {
-            return Err(AppError::invalid("refresh_minutes", "刷新间隔必须在 5 到 720 分钟之间。"));
-        }
-        if !(1..=8).contains(&request.configuration.max_items) {
-            return Err(AppError::invalid("max_items", "新闻条数必须在 1 到 8 之间。"));
-        }
+        crate::news::validate_configuration(&request.configuration)?;
         let transaction = self
             .conn
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
@@ -862,5 +863,243 @@ impl Database {
         )?;
         transaction.commit()?;
         Ok((profile, Some(event)))
+    }
+}
+
+const INBOX_PREFERENCES_KEY: &str = "inbox";
+
+/// 单会话的已读进度与免打扰开关。存在 preferences_json 里，避免为附加状态修改表结构。
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InboxPreference {
+    #[serde(default)]
+    last_read_seq: i64,
+    #[serde(default)]
+    muted: bool,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InboxPreferences {
+    #[serde(default)]
+    revision: i64,
+    #[serde(default)]
+    conversations: BTreeMap<String, InboxPreference>,
+}
+
+fn read_inbox_preferences(conn: &Connection) -> AppResult<InboxPreferences> {
+    let json: String = conn.query_row(
+        "SELECT preferences_json FROM global_configuration WHERE singleton = 1",
+        [],
+        |row| row.get(0),
+    )?;
+    let value: serde_json::Value = serde_json::from_str(&json)?;
+    match value.get(INBOX_PREFERENCES_KEY) {
+        Some(state) => serde_json::from_value(state.clone()).map_err(Into::into),
+        None => Ok(InboxPreferences::default()),
+    }
+}
+
+fn write_inbox_preferences(conn: &Connection, preferences: &InboxPreferences) -> AppResult<()> {
+    let json: String = conn.query_row(
+        "SELECT preferences_json FROM global_configuration WHERE singleton = 1",
+        [],
+        |row| row.get(0),
+    )?;
+    let mut value: serde_json::Value = serde_json::from_str(&json)?;
+    value[INBOX_PREFERENCES_KEY] = serde_json::to_value(preferences)?;
+    conn.execute(
+        "UPDATE global_configuration SET preferences_json = ?1 WHERE singleton = 1",
+        [serde_json::to_string(&value)?],
+    )?;
+    Ok(())
+}
+
+const IMAGE_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "webp", "gif", "bmp", "avif"];
+
+/// 把消息片段转成一行文本摘要：附件与表情不暴露内部 ID。
+fn message_preview(parts: &[MessagePart]) -> String {
+    let mut text = String::new();
+    for part in parts {
+        let piece = match part {
+            MessagePart::Text { text } => text.replace(['\n', '\r'], " "),
+            MessagePart::Attachment { attachment_id } => {
+                let extension = attachment_id.rsplit('.').next().unwrap_or_default().to_ascii_lowercase();
+                if IMAGE_EXTENSIONS.contains(&extension.as_str()) { "[图片]" } else { "[文件]" }.to_string()
+            }
+            MessagePart::Emote { .. } => "[表情包]".to_string(),
+        };
+        if !text.is_empty() && !piece.is_empty() {
+            text.push(' ');
+        }
+        text.push_str(&piece);
+    }
+    let compact = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.is_empty() {
+        "[消息]".to_string()
+    } else {
+        compact.chars().take(80).collect()
+    }
+}
+
+impl Database {
+    /// 读取所有会话的未读与最近消息。首次读取时把全部历史视为已读，避免新装即 999+。
+    pub fn get_inbox(&mut self, generation: &str) -> AppResult<InboxSummary> {
+        self.check_generation(generation)?;
+        let mut preferences = read_inbox_preferences(&self.conn)?;
+        let mut changed = false;
+        let mut rooms = self
+            .conn
+            .prepare("SELECT id, name FROM room ORDER BY id")?
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut conversations = Vec::new();
+        let mut unread_total = 0_u32;
+        for (id, name) in rooms.drain(..) {
+            let latest_seq: i64 = self.conn.query_row(
+                "SELECT COALESCE(MAX(seq), 0) FROM messages WHERE room_id = ?1 AND state = 'visible'",
+                [&id],
+                |row| row.get(0),
+            )?;
+            let entry = match preferences.conversations.get(&id) {
+                Some(entry) => entry.clone(),
+                None => {
+                    changed = true;
+                    let entry = InboxPreference { last_read_seq: latest_seq, muted: false };
+                    preferences.conversations.insert(id.clone(), entry.clone());
+                    entry
+                }
+            };
+            let unread_count: i64 = self.conn.query_row(
+                "SELECT COUNT(*) FROM messages WHERE room_id = ?1 AND seq > ?2 AND state = 'visible' AND sender_id <> ?3",
+                params![id, entry.last_read_seq, self.local_user_id],
+                |row| row.get(0),
+            )?;
+            let first_unread = self
+                .conn
+                .query_row(
+                    "SELECT seq, id FROM messages WHERE room_id = ?1 AND seq > ?2 AND state = 'visible' AND sender_id <> ?3 ORDER BY seq ASC LIMIT 1",
+                    params![id, entry.last_read_seq, self.local_user_id],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+                )
+                .optional()?;
+            let latest = self
+                .conn
+                .query_row(
+                    "SELECT seq FROM messages WHERE room_id = ?1 AND state = 'visible' ORDER BY seq DESC LIMIT 1",
+                    [&id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()?;
+            let (latest_at, latest_sender, latest_preview) = match latest {
+                Some(seq) => {
+                    let message = load_messages(&self.conn, &[seq])?.into_iter().next();
+                    match message {
+                        Some(message) => {
+                            let sender: Option<String> = self
+                                .conn
+                                .query_row(
+                                    "SELECT display_name FROM participants WHERE id = ?1",
+                                    [&message.sender_id],
+                                    |row| row.get(0),
+                                )
+                                .optional()?;
+                            (message.created_at, sender, message_preview(&message.parts))
+                        }
+                        None => (0, None, "[消息]".to_string()),
+                    }
+                }
+                None => (0, None, "暂无消息".to_string()),
+            };
+            let unread_count = unread_count.max(0) as u32;
+            if !entry.muted {
+                unread_total = unread_total.saturating_add(unread_count);
+            }
+            conversations.push(InboxConversation {
+                id,
+                name,
+                kind: "group".to_string(),
+                unread_count,
+                muted: entry.muted,
+                last_read_seq: entry.last_read_seq.into(),
+                latest_seq: latest.unwrap_or(0).into(),
+                latest_at,
+                latest_sender,
+                latest_preview,
+                first_unread_seq: first_unread.as_ref().map(|(seq, _)| (*seq).into()),
+                first_unread_id: first_unread.map(|(_, id)| id),
+            });
+        }
+        conversations.sort_by(|left, right| {
+            right.latest_at.cmp(&left.latest_at).then_with(|| left.id.cmp(&right.id))
+        });
+        if changed {
+            preferences.revision = preferences.revision.saturating_add(1);
+            write_inbox_preferences(&self.conn, &preferences)?;
+        }
+        Ok(InboxSummary {
+            revision: preferences.revision.into(),
+            conversations,
+            unread_total,
+        })
+    }
+
+    pub fn mark_inbox_read(
+        &mut self,
+        request: InboxMarkReadRequest,
+    ) -> AppResult<InboxSummary> {
+        self.check_generation(&request.data_generation_id)?;
+        validate_id(&request.client_request_id, "client_request_id")?;
+        validate_id(&request.conversation_id, "conversation_id")?;
+        let exists: bool = self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM room WHERE id = ?1)",
+            [&request.conversation_id],
+            |row| row.get(0),
+        )?;
+        if !exists {
+            return Err(AppError::invalid("conversation_id", "聊天对象不存在。"));
+        }
+        let through = request
+            .through_seq
+            .0
+            .parse::<i64>()
+            .map_err(|_| AppError::invalid("through_seq", "已读位置无效。"))?;
+        let mut preferences = read_inbox_preferences(&self.conn)?;
+        let entry = preferences
+            .conversations
+            .entry(request.conversation_id.clone())
+            .or_default();
+        let next = entry.last_read_seq.max(through.max(0));
+        if next != entry.last_read_seq {
+            entry.last_read_seq = next;
+            preferences.revision = preferences.revision.saturating_add(1);
+            write_inbox_preferences(&self.conn, &preferences)?;
+        }
+        self.get_inbox(&request.data_generation_id)
+    }
+
+    pub fn set_inbox_muted(&mut self, request: InboxMuteRequest) -> AppResult<InboxSummary> {
+        self.check_generation(&request.data_generation_id)?;
+        validate_id(&request.client_request_id, "client_request_id")?;
+        validate_id(&request.conversation_id, "conversation_id")?;
+        let exists: bool = self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM room WHERE id = ?1)",
+            [&request.conversation_id],
+            |row| row.get(0),
+        )?;
+        if !exists {
+            return Err(AppError::invalid("conversation_id", "聊天对象不存在。"));
+        }
+        let mut preferences = read_inbox_preferences(&self.conn)?;
+        let entry = preferences
+            .conversations
+            .entry(request.conversation_id.clone())
+            .or_default();
+        if entry.muted != request.muted {
+            entry.muted = request.muted;
+            preferences.revision = preferences.revision.saturating_add(1);
+            write_inbox_preferences(&self.conn, &preferences)?;
+        }
+        self.get_inbox(&request.data_generation_id)
     }
 }

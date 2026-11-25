@@ -589,16 +589,43 @@ pub struct PersonaPreset {
     pub revision: DecimalString,
 }
 
-/// 联网新闻来源。仅接入无需 API Key 的公开源，避免把密钥写进配置库。
+/// 联网新闻来源。API Key 独立存放在系统凭据库，配置中不包含密钥。
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum NewsProvider {
+    Auto,
     GoogleNewsRss,
+    AiHot,
     FreeNewsTrending,
+    Gdelt,
+    BbcTechnology,
+    AnySearch,
+    Tavily,
+    Serper,
+}
+
+/// 已经清洗、限长的新闻条目；由公开来源读取，只作为聊天素材，不作为指令。
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct NewsItem {
+    pub title: String,
+    pub url: String,
+    pub source: String,
+    pub published: String,
+    pub summary: String,
 }
 
 impl Default for NewsProvider {
-    fn default() -> Self { Self::GoogleNewsRss }
+    fn default() -> Self { Self::Auto }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NewsProxyMode {
+    #[default]
+    System,
+    Direct,
+    Manual,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -606,15 +633,24 @@ impl Default for NewsProvider {
 pub struct NewsConfiguration {
     pub enabled: bool,
     pub provider: NewsProvider,
-    #[schemars(length(max = 80))]
-    pub query: String,
+    #[schemars(range(min = 5, max = 720))]
     pub refresh_minutes: u32,
+    #[schemars(range(min = 1, max = 8))]
     pub max_items: u8,
+    /// 默认关闭，关闭时强制直连，不自动使用环境或系统代理。
+    #[serde(default)]
+    pub proxy_enabled: bool,
+    #[serde(default)]
+    pub proxy_mode: NewsProxyMode,
+    /// 仅手动模式使用；接受无凭据的本机 HTTP 代理。
+    #[serde(default)]
+    #[schemars(length(max = 200))]
+    pub proxy_url: String,
 }
 
 impl Default for NewsConfiguration {
     fn default() -> Self {
-        Self { enabled: true, provider: NewsProvider::default(), query: "科技 人工智能".into(), refresh_minutes: 30, max_items: 3 }
+        Self { enabled: true, provider: NewsProvider::default(), refresh_minutes: 30, max_items: 3, proxy_enabled: false, proxy_mode: NewsProxyMode::System, proxy_url: String::new() }
     }
 }
 
@@ -638,6 +674,149 @@ pub struct NewsConfigurationSaveRequest {
     pub client_request_id: String,
     pub expected_revision: DecimalString,
     pub configuration: NewsConfiguration,
+}
+
+/// 读取并测试新闻来源；不写配置，不持久化抓取结果。
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct NewsPreviewRequest {
+    pub data_generation_id: String,
+    pub configuration: NewsConfiguration,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct NewsPreviewResponse {
+    /// 实际命中的来源；首选源失败时可能是自动回退源。
+    pub provider: NewsProvider,
+    pub items: Vec<NewsItem>,
+    pub fetched_at: String,
+    pub cached: bool,
+    pub stale: bool,
+    pub diagnostics: Vec<NewsSourceDiagnostic>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct NewsSourceDiagnostic {
+    pub provider: NewsProvider,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct NewsSecretStatusRequest {
+    pub data_generation_id: String,
+    pub provider: NewsProvider,
+}
+
+/// 不派生 Debug，避免凭据进入日志；null 表示用户明确移除密钥。
+#[derive(Clone, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct NewsSecretSetRequest {
+    pub data_generation_id: String,
+    pub provider: NewsProvider,
+    #[schemars(length(max = 2048))]
+    pub api_key: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct NewsSecretStatus {
+    pub provider: NewsProvider,
+    pub configured: bool,
+}
+
+/// 单个会话的未读状态与最近消息摘要。当前只有群聊，后续私聊复用同一结构。
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct InboxConversation {
+    pub id: String,
+    pub name: String,
+    /// `group` 或 `direct`；列表、托盘据此区分会话形态。
+    pub kind: String,
+    /// 最近一条可见消息中由他人发送、且晚于 last_read_seq 的条数。
+    pub unread_count: u32,
+    pub muted: bool,
+    pub last_read_seq: DecimalString,
+    pub latest_seq: DecimalString,
+    #[ts(type = "number")]
+    #[schemars(range(min = -9007199254740991.0, max = 9007199254740991.0))]
+    pub latest_at: i64,
+    /// 最近一条可见消息的发送者显示名；没有消息时为 null。
+    pub latest_sender: Option<String>,
+    /// 文本化摘要：文本原样，附件转 `[图片]`/`[文件]`，表情转 `[表情包]`。
+    pub latest_preview: String,
+    /// 最早一条未读消息，用于跳转与“xx 条未读”提示。
+    pub first_unread_seq: Option<DecimalString>,
+    pub first_unread_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct InboxSummary {
+    pub revision: DecimalString,
+    /// 按最近消息时间倒序；没有消息的会话排在最后。
+    pub conversations: Vec<InboxConversation>,
+    /// 未免打扰会话的未读总数，导航角标与托盘共用。
+    pub unread_total: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct InboxGetRequest {
+    pub data_generation_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct InboxMarkReadRequest {
+    pub data_generation_id: String,
+    pub client_request_id: String,
+    pub conversation_id: String,
+    /// 客户端看到的最后一条消息序号；服务端只前进不回退。
+    pub through_seq: DecimalString,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct InboxMuteRequest {
+    pub data_generation_id: String,
+    pub client_request_id: String,
+    pub conversation_id: String,
+    pub muted: bool,
+}
+
+/// 主窗口把“是否需要托盘提醒”推给 Rust；闪烁节奏由 Rust 统一控制。
+/// `conversation_count` 让托盘在没有会话时不做任何弹出，避免 hover 出一块空面板。
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct TraySyncRequest {
+    pub data_generation_id: String,
+    pub flashing: bool,
+    pub conversation_count: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TraySyncState {
+    pub flashing: bool,
+}
+
+/// 点击托盘面板中的会话：标记已读并唤起主窗口。
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct TrayOpenRequest {
+    pub data_generation_id: String,
+    pub conversation_id: String,
+    #[serde(default)]
+    pub through_seq: Option<DecimalString>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TrayOpenResult {
+    pub opened: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]

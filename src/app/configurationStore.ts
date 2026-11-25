@@ -198,14 +198,14 @@ export class ConfigurationStore {
 
   freeze(value: boolean) {
     this.frozen = value
-    for (const resource of [this.global, this.user, this.appearance, ...this.agents.values()]) resource.freeze(value)
+    for (const resource of [this.global, this.news, this.user, this.appearance, ...this.agents.values()]) resource.freeze(value)
   }
 
-  async flush() { await Promise.all([this.global.flush(), this.user.flush(), this.appearance.flush(), ...Array.from(this.agents.values(), (resource) => resource.flush())]) }
+  async flush() { await Promise.all([this.global.flush(), this.news.flush(), this.user.flush(), this.appearance.flush(), ...Array.from(this.agents.values(), (resource) => resource.flush())]) }
 
   dispose() {
     this.disposed = true
-    for (const resource of [this.global, this.user, this.appearance, ...this.agents.values()]) resource.dispose()
+    for (const resource of [this.global, this.news, this.user, this.appearance, ...this.agents.values()]) resource.dispose()
     this.agentListeners.clear()
   }
 }

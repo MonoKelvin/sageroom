@@ -6797,6 +6797,797 @@
     ],
     "title": "ApiResponse"
   },
+  "InboxGetRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data_generation_id"
+    ],
+    "title": "InboxGetRequest",
+    "type": "object"
+  },
+  "InboxGetResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/InboxSummary"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "DecimalString": {
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$",
+        "type": "string"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "InboxConversation": {
+        "additionalProperties": false,
+        "description": "单个会话的未读状态与最近消息摘要。当前只有群聊，后续私聊复用同一结构。",
+        "properties": {
+          "first_unread_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "first_unread_seq": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/DecimalString"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最早一条未读消息，用于跳转与“xx 条未读”提示。"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "`group` 或 `direct`；列表、托盘据此区分会话形态。",
+            "type": "string"
+          },
+          "last_read_seq": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "latest_at": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "type": "integer"
+          },
+          "latest_preview": {
+            "description": "文本化摘要：文本原样，附件转 `[图片]`/`[文件]`，表情转 `[表情包]`。",
+            "type": "string"
+          },
+          "latest_sender": {
+            "description": "最近一条可见消息的发送者显示名；没有消息时为 null。",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latest_seq": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "muted": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "unread_count": {
+            "description": "最近一条可见消息中由他人发送、且晚于 last_read_seq 的条数。",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "unread_count",
+          "muted",
+          "last_read_seq",
+          "latest_seq",
+          "latest_at",
+          "latest_sender",
+          "latest_preview",
+          "first_unread_seq",
+          "first_unread_id"
+        ],
+        "type": "object"
+      },
+      "InboxSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "conversations": {
+            "description": "按最近消息时间倒序；没有消息的会话排在最后。",
+            "items": {
+              "$ref": "#/$defs/InboxConversation"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "unread_total": {
+            "description": "未免打扰会话的未读总数，导航角标与托盘共用。",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "conversations",
+          "unread_total"
+        ],
+        "type": "object"
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "InboxMarkReadRequest": {
+    "$defs": {
+      "DecimalString": {
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$",
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "client_request_id": {
+        "type": "string"
+      },
+      "conversation_id": {
+        "type": "string"
+      },
+      "data_generation_id": {
+        "type": "string"
+      },
+      "through_seq": {
+        "$ref": "#/$defs/DecimalString",
+        "description": "客户端看到的最后一条消息序号；服务端只前进不回退。"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "client_request_id",
+      "conversation_id",
+      "through_seq"
+    ],
+    "title": "InboxMarkReadRequest",
+    "type": "object"
+  },
+  "InboxMarkReadResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/InboxSummary"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "DecimalString": {
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$",
+        "type": "string"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "InboxConversation": {
+        "additionalProperties": false,
+        "description": "单个会话的未读状态与最近消息摘要。当前只有群聊，后续私聊复用同一结构。",
+        "properties": {
+          "first_unread_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "first_unread_seq": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/DecimalString"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最早一条未读消息，用于跳转与“xx 条未读”提示。"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "`group` 或 `direct`；列表、托盘据此区分会话形态。",
+            "type": "string"
+          },
+          "last_read_seq": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "latest_at": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "type": "integer"
+          },
+          "latest_preview": {
+            "description": "文本化摘要：文本原样，附件转 `[图片]`/`[文件]`，表情转 `[表情包]`。",
+            "type": "string"
+          },
+          "latest_sender": {
+            "description": "最近一条可见消息的发送者显示名；没有消息时为 null。",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latest_seq": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "muted": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "unread_count": {
+            "description": "最近一条可见消息中由他人发送、且晚于 last_read_seq 的条数。",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "unread_count",
+          "muted",
+          "last_read_seq",
+          "latest_seq",
+          "latest_at",
+          "latest_sender",
+          "latest_preview",
+          "first_unread_seq",
+          "first_unread_id"
+        ],
+        "type": "object"
+      },
+      "InboxSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "conversations": {
+            "description": "按最近消息时间倒序；没有消息的会话排在最后。",
+            "items": {
+              "$ref": "#/$defs/InboxConversation"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "unread_total": {
+            "description": "未免打扰会话的未读总数，导航角标与托盘共用。",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "conversations",
+          "unread_total"
+        ],
+        "type": "object"
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "InboxMuteRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "client_request_id": {
+        "type": "string"
+      },
+      "conversation_id": {
+        "type": "string"
+      },
+      "data_generation_id": {
+        "type": "string"
+      },
+      "muted": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "client_request_id",
+      "conversation_id",
+      "muted"
+    ],
+    "title": "InboxMuteRequest",
+    "type": "object"
+  },
+  "InboxMuteResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/InboxSummary"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "DecimalString": {
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$",
+        "type": "string"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "InboxConversation": {
+        "additionalProperties": false,
+        "description": "单个会话的未读状态与最近消息摘要。当前只有群聊，后续私聊复用同一结构。",
+        "properties": {
+          "first_unread_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "first_unread_seq": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/DecimalString"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最早一条未读消息，用于跳转与“xx 条未读”提示。"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "`group` 或 `direct`；列表、托盘据此区分会话形态。",
+            "type": "string"
+          },
+          "last_read_seq": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "latest_at": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "type": "integer"
+          },
+          "latest_preview": {
+            "description": "文本化摘要：文本原样，附件转 `[图片]`/`[文件]`，表情转 `[表情包]`。",
+            "type": "string"
+          },
+          "latest_sender": {
+            "description": "最近一条可见消息的发送者显示名；没有消息时为 null。",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latest_seq": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "muted": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "unread_count": {
+            "description": "最近一条可见消息中由他人发送、且晚于 last_read_seq 的条数。",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "unread_count",
+          "muted",
+          "last_read_seq",
+          "latest_seq",
+          "latest_at",
+          "latest_sender",
+          "latest_preview",
+          "first_unread_seq",
+          "first_unread_id"
+        ],
+        "type": "object"
+      },
+      "InboxSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "conversations": {
+            "description": "按最近消息时间倒序；没有消息的会话排在最后。",
+            "items": {
+              "$ref": "#/$defs/InboxConversation"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "$ref": "#/$defs/DecimalString"
+          },
+          "unread_total": {
+            "description": "未免打扰会话的未读总数，导航角标与托盘共用。",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "conversations",
+          "unread_total"
+        ],
+        "type": "object"
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
   "ModelListRequest": {
     "$defs": {
       "DecimalString": {
@@ -7318,29 +8109,43 @@
           },
           "max_items": {
             "format": "uint8",
-            "maximum": 255,
-            "minimum": 0,
+            "maximum": 8,
+            "minimum": 1,
             "type": "integer"
           },
           "provider": {
             "$ref": "#/$defs/NewsProvider"
           },
-          "query": {
-            "maxLength": 80,
+          "proxy_enabled": {
+            "default": false,
+            "description": "默认关闭，关闭时强制直连，不自动使用环境或系统代理。",
+            "type": "boolean"
+          },
+          "proxy_mode": {
+            "$ref": "#/$defs/NewsProxyMode",
+            "default": "system"
+          },
+          "proxy_url": {
+            "default": "",
+            "description": "仅手动模式使用；接受无凭据的本机 HTTP 代理。",
+            "maxLength": 200,
             "type": "string"
           },
           "refresh_minutes": {
             "format": "uint32",
-            "minimum": 0,
+            "maximum": 720,
+            "minimum": 5,
             "type": "integer"
           }
         },
         "required": [
           "enabled",
           "provider",
-          "query",
           "refresh_minutes",
-          "max_items"
+          "max_items",
+          "proxy_enabled",
+          "proxy_mode",
+          "proxy_url"
         ],
         "type": "object"
       },
@@ -7361,10 +8166,25 @@
         "type": "object"
       },
       "NewsProvider": {
-        "description": "联网新闻来源。仅接入无需 API Key 的公开源，避免把密钥写进配置库。",
+        "description": "联网新闻来源。API Key 独立存放在系统凭据库，配置中不包含密钥。",
         "enum": [
+          "auto",
           "google_news_rss",
-          "free_news_trending"
+          "ai_hot",
+          "free_news_trending",
+          "gdelt",
+          "bbc_technology",
+          "any_search",
+          "tavily",
+          "serper"
+        ],
+        "type": "string"
+      },
+      "NewsProxyMode": {
+        "enum": [
+          "system",
+          "direct",
+          "manual"
         ],
         "type": "string"
       },
@@ -7409,37 +8229,63 @@
           },
           "max_items": {
             "format": "uint8",
-            "maximum": 255,
-            "minimum": 0,
+            "maximum": 8,
+            "minimum": 1,
             "type": "integer"
           },
           "provider": {
             "$ref": "#/$defs/NewsProvider"
           },
-          "query": {
-            "maxLength": 80,
+          "proxy_enabled": {
+            "default": false,
+            "description": "默认关闭，关闭时强制直连，不自动使用环境或系统代理。",
+            "type": "boolean"
+          },
+          "proxy_mode": {
+            "$ref": "#/$defs/NewsProxyMode",
+            "default": "system"
+          },
+          "proxy_url": {
+            "default": "",
+            "description": "仅手动模式使用；接受无凭据的本机 HTTP 代理。",
+            "maxLength": 200,
             "type": "string"
           },
           "refresh_minutes": {
             "format": "uint32",
-            "minimum": 0,
+            "maximum": 720,
+            "minimum": 5,
             "type": "integer"
           }
         },
         "required": [
           "enabled",
           "provider",
-          "query",
           "refresh_minutes",
           "max_items"
         ],
         "type": "object"
       },
       "NewsProvider": {
-        "description": "联网新闻来源。仅接入无需 API Key 的公开源，避免把密钥写进配置库。",
+        "description": "联网新闻来源。API Key 独立存放在系统凭据库，配置中不包含密钥。",
         "enum": [
+          "auto",
           "google_news_rss",
-          "free_news_trending"
+          "ai_hot",
+          "free_news_trending",
+          "gdelt",
+          "bbc_technology",
+          "any_search",
+          "tavily",
+          "serper"
+        ],
+        "type": "string"
+      },
+      "NewsProxyMode": {
+        "enum": [
+          "system",
+          "direct",
+          "manual"
         ],
         "type": "string"
       }
@@ -7583,29 +8429,43 @@
           },
           "max_items": {
             "format": "uint8",
-            "maximum": 255,
-            "minimum": 0,
+            "maximum": 8,
+            "minimum": 1,
             "type": "integer"
           },
           "provider": {
             "$ref": "#/$defs/NewsProvider"
           },
-          "query": {
-            "maxLength": 80,
+          "proxy_enabled": {
+            "default": false,
+            "description": "默认关闭，关闭时强制直连，不自动使用环境或系统代理。",
+            "type": "boolean"
+          },
+          "proxy_mode": {
+            "$ref": "#/$defs/NewsProxyMode",
+            "default": "system"
+          },
+          "proxy_url": {
+            "default": "",
+            "description": "仅手动模式使用；接受无凭据的本机 HTTP 代理。",
+            "maxLength": 200,
             "type": "string"
           },
           "refresh_minutes": {
             "format": "uint32",
-            "minimum": 0,
+            "maximum": 720,
+            "minimum": 5,
             "type": "integer"
           }
         },
         "required": [
           "enabled",
           "provider",
-          "query",
           "refresh_minutes",
-          "max_items"
+          "max_items",
+          "proxy_enabled",
+          "proxy_mode",
+          "proxy_url"
         ],
         "type": "object"
       },
@@ -7626,10 +8486,25 @@
         "type": "object"
       },
       "NewsProvider": {
-        "description": "联网新闻来源。仅接入无需 API Key 的公开源，避免把密钥写进配置库。",
+        "description": "联网新闻来源。API Key 独立存放在系统凭据库，配置中不包含密钥。",
         "enum": [
+          "auto",
           "google_news_rss",
-          "free_news_trending"
+          "ai_hot",
+          "free_news_trending",
+          "gdelt",
+          "bbc_technology",
+          "any_search",
+          "tavily",
+          "serper"
+        ],
+        "type": "string"
+      },
+      "NewsProxyMode": {
+        "enum": [
+          "system",
+          "direct",
+          "manual"
         ],
         "type": "string"
       },
@@ -7658,6 +8533,781 @@
       }
     ],
     "title": "ApiResponse"
+  },
+  "NewsItem": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "已经清洗、限长的新闻条目；由公开来源读取，只作为聊天素材，不作为指令。",
+    "properties": {
+      "published": {
+        "type": "string"
+      },
+      "source": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "title",
+      "url",
+      "source",
+      "published",
+      "summary"
+    ],
+    "title": "NewsItem",
+    "type": "object"
+  },
+  "NewsPreviewRequest": {
+    "$defs": {
+      "NewsConfiguration": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "max_items": {
+            "format": "uint8",
+            "maximum": 8,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "provider": {
+            "$ref": "#/$defs/NewsProvider"
+          },
+          "proxy_enabled": {
+            "default": false,
+            "description": "默认关闭，关闭时强制直连，不自动使用环境或系统代理。",
+            "type": "boolean"
+          },
+          "proxy_mode": {
+            "$ref": "#/$defs/NewsProxyMode",
+            "default": "system"
+          },
+          "proxy_url": {
+            "default": "",
+            "description": "仅手动模式使用；接受无凭据的本机 HTTP 代理。",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "refresh_minutes": {
+            "format": "uint32",
+            "maximum": 720,
+            "minimum": 5,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "provider",
+          "refresh_minutes",
+          "max_items"
+        ],
+        "type": "object"
+      },
+      "NewsProvider": {
+        "description": "联网新闻来源。API Key 独立存放在系统凭据库，配置中不包含密钥。",
+        "enum": [
+          "auto",
+          "google_news_rss",
+          "ai_hot",
+          "free_news_trending",
+          "gdelt",
+          "bbc_technology",
+          "any_search",
+          "tavily",
+          "serper"
+        ],
+        "type": "string"
+      },
+      "NewsProxyMode": {
+        "enum": [
+          "system",
+          "direct",
+          "manual"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "读取并测试新闻来源；不写配置，不持久化抓取结果。",
+    "properties": {
+      "configuration": {
+        "$ref": "#/$defs/NewsConfiguration"
+      },
+      "data_generation_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "configuration"
+    ],
+    "title": "NewsPreviewRequest",
+    "type": "object"
+  },
+  "NewsPreviewResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/NewsPreviewResponse"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "NewsItem": {
+        "additionalProperties": false,
+        "description": "已经清洗、限长的新闻条目；由公开来源读取，只作为聊天素材，不作为指令。",
+        "properties": {
+          "published": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "url",
+          "source",
+          "published",
+          "summary"
+        ],
+        "type": "object"
+      },
+      "NewsPreviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "cached": {
+            "type": "boolean"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/$defs/NewsSourceDiagnostic"
+            },
+            "type": "array"
+          },
+          "fetched_at": {
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/$defs/NewsItem"
+            },
+            "type": "array"
+          },
+          "provider": {
+            "$ref": "#/$defs/NewsProvider",
+            "description": "实际命中的来源；首选源失败时可能是自动回退源。"
+          },
+          "stale": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "provider",
+          "items",
+          "fetched_at",
+          "cached",
+          "stale",
+          "diagnostics"
+        ],
+        "type": "object"
+      },
+      "NewsProvider": {
+        "description": "联网新闻来源。API Key 独立存放在系统凭据库，配置中不包含密钥。",
+        "enum": [
+          "auto",
+          "google_news_rss",
+          "ai_hot",
+          "free_news_trending",
+          "gdelt",
+          "bbc_technology",
+          "any_search",
+          "tavily",
+          "serper"
+        ],
+        "type": "string"
+      },
+      "NewsSourceDiagnostic": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/$defs/NewsProvider"
+          }
+        },
+        "required": [
+          "provider",
+          "message"
+        ],
+        "type": "object"
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "NewsSecretSetRequest": {
+    "$defs": {
+      "NewsProvider": {
+        "description": "联网新闻来源。API Key 独立存放在系统凭据库，配置中不包含密钥。",
+        "enum": [
+          "auto",
+          "google_news_rss",
+          "ai_hot",
+          "free_news_trending",
+          "gdelt",
+          "bbc_technology",
+          "any_search",
+          "tavily",
+          "serper"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "不派生 Debug，避免凭据进入日志；null 表示用户明确移除密钥。",
+    "properties": {
+      "api_key": {
+        "maxLength": 2048,
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "data_generation_id": {
+        "type": "string"
+      },
+      "provider": {
+        "$ref": "#/$defs/NewsProvider"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "provider"
+    ],
+    "title": "NewsSecretSetRequest",
+    "type": "object"
+  },
+  "NewsSecretSetResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/NewsSecretStatus"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "NewsProvider": {
+        "description": "联网新闻来源。API Key 独立存放在系统凭据库，配置中不包含密钥。",
+        "enum": [
+          "auto",
+          "google_news_rss",
+          "ai_hot",
+          "free_news_trending",
+          "gdelt",
+          "bbc_technology",
+          "any_search",
+          "tavily",
+          "serper"
+        ],
+        "type": "string"
+      },
+      "NewsSecretStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "provider": {
+            "$ref": "#/$defs/NewsProvider"
+          }
+        },
+        "required": [
+          "provider",
+          "configured"
+        ],
+        "type": "object"
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "NewsSecretStatusRequest": {
+    "$defs": {
+      "NewsProvider": {
+        "description": "联网新闻来源。API Key 独立存放在系统凭据库，配置中不包含密钥。",
+        "enum": [
+          "auto",
+          "google_news_rss",
+          "ai_hot",
+          "free_news_trending",
+          "gdelt",
+          "bbc_technology",
+          "any_search",
+          "tavily",
+          "serper"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      },
+      "provider": {
+        "$ref": "#/$defs/NewsProvider"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "provider"
+    ],
+    "title": "NewsSecretStatusRequest",
+    "type": "object"
+  },
+  "NewsSecretStatusResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/NewsSecretStatus"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "NewsProvider": {
+        "description": "联网新闻来源。API Key 独立存放在系统凭据库，配置中不包含密钥。",
+        "enum": [
+          "auto",
+          "google_news_rss",
+          "ai_hot",
+          "free_news_trending",
+          "gdelt",
+          "bbc_technology",
+          "any_search",
+          "tavily",
+          "serper"
+        ],
+        "type": "string"
+      },
+      "NewsSecretStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "provider": {
+            "$ref": "#/$defs/NewsProvider"
+          }
+        },
+        "required": [
+          "provider",
+          "configured"
+        ],
+        "type": "object"
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "NewsSourceDiagnostic": {
+    "$defs": {
+      "NewsProvider": {
+        "description": "联网新闻来源。API Key 独立存放在系统凭据库，配置中不包含密钥。",
+        "enum": [
+          "auto",
+          "google_news_rss",
+          "ai_hot",
+          "free_news_trending",
+          "gdelt",
+          "bbc_technology",
+          "any_search",
+          "tavily",
+          "serper"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "message": {
+        "type": "string"
+      },
+      "provider": {
+        "$ref": "#/$defs/NewsProvider"
+      }
+    },
+    "required": [
+      "provider",
+      "message"
+    ],
+    "title": "NewsSourceDiagnostic",
+    "type": "object"
   },
   "RoomSaveRequest": {
     "$defs": {
@@ -8185,6 +9835,346 @@
         "required": [
           "profile_id",
           "configured"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "TrayOpenRequest": {
+    "$defs": {
+      "DecimalString": {
+        "maxLength": 19,
+        "pattern": "^(0|[1-9][0-9]*)$",
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "点击托盘面板中的会话：标记已读并唤起主窗口。",
+    "properties": {
+      "conversation_id": {
+        "type": "string"
+      },
+      "data_generation_id": {
+        "type": "string"
+      },
+      "through_seq": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/DecimalString"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "conversation_id"
+    ],
+    "title": "TrayOpenRequest",
+    "type": "object"
+  },
+  "TrayOpenResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/TrayOpenResult"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      },
+      "TrayOpenResult": {
+        "additionalProperties": false,
+        "properties": {
+          "opened": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "opened"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "TraySyncRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "主窗口把“是否需要托盘提醒”推给 Rust；闪烁节奏由 Rust 统一控制。\n`conversation_count` 让托盘在没有会话时不做任何弹出，避免 hover 出一块空面板。",
+    "properties": {
+      "conversation_count": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "data_generation_id": {
+        "type": "string"
+      },
+      "flashing": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "flashing",
+      "conversation_count"
+    ],
+    "title": "TraySyncRequest",
+    "type": "object"
+  },
+  "TraySyncResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/TraySyncState"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      },
+      "TraySyncState": {
+        "additionalProperties": false,
+        "properties": {
+          "flashing": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "flashing"
         ],
         "type": "object"
       }

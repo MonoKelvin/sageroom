@@ -5,14 +5,14 @@ import { ConfigurationProvider } from "@/app/ConfigurationProvider"
 import { ipc } from "@/app/ipc"
 import * as ipcModule from "@/app/ipc"
 import type { ApplicationPageProps } from "@/app/navigation"
-import { snapshot } from "@/features/chat/chat.test-fixtures"
+import { inboxFixture, snapshot } from "@/features/chat/chat.test-fixtures"
 import { defaultDimensions } from "./configurationDefaults"
 
 export function globalConfiguration(): GlobalConfiguration {
   return { revision: "1", model_profiles: [{ id: "model-a", name: "常用模型", protocol: "openai_chat_completions", base_url: "https://example.com/v1", model_name: "test-model",revision: "1", credential_configured: false }], persona_presets: [{ id: "persona-a", name: "自然交流", language_style: "自然友善",skill: "整理资料", dimensions: { ...defaultDimensions }, revision: "1" }], }
 }
 export function newsConfiguration(): NewsConfigurationState {
-  return { revision: "1", configuration: { enabled: true, provider: "google_news_rss", query: "科技 人工智能", refresh_minutes: 30, max_items: 3 } }
+  return { revision: "1", configuration: { enabled: true, provider: "google_news_rss", refresh_minutes: 30, max_items: 3, proxy_enabled: false, proxy_mode: "system", proxy_url: "" } }
 }
 export function agentConfiguration(id = "sage-test", name = "Sage"): AgentConfiguration {
   return { agent_id: id, revision: "1", display_name: name, gender_description: null,language_style: "自然", skill: "", dimensions: { ...defaultDimensions }, avatar_id: null, agent_type: "social", model: null, }
@@ -23,7 +23,7 @@ export function userProfile(): UserProfile {
 export function pageProps(active = true): ApplicationPageProps {
   const base = snapshot()
   const pageSnapshot = { ...base, local_user: { ...base.local_user, avatar_id: null, profile_revision: "1" }, participants: base.participants.map((participant) => ({ ...participant, avatar_id: null, profile_revision: "1" })) }
-  return { active, onNavigate: vi.fn(), session: {
+  return { active, onNavigate: vi.fn(), inbox: inboxFixture(), session: {
     snapshot: pageSnapshot, page: null, loading: false, loadingMore: false, error: null, hasNewMessages: false, atBottom: true,
     firstItemIndex: 0, windowRevision: 0, targetMessageId: null, restoreAnchor: null, enteringIds: new Set<string>(), setChatActive: vi.fn(), reload: vi.fn().mockResolvedValue(undefined), send: vi.fn(), recall: vi.fn(), goToLatest: vi.fn(), jumpTo: vi.fn(), updateAtBottom: vi.fn(), updateRenderedAnchor: vi.fn(), applyRoom: vi.fn(), applyAppearance: vi.fn(), loadOlder: vi.fn(), loadNewer: vi.fn(),
   } }
@@ -59,6 +59,13 @@ export function mockConfigurationIpc() {
     data.news = { revision: nextRevision(request.expected_revision), configuration: request.configuration }
     return structuredClone(data.news)
   })
+  vi.spyOn(ipc, "newsSecretStatus").mockImplementation(async (request) => ({ provider: request.provider, configured: false }))
+  vi.spyOn(ipc, "setNewsSecret").mockImplementation(async (request) => ({ provider: request.provider, configured: request.api_key !== null }))
+  vi.spyOn(ipc, "previewNews").mockImplementation(async () => ({
+    provider: data.news.configuration.provider,
+    fetched_at: "1795580000000", cached: false, stale: false, diagnostics: [],
+    items: [{ title: "测试热点", url: "https://example.com/news", source: "测试源", published: "2026-11-25", summary: "测试摘要" }],
+  }))
   vi.spyOn(ipc, "listAgents").mockImplementation(async () => structuredClone(data.agents))
   vi.spyOn(ipc, "getUserProfile").mockImplementation(async () => structuredClone(data.user))
   vi.spyOn(ipc, "snapshot").mockImplementation(async () => ({ ...pageProps().session.snapshot!, appearance: structuredClone(data.appearance) }))

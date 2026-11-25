@@ -46,17 +46,22 @@ commands.allow = ["app_request_exit", "app_exit_ready"]
 [[permission]]
 identifier = "configuration-read"
 description = "读取本地全局预设、成员配置和用户资料"
-commands.allow = ["global_configuration_get", "agent_list", "user_profile_get"]
+commands.allow = ["global_configuration_get", "news_configuration_get", "agent_list", "user_profile_get"]
 
 [[permission]]
 identifier = "configuration-write"
 description = "保存绑定世代和版本的本地配置与资料"
-commands.allow = ["global_configuration_save", "agent_save", "agent_delete", "agent_runtime_control", "user_profile_save"]
+commands.allow = ["global_configuration_save", "news_configuration_save", "agent_save", "agent_delete", "agent_runtime_control", "user_profile_save"]
 
 [[permission]]
 identifier = "credentials-manage"
 description = "写入模型凭据，只返回是否配置"
-commands.allow = ["secret_set", "secret_status"]
+commands.allow = ["secret_set", "secret_status", "news_secret_set", "news_secret_status"]
+
+[[permission]]
+identifier = "news-preview"
+description = "按本地新闻配置测试固定公开来源，不执行网页指令"
+commands.allow = ["news_preview"]
 
 [[permission]]
 identifier = "model-test"
@@ -77,3 +82,23 @@ commands.allow = ["avatar_import", "avatar_read"]
 identifier = "clipboard-read"
 description = "读取系统剪贴板纯文本，用于输入框粘贴"
 commands.allow = ["clipboard_read_text"]
+
+[[permission]]
+identifier = "inbox-read"
+description = "读取各会话的未读计数、最近消息摘要与免打扰状态"
+commands.allow = ["inbox_get"]
+
+[[permission]]
+identifier = "inbox-write"
+description = "按会话推进已读游标并切换消息免打扰"
+commands.allow = ["inbox_mark_read", "inbox_set_muted"]
+
+[[permission]]
+identifier = "tray-sync"
+description = "把主窗口的未读汇总与聚焦状态同步给托盘图标"
+commands.allow = ["tray_sync"]
+
+[[permission]]
+identifier = "tray-open"
+description = "登录托盘面板的点击唤回主窗口并定位到指定会话"
+commands.allow = ["tray_open_main"]

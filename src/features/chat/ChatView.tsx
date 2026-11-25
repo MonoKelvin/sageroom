@@ -1,20 +1,22 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { IconMessageCircle, IconUsers } from "@tabler/icons-react"
+import { IconBellOff, IconMessageCircle, IconUsers } from "@tabler/icons-react"
 import type { ChatMessage } from "@/contracts/generated"
 import { errorMessage, ipc } from "@/app/ipc"
 import type { SendOptions } from "./useChatSession"
 import type { ApplicationPageProps } from "@/app/navigation"
 import { WorkspaceList } from "@/components/WorkspaceList"
 import { Button } from "@/components/ui/button"
+import { ContextMenu } from "@/components/ui/context-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { GroupInfoDrawer } from "./GroupInfoDrawer"
 import { MessageComposer } from "./MessageComposer"
 import { MessageList } from "./MessageList"
 import { SearchPanel } from "./SearchPanel"
+import { formatConversationTime } from "./message-time"
 import { availableScenes, sceneAdapters } from "./scenes"
 import "./chat.css"
 
-export function ChatView({ session, active, onNavigate }: ApplicationPageProps) {
+export function ChatView({ session, inbox, active, onNavigate }: ApplicationPageProps) {
   const [panel, setPanel] = useState<"search" | "members" | null>(null)
   const [chatCard, setChatCard] = useState<HTMLElement | null>(null)
   const [scrollToBottomSignal, setScrollToBottomSignal] = useState(0)
@@ -55,6 +57,9 @@ export function ChatView({ session, active, onNavigate }: ApplicationPageProps) 
   useLayoutEffect(() => { visible.current = active; navigationEpoch.current += 1 }, [active])
   const scenes = snapshot ? availableScenes(snapshot) : []
   const scene = scenes[0]
+  const [focused, setFocused] = useState(() => document.hasFocus())
+  const [unreadNotice, setUnreadNotice] = useState<{ count: number; seq: string; id: string } | null>(null)
+  const evaluatedUnread = useRef<string | null>(null)
   const returnTarget = useRef<HTMLElement | null>(null)
   const onlineCount = snapshot?.participants.filter((participant) => participant.status === "present").length ?? 0
   const restoreFocus = useCallback(() => {
@@ -65,6 +70,71 @@ export function ChatView({ session, active, onNavigate }: ApplicationPageProps) 
     setPanel((current) => current === next ? null : next)
   }, [])
   const closePanel = useCallback(() => { setPanel(null); restoreFocus() }, [restoreFocus])
+
+  // 窗口是否聚焦决定“进入聊天即已读”能否成立：后台累积的未读不能在用户没看时被清掉。
+  useEffect(() => {
+    const onFocus = () => setFocused(true)
+    const onBlur = () => setFocused(false)
+    window.addEventListener("focus", onFocus)
+    window.addEventListener("blur", onBlur)
+    return () => { window.removeEventListener("focus", onFocus); window.removeEventListener("blur", onBlur) }
+  }, [])
+
+  // 进入会话时只判断一次：最早未读若已在视口内，说明用户已经看到，不再弹提示；
+  // 看不到才给顶部提示。停留期间新到的消息交给底部「x 条新消息」，两者不并存。
+  const sceneId = scene?.id
+  const inboxSummary = inbox.summary
+  const { conversation: findConversation, markRead: markInboxRead } = inbox
+  const isFirstUnreadVisible = useCallback((messageId: string) => {
+    const scroller = chatCard?.querySelector<HTMLElement>(".chat-list-scroller")
+    if (!scroller) return false
+    // 虚拟列表只渲染窗口内的条目，找不到就等于不在视口里。
+    const article = Array.from(scroller.querySelectorAll<HTMLElement>("[data-message-id]")).find((node) => node.dataset.messageId === messageId)
+    if (!article) return false
+    const box = article.getBoundingClientRect()
+    const view = scroller.getBoundingClientRect()
+    return box.bottom > view.top && box.top < view.bottom
+  }, [chatCard])
+  useEffect(() => {
+    if (!active || !focused || !sceneId) {
+      evaluatedUnread.current = null
+      queueMicrotask(() => setUnreadNotice(null))
+      return
+    }
+    // 容器还没挂载时量不出位置，等它出现再评估，避免误判成“看不见”。
+    if (!chatCard || evaluatedUnread.current === sceneId) return
+    const info = findConversation(sceneId)
+    if (!info || info.unread_count === 0 || !info.first_unread_id || !info.first_unread_seq) return
+    const count = info.unread_count
+    const latestSeq = info.latest_seq
+    const firstId = info.first_unread_id
+    const firstSeq = info.first_unread_seq
+    // 等一帧再量位置：虚拟列表刚挂载时还没完成首次布局，此刻判断会把“其实看得见”误判成看不见。
+    const frame = requestAnimationFrame(() => {
+      evaluatedUnread.current = sceneId
+      void markInboxRead(sceneId, latestSeq)
+      if (isFirstUnreadVisible(firstId)) return
+      setUnreadNotice({ count, seq: firstSeq, id: firstId })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [active, focused, sceneId, inboxSummary, chatCard, findConversation, markInboxRead, isFirstUnreadVisible])
+
+  // 已经在底部就等于看到最新：把停留期间累积的未读收回，避免底部还在提示“新消息”。
+  const unreadCount = inbox.conversation(sceneId ?? "")?.unread_count ?? 0
+  useEffect(() => {
+    if (!active || !focused || !sceneId || !session.atBottom || unreadCount === 0) return
+    // 本次进入还没评估过就交给上面的提示逻辑，否则会把未读提前清零导致提示永远不出现。
+    if (evaluatedUnread.current !== sceneId) return
+    const info = findConversation(sceneId)
+    if (info) void markInboxRead(sceneId, info.latest_seq)
+  }, [active, focused, sceneId, session.atBottom, unreadCount, findConversation, markInboxRead])
+
+  useEffect(() => {
+    if (!unreadNotice) return
+    const timer = setTimeout(() => setUnreadNotice(null), 5000)
+    return () => clearTimeout(timer)
+  }, [unreadNotice])
+
   async function handleSend(text: string, requestId: string, options: SendOptions) {
     const adapter = sceneAdapters[scene?.kind ?? "group"]
     if (!adapter) throw new Error("当前聊天对象不可用。")
@@ -102,10 +172,36 @@ export function ChatView({ session, active, onNavigate }: ApplicationPageProps) 
 
   return <div className="workspace-layout chat-workspace">
     <WorkspaceList className="chat-scene-list" aria-label="聊天对象">
-      {scenes.map((item) => <button type="button" key={item.id} className="list-entry" data-active={item.id === scene?.id} onClick={closePanel}>
-        <span className="chat-scene-avatar" aria-hidden="true"><IconUsers size={23} stroke={1.5} /></span>
-        <span className="min-w-0"><strong className="block truncate font-medium">{item.name}</strong><span className="chat-scene-meta">{item.kind === "group" ? "群聊" : "私聊"}</span></span>
-      </button>)}
+      {scenes.map((item) => {
+        const info = inbox.conversation(item.id)
+        const unread = info?.unread_count ?? 0
+        const muted = info?.muted ?? false
+        const preview = info?.latest_preview ?? (session.loading ? "正在读取消息…" : "暂无消息")
+        const title = info?.latest_sender ? `${info.latest_sender}：${preview}` : preview
+        const time = info?.latest_at ? formatConversationTime(info.latest_at) : ""
+        return <ContextMenu
+          key={item.id}
+          label={`${item.name} 会话操作`}
+          items={[{ key: "mute", label: muted ? "取消消息免打扰" : "消息免打扰", icon: <IconBellOff size={16} stroke={1.5} aria-hidden="true" />, onSelect: () => void inbox.setMuted(item.id, !muted) }]}
+        >
+          <button type="button" className="list-entry chat-scene-entry" data-active={item.id === scene?.id} onClick={() => { closePanel(); if (info && unread > 0) void inbox.markRead(item.id, info.latest_seq) }}>
+            <span className="chat-scene-avatar">
+              <IconUsers size={23} stroke={1.5} aria-hidden="true" />
+              {unread > 0 && <span className="unread-badge chat-unread-tag" data-muted={muted || undefined} aria-label={muted ? "有未读消息，已免打扰" : `${unread} 条未读`}>{muted ? null : unread > 99 ? "99+" : unread}</span>}
+            </span>
+            <span className="chat-scene-main">
+              <span className="conversation-heading">
+                <strong className="conversation-heading-name">{item.name}</strong>
+                {time && <time className="conversation-heading-time" dateTime={new Date(info!.latest_at).toISOString()}>{time}</time>}
+              </span>
+              <span className="conversation-heading">
+                <span className="conversation-preview">{title}</span>
+                {muted && <IconBellOff className="chat-scene-muted" size={13} stroke={1.5} aria-label="消息免打扰" />}
+              </span>
+            </span>
+          </button>
+        </ContextMenu>
+      })}
       {!snapshot && <p className="chat-scene-meta p-3">{session.loading ? "正在读取聊天对象…" : "本地数据尚未就绪。"}</p>}
     </WorkspaceList>
     <section ref={setChatCard} className="surface-card workspace-detail chat-card" aria-label="当前聊天">
@@ -126,12 +222,15 @@ export function ChatView({ session, active, onNavigate }: ApplicationPageProps) 
       {session.error && <div className="chat-error" role="alert"><p>{session.error}</p><Button size="sm" variant="ghost" onClick={() => void session.reload()}>重试连接</Button></div>}
       <div className="chat-body">
         <div className="chat-conversation">
-          {session.page && snapshot ? <MessageList key={session.windowRevision} active={active} page={session.page} participants={participants} restoreAnchor={session.restoreAnchor} enteringIds={session.enteringIds} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !session.page.has_more_after} hasNewMessages={session.hasNewMessages} scrollToBottomSignal={scrollToBottomSignal} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={session.goToLatest} quotes={quotes} onQuote={selectQuote} onRecall={session.recall} onLocateQuote={session.jumpTo} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}
+          {unreadNotice && <div className="chat-unread-notice" role="status">
+            <button type="button" className="chat-latest-button" onClick={() => { const target = unreadNotice; setUnreadNotice(null); void session.jumpTo(target.seq, target.id) }}>{unreadNotice.count} 条未读消息</button>
+          </div>}
+          {session.page && snapshot ? <MessageList key={session.windowRevision} active={active} page={session.page} participants={participants} restoreAnchor={session.restoreAnchor} enteringIds={session.enteringIds} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !session.page.has_more_after} hasNewMessages={session.hasNewMessages} newMessageCount={unreadCount} scrollToBottomSignal={scrollToBottomSignal} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={session.goToLatest} quotes={quotes} onQuote={selectQuote} onRecall={session.recall} onLocateQuote={session.jumpTo} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}
           {resolvedQuotes?.identity === quotesIdentity && resolvedQuotes.error && <p className="chat-quote-feedback" role="alert">{resolvedQuotes.error}</p>}
           <MessageComposer active={active} dataGenerationId={generation} disabled={!snapshot} participants={snapshot?.participants} canMentionAll={snapshot?.room.owner_participant_id === snapshot?.local_user.id} quoteMessageId={quoteId} quote={quote} onRemoveQuote={() => setSelectedQuote(null)} onSend={handleSend} />
         </div>
       </div>
-      {snapshot && <GroupInfoDrawer key={snapshot.data_generation_id} snapshot={snapshot} container={chatCard} open={panel === "members" && active} onOpenChange={(open) => { if (!open) closePanel() }} onRoomChange={session.applyRoom} onManageAgents={() => { closePanel(); onNavigate("agents") }} onReturnFocus={restoreFocus} />}
+      {snapshot && <GroupInfoDrawer key={snapshot.data_generation_id} snapshot={snapshot} container={chatCard} open={panel === "members" && active} onOpenChange={(open) => { if (!open) closePanel() }} onRoomChange={session.applyRoom} onManageAgents={() => { closePanel(); onNavigate("agents") }} onReturnFocus={restoreFocus} muted={inbox.conversation(snapshot.room.id)?.muted ?? false} onMutedChange={(muted) => void inbox.setMuted(snapshot.room.id, muted)} />}
     </section>
   </div>
 }

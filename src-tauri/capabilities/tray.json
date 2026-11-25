@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "tray",
+  "description": "仅托盘悬浮面板的最小只读权限：读取快照与未读摘要，点击时唤回主窗口",
+  "windows": ["tray_popup"],
+  "local": true,
+  "permissions": [
+    "app-snapshot",
+    "inbox-read",
+    "tray-open"
+  ]
+}

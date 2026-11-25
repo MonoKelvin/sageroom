@@ -1,21 +1,39 @@
 import { t as require_ucs2length } from "./ucs2length.js";
 // generated/raw-validators/validateNewsConfigurationSaveRequest.js
-var validateNewsConfigurationSaveRequest = validate340;
-var schema443 = {
-	"description": "联网新闻来源。仅接入无需 API Key 的公开源，避免把密钥写进配置库。",
-	"enum": ["google_news_rss", "free_news_trending"],
+var validateNewsConfigurationSaveRequest = validate376;
+var schema490 = {
+	"description": "联网新闻来源。API Key 独立存放在系统凭据库，配置中不包含密钥。",
+	"enum": [
+		"auto",
+		"google_news_rss",
+		"ai_hot",
+		"free_news_trending",
+		"gdelt",
+		"bbc_technology",
+		"any_search",
+		"tavily",
+		"serper"
+	],
+	"type": "string"
+};
+var schema491 = {
+	"enum": [
+		"system",
+		"direct",
+		"manual"
+	],
 	"type": "string"
 };
 var func2 = require_ucs2length().default;
-function validate341(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate377(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
-	const evaluated0 = validate341.evaluated;
+	const evaluated0 = validate377.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		let missing0;
-		if (data.enabled === void 0 && (missing0 = "enabled") || data.provider === void 0 && (missing0 = "provider") || data.query === void 0 && (missing0 = "query") || data.refresh_minutes === void 0 && (missing0 = "refresh_minutes") || data.max_items === void 0 && (missing0 = "max_items")) {
-			validate341.errors = [{
+		if (data.enabled === void 0 && (missing0 = "enabled") || data.provider === void 0 && (missing0 = "provider") || data.refresh_minutes === void 0 && (missing0 = "refresh_minutes") || data.max_items === void 0 && (missing0 = "max_items")) {
+			validate377.errors = [{
 				instancePath,
 				schemaPath: "#/required",
 				keyword: "required",
@@ -24,8 +42,8 @@ function validate341(data, { instancePath = "", parentData, parentDataProperty, 
 			}];
 			return false;
 		} else {
-			for (const key0 in data) if (!(key0 === "enabled" || key0 === "max_items" || key0 === "provider" || key0 === "query" || key0 === "refresh_minutes")) {
-				validate341.errors = [{
+			for (const key0 in data) if (!(key0 === "enabled" || key0 === "max_items" || key0 === "provider" || key0 === "proxy_enabled" || key0 === "proxy_mode" || key0 === "proxy_url" || key0 === "refresh_minutes")) {
+				validate377.errors = [{
 					instancePath,
 					schemaPath: "#/additionalProperties",
 					keyword: "additionalProperties",
@@ -36,7 +54,7 @@ function validate341(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 			if (data.enabled !== void 0) {
 				if (typeof data.enabled !== "boolean") {
-					validate341.errors = [{
+					validate377.errors = [{
 						instancePath: instancePath + "/enabled",
 						schemaPath: "#/properties/enabled/type",
 						keyword: "type",
@@ -51,7 +69,7 @@ function validate341(data, { instancePath = "", parentData, parentDataProperty, 
 				if (data.max_items !== void 0) {
 					let data1 = data.max_items;
 					if (!(typeof data1 == "number" && !(data1 % 1) && !isNaN(data1) && isFinite(data1))) {
-						validate341.errors = [{
+						validate377.errors = [{
 							instancePath: instancePath + "/max_items",
 							schemaPath: "#/properties/max_items/type",
 							keyword: "type",
@@ -61,28 +79,28 @@ function validate341(data, { instancePath = "", parentData, parentDataProperty, 
 						return false;
 					}
 					if (typeof data1 == "number" && isFinite(data1)) {
-						if (data1 > 255 || isNaN(data1)) {
-							validate341.errors = [{
+						if (data1 > 8 || isNaN(data1)) {
+							validate377.errors = [{
 								instancePath: instancePath + "/max_items",
 								schemaPath: "#/properties/max_items/maximum",
 								keyword: "maximum",
 								params: {
 									comparison: "<=",
-									limit: 255
+									limit: 8
 								},
-								message: "must be <= 255"
+								message: "must be <= 8"
 							}];
 							return false;
-						} else if (data1 < 0 || isNaN(data1)) {
-							validate341.errors = [{
+						} else if (data1 < 1 || isNaN(data1)) {
+							validate377.errors = [{
 								instancePath: instancePath + "/max_items",
 								schemaPath: "#/properties/max_items/minimum",
 								keyword: "minimum",
 								params: {
 									comparison: ">=",
-									limit: 0
+									limit: 1
 								},
-								message: "must be >= 0"
+								message: "must be >= 1"
 							}];
 							return false;
 						}
@@ -93,7 +111,7 @@ function validate341(data, { instancePath = "", parentData, parentDataProperty, 
 					if (data.provider !== void 0) {
 						let data2 = data.provider;
 						if (typeof data2 !== "string") {
-							validate341.errors = [{
+							validate377.errors = [{
 								instancePath: instancePath + "/provider",
 								schemaPath: "#/$defs/NewsProvider/type",
 								keyword: "type",
@@ -102,12 +120,12 @@ function validate341(data, { instancePath = "", parentData, parentDataProperty, 
 							}];
 							return false;
 						}
-						if (!(data2 === "google_news_rss" || data2 === "free_news_trending")) {
-							validate341.errors = [{
+						if (!(data2 === "auto" || data2 === "google_news_rss" || data2 === "ai_hot" || data2 === "free_news_trending" || data2 === "gdelt" || data2 === "bbc_technology" || data2 === "any_search" || data2 === "tavily" || data2 === "serper")) {
+							validate377.errors = [{
 								instancePath: instancePath + "/provider",
 								schemaPath: "#/$defs/NewsProvider/enum",
 								keyword: "enum",
-								params: { allowedValues: schema443.enum },
+								params: { allowedValues: schema490.enum },
 								message: "must be equal to one of the allowed values"
 							}];
 							return false;
@@ -115,68 +133,121 @@ function validate341(data, { instancePath = "", parentData, parentDataProperty, 
 						var valid0 = true;
 					} else var valid0 = true;
 					if (valid0) {
-						if (data.query !== void 0) {
-							let data3 = data.query;
-							if (typeof data3 === "string") {
-								if (func2(data3) > 80) {
-									validate341.errors = [{
-										instancePath: instancePath + "/query",
-										schemaPath: "#/properties/query/maxLength",
-										keyword: "maxLength",
-										params: { limit: 80 },
-										message: "must NOT have more than 80 characters"
-									}];
-									return false;
-								}
-							} else {
-								validate341.errors = [{
-									instancePath: instancePath + "/query",
-									schemaPath: "#/properties/query/type",
+						if (data.proxy_enabled !== void 0) {
+							if (typeof data.proxy_enabled !== "boolean") {
+								validate377.errors = [{
+									instancePath: instancePath + "/proxy_enabled",
+									schemaPath: "#/properties/proxy_enabled/type",
 									keyword: "type",
-									params: { type: "string" },
-									message: "must be string"
+									params: { type: "boolean" },
+									message: "must be boolean"
 								}];
 								return false;
 							}
 							var valid0 = true;
 						} else var valid0 = true;
 						if (valid0) {
-							if (data.refresh_minutes !== void 0) {
-								let data4 = data.refresh_minutes;
-								if (!(typeof data4 == "number" && !(data4 % 1) && !isNaN(data4) && isFinite(data4))) {
-									validate341.errors = [{
-										instancePath: instancePath + "/refresh_minutes",
-										schemaPath: "#/properties/refresh_minutes/type",
+							if (data.proxy_mode !== void 0) {
+								let data4 = data.proxy_mode;
+								if (typeof data4 !== "string") {
+									validate377.errors = [{
+										instancePath: instancePath + "/proxy_mode",
+										schemaPath: "#/$defs/NewsProxyMode/type",
 										keyword: "type",
-										params: { type: "integer" },
-										message: "must be integer"
+										params: { type: "string" },
+										message: "must be string"
 									}];
 									return false;
 								}
-								if (typeof data4 == "number" && isFinite(data4)) {
-									if (data4 < 0 || isNaN(data4)) {
-										validate341.errors = [{
-											instancePath: instancePath + "/refresh_minutes",
-											schemaPath: "#/properties/refresh_minutes/minimum",
-											keyword: "minimum",
-											params: {
-												comparison: ">=",
-												limit: 0
-											},
-											message: "must be >= 0"
-										}];
-										return false;
-									}
+								if (!(data4 === "system" || data4 === "direct" || data4 === "manual")) {
+									validate377.errors = [{
+										instancePath: instancePath + "/proxy_mode",
+										schemaPath: "#/$defs/NewsProxyMode/enum",
+										keyword: "enum",
+										params: { allowedValues: schema491.enum },
+										message: "must be equal to one of the allowed values"
+									}];
+									return false;
 								}
 								var valid0 = true;
 							} else var valid0 = true;
+							if (valid0) {
+								if (data.proxy_url !== void 0) {
+									let data5 = data.proxy_url;
+									if (typeof data5 === "string") {
+										if (func2(data5) > 200) {
+											validate377.errors = [{
+												instancePath: instancePath + "/proxy_url",
+												schemaPath: "#/properties/proxy_url/maxLength",
+												keyword: "maxLength",
+												params: { limit: 200 },
+												message: "must NOT have more than 200 characters"
+											}];
+											return false;
+										}
+									} else {
+										validate377.errors = [{
+											instancePath: instancePath + "/proxy_url",
+											schemaPath: "#/properties/proxy_url/type",
+											keyword: "type",
+											params: { type: "string" },
+											message: "must be string"
+										}];
+										return false;
+									}
+									var valid0 = true;
+								} else var valid0 = true;
+								if (valid0) {
+									if (data.refresh_minutes !== void 0) {
+										let data6 = data.refresh_minutes;
+										if (!(typeof data6 == "number" && !(data6 % 1) && !isNaN(data6) && isFinite(data6))) {
+											validate377.errors = [{
+												instancePath: instancePath + "/refresh_minutes",
+												schemaPath: "#/properties/refresh_minutes/type",
+												keyword: "type",
+												params: { type: "integer" },
+												message: "must be integer"
+											}];
+											return false;
+										}
+										if (typeof data6 == "number" && isFinite(data6)) {
+											if (data6 > 720 || isNaN(data6)) {
+												validate377.errors = [{
+													instancePath: instancePath + "/refresh_minutes",
+													schemaPath: "#/properties/refresh_minutes/maximum",
+													keyword: "maximum",
+													params: {
+														comparison: "<=",
+														limit: 720
+													},
+													message: "must be <= 720"
+												}];
+												return false;
+											} else if (data6 < 5 || isNaN(data6)) {
+												validate377.errors = [{
+													instancePath: instancePath + "/refresh_minutes",
+													schemaPath: "#/properties/refresh_minutes/minimum",
+													keyword: "minimum",
+													params: {
+														comparison: ">=",
+														limit: 5
+													},
+													message: "must be >= 5"
+												}];
+												return false;
+											}
+										}
+										var valid0 = true;
+									} else var valid0 = true;
+								}
+							}
 						}
 					}
 				}
 			}
 		}
 	} else {
-		validate341.errors = [{
+		validate377.errors = [{
 			instancePath,
 			schemaPath: "#/type",
 			keyword: "type",
@@ -185,26 +256,26 @@ function validate341(data, { instancePath = "", parentData, parentDataProperty, 
 		}];
 		return false;
 	}
-	validate341.errors = vErrors;
+	validate377.errors = vErrors;
 	return true;
 }
-validate341.evaluated = {
+validate377.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false
 };
 var pattern4 = /* @__PURE__ */ new RegExp("^(0|[1-9][0-9]*)$", "u");
-function validate340(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate376(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
 	let errors = 0;
-	const evaluated0 = validate340.evaluated;
+	const evaluated0 = validate376.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (errors === 0) {
 		if (data && typeof data == "object" && !Array.isArray(data)) {
 			let missing0;
 			if (data.data_generation_id === void 0 && (missing0 = "data_generation_id") || data.client_request_id === void 0 && (missing0 = "client_request_id") || data.expected_revision === void 0 && (missing0 = "expected_revision") || data.configuration === void 0 && (missing0 = "configuration")) {
-				validate340.errors = [{
+				validate376.errors = [{
 					instancePath,
 					schemaPath: "#/required",
 					keyword: "required",
@@ -215,7 +286,7 @@ function validate340(data, { instancePath = "", parentData, parentDataProperty, 
 			} else {
 				const _errs1 = errors;
 				for (const key0 in data) if (!(key0 === "client_request_id" || key0 === "configuration" || key0 === "data_generation_id" || key0 === "expected_revision")) {
-					validate340.errors = [{
+					validate376.errors = [{
 						instancePath,
 						schemaPath: "#/additionalProperties",
 						keyword: "additionalProperties",
@@ -228,7 +299,7 @@ function validate340(data, { instancePath = "", parentData, parentDataProperty, 
 					if (data.client_request_id !== void 0) {
 						const _errs2 = errors;
 						if (typeof data.client_request_id !== "string") {
-							validate340.errors = [{
+							validate376.errors = [{
 								instancePath: instancePath + "/client_request_id",
 								schemaPath: "#/properties/client_request_id/type",
 								keyword: "type",
@@ -242,14 +313,14 @@ function validate340(data, { instancePath = "", parentData, parentDataProperty, 
 					if (valid0) {
 						if (data.configuration !== void 0) {
 							const _errs4 = errors;
-							if (!validate341(data.configuration, {
+							if (!validate377(data.configuration, {
 								instancePath: instancePath + "/configuration",
 								parentData: data,
 								parentDataProperty: "configuration",
 								rootData,
 								dynamicAnchors
 							})) {
-								vErrors = vErrors === null ? validate341.errors : vErrors.concat(validate341.errors);
+								vErrors = vErrors === null ? validate377.errors : vErrors.concat(validate377.errors);
 								errors = vErrors.length;
 							}
 							var valid0 = _errs4 === errors;
@@ -258,7 +329,7 @@ function validate340(data, { instancePath = "", parentData, parentDataProperty, 
 							if (data.data_generation_id !== void 0) {
 								const _errs5 = errors;
 								if (typeof data.data_generation_id !== "string") {
-									validate340.errors = [{
+									validate376.errors = [{
 										instancePath: instancePath + "/data_generation_id",
 										schemaPath: "#/properties/data_generation_id/type",
 										keyword: "type",
@@ -276,7 +347,7 @@ function validate340(data, { instancePath = "", parentData, parentDataProperty, 
 									if (errors === errors) {
 										if (typeof data3 === "string") {
 											if (func2(data3) > 19) {
-												validate340.errors = [{
+												validate376.errors = [{
 													instancePath: instancePath + "/expected_revision",
 													schemaPath: "#/$defs/DecimalString/maxLength",
 													keyword: "maxLength",
@@ -285,7 +356,7 @@ function validate340(data, { instancePath = "", parentData, parentDataProperty, 
 												}];
 												return false;
 											} else if (!pattern4.test(data3)) {
-												validate340.errors = [{
+												validate376.errors = [{
 													instancePath: instancePath + "/expected_revision",
 													schemaPath: "#/$defs/DecimalString/pattern",
 													keyword: "pattern",
@@ -295,7 +366,7 @@ function validate340(data, { instancePath = "", parentData, parentDataProperty, 
 												return false;
 											}
 										} else {
-											validate340.errors = [{
+											validate376.errors = [{
 												instancePath: instancePath + "/expected_revision",
 												schemaPath: "#/$defs/DecimalString/type",
 												keyword: "type",
@@ -313,7 +384,7 @@ function validate340(data, { instancePath = "", parentData, parentDataProperty, 
 				}
 			}
 		} else {
-			validate340.errors = [{
+			validate376.errors = [{
 				instancePath,
 				schemaPath: "#/type",
 				keyword: "type",
@@ -323,10 +394,10 @@ function validate340(data, { instancePath = "", parentData, parentDataProperty, 
 			return false;
 		}
 	}
-	validate340.errors = vErrors;
+	validate376.errors = vErrors;
 	return errors === 0;
 }
-validate340.evaluated = {
+validate376.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

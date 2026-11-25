@@ -7,7 +7,9 @@ use super::{lifecycle, state::AppState};
 use crate::domain::{contracts::*, error::AppResult};
 
 fn trusted_window(window: &WebviewWindow) -> AppResult<()> {
-    if window.label() != "main" {
+    // 托盘面板是本应用创建的本地窗口，需要读取同一个本地数据源；
+    // 其余窗口一律拒绝，避免外部页面借用 IPC。
+    if !matches!(window.label(), "main" | crate::app::tray::POPUP_LABEL) {
         return Err(AppError::new(
             ErrorCode::PermissionDenied,
             "此窗口没有本地聊天权限。",
@@ -194,6 +196,145 @@ pub async fn news_configuration_save(
     let result = async {
         trusted_window(&window)?;
         state.save_news_configuration(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn news_secret_status(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<NewsSecretStatus>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.news_secret_status(decode(request)?).await
+    }.await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn news_secret_set(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<NewsSecretStatus>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.set_news_secret(decode(request)?).await
+    }.await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn news_preview(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<NewsPreviewResponse>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.preview_news(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn tray_sync(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    tray: State<'_, crate::app::tray::TrayState>,
+    request: Value,
+) -> Result<ApiResponse<TraySyncState>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let request: TraySyncRequest = decode(request)?;
+        state
+            .worker()?
+            .call(move |database| database.check_generation(&request.data_generation_id))
+            .await?;
+        let synced = tray.sync(request.flashing, request.conversation_count);
+        // 会话被删空时，已经弹出的面板要立刻收掉，不能等到鼠标移出。
+        if request.conversation_count == 0 {
+            crate::app::tray::hide_popup(window.app_handle());
+        }
+        Ok(synced)
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn tray_open_main(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<TrayOpenResult>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let request: TrayOpenRequest = decode(request)?;
+        if let Some(through_seq) = request.through_seq.clone() {
+            state
+                .mark_inbox_read(InboxMarkReadRequest {
+                    data_generation_id: request.data_generation_id.clone(),
+                    client_request_id: uuid::Uuid::now_v7().to_string(),
+                    conversation_id: request.conversation_id.clone(),
+                    through_seq,
+                })
+                .await?;
+        }
+        let app = window.app_handle();
+        crate::app::tray::hide_popup(app);
+        crate::app::lifecycle::show_main(app);
+        // 面板只为会话而存在，唤回后落在聊天页，避免停在用户上次浏览的其他页面。
+        if let Some(main) = app.get_webview_window("main") {
+            let _ = main.eval("window.dispatchEvent(new CustomEvent('sageroom-open-chat'))");
+        }
+        Ok(TrayOpenResult { opened: true })
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn inbox_get(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<InboxSummary>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.inbox(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn inbox_mark_read(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<InboxSummary>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.mark_inbox_read(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn inbox_set_muted(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<InboxSummary>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.set_inbox_muted(decode(request)?).await
     }
     .await;
     Ok(result.into())

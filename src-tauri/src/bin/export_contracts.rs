@@ -102,6 +102,28 @@ fn main() -> Result<(), Box<dyn Error>> {
         &config,
         &mut schemas,
     )?;
+    export::<NewsSourceDiagnostic>("NewsSourceDiagnostic", &config, &mut schemas)?;
+    export::<NewsSecretStatusRequest>("NewsSecretStatusRequest", &config, &mut schemas)?;
+    export::<ApiResponse<NewsSecretStatus>>("NewsSecretStatusResponse", &config, &mut schemas)?;
+    export::<NewsSecretSetRequest>("NewsSecretSetRequest", &config, &mut schemas)?;
+    export::<ApiResponse<NewsSecretStatus>>("NewsSecretSetResponse", &config, &mut schemas)?;
+    export::<NewsItem>("NewsItem", &config, &mut schemas)?;
+    export::<NewsPreviewRequest>("NewsPreviewRequest", &config, &mut schemas)?;
+    export::<ApiResponse<NewsPreviewResponse>>(
+        "NewsPreviewResponse",
+        &config,
+        &mut schemas,
+    )?;
+    export::<InboxGetRequest>("InboxGetRequest", &config, &mut schemas)?;
+    export::<ApiResponse<InboxSummary>>("InboxGetResponse", &config, &mut schemas)?;
+    export::<InboxMarkReadRequest>("InboxMarkReadRequest", &config, &mut schemas)?;
+    export::<ApiResponse<InboxSummary>>("InboxMarkReadResponse", &config, &mut schemas)?;
+    export::<InboxMuteRequest>("InboxMuteRequest", &config, &mut schemas)?;
+    export::<ApiResponse<InboxSummary>>("InboxMuteResponse", &config, &mut schemas)?;
+    export::<TraySyncRequest>("TraySyncRequest", &config, &mut schemas)?;
+    export::<ApiResponse<TraySyncState>>("TraySyncResponse", &config, &mut schemas)?;
+    export::<TrayOpenRequest>("TrayOpenRequest", &config, &mut schemas)?;
+    export::<ApiResponse<TrayOpenResult>>("TrayOpenResponse", &config, &mut schemas)?;
     export::<AgentListRequest>("AgentListRequest", &config, &mut schemas)?;
     export::<ApiResponse<Vec<AgentConfiguration>>>("AgentListResponse", &config, &mut schemas)?;
     export::<AgentSaveRequest>("AgentSaveRequest", &config, &mut schemas)?;

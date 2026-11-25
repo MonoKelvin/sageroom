@@ -1068,12 +1068,12 @@ fn news_configuration_round_trips_and_rejects_stale_revisions() {
     let (_dir, mut database) = database();
     let first = database.get_news_configuration(GENERATION).unwrap();
     assert!(first.configuration.enabled);
-    assert_eq!(first.configuration.provider, NewsProvider::GoogleNewsRss);
+    assert_eq!(first.configuration.provider, NewsProvider::Auto);
+    assert!(first.configuration.proxy_url.is_empty());
     assert_eq!(first.revision.0, "0");
 
     let mut configuration = first.configuration.clone();
     configuration.provider = NewsProvider::FreeNewsTrending;
-    configuration.query = "半导体".into();
     configuration.refresh_minutes = 45;
     configuration.max_items = 5;
     let saved = database
@@ -1109,5 +1109,134 @@ fn news_configuration_round_trips_and_rejects_stale_revisions() {
             configuration: invalid,
         })
         .is_err());
+    assert_eq!(database.get_news_configuration(GENERATION).unwrap(), saved);
+}
+
+fn append_agent_message(database: &Database, room_id: &str, sender_id: &str, text: &str) -> i64 {
+    let id = Uuid::now_v7().to_string();
+    database
+        .conn
+        .execute(
+            "INSERT INTO messages (id, room_id, sender_id, created_at) VALUES (?1, ?2, ?3, ?4)",
+            params![id, room_id, sender_id, 1_700_000_000_000_i64],
+        )
+        .unwrap();
+    let seq = database.conn.last_insert_rowid();
+    database
+        .conn
+        .execute(
+            "INSERT INTO message_parts VALUES (?1, 0, 'text', ?2)",
+            params![id, text],
+        )
+        .unwrap();
+    seq
+}
+
+#[test]
+fn inbox_initializes_as_read_and_tracks_unread_mute() {
+    let (_dir, mut database) = database();
+    let initial = database.get_inbox(GENERATION).unwrap();
+    assert_eq!(initial.conversations.len(), 1);
+    assert_eq!(initial.unread_total, 0);
+    let conversation = initial.conversations[0].clone();
+    // 首次读取把已有历史视为已读，避免新装即出现大量未读。
+    assert_eq!(conversation.last_read_seq.0, conversation.latest_seq.0);
+    assert_eq!(conversation.latest_preview, "暂无消息");
+
+    let agent: String = database
+        .conn
+        .query_row(
+            "SELECT id FROM participants WHERE kind = 'agent' LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let room: String = database
+        .conn
+        .query_row("SELECT id FROM room WHERE singleton = 1", [], |row| row.get(0))
+        .unwrap();
+
+    let first = append_agent_message(&database, &room, &agent, "第一条消息");
+    let unread = database.get_inbox(GENERATION).unwrap();
+    assert_eq!(unread.conversations[0].unread_count, 1);
+    assert_eq!(unread.unread_total, 1);
+    assert_eq!(unread.conversations[0].latest_preview, "第一条消息");
+    assert_eq!(
+        unread.conversations[0].first_unread_seq.as_ref().unwrap().0,
+        first.to_string()
+    );
+    assert!(unread.conversations[0].latest_sender.is_some());
+
+    let read = database
+        .mark_inbox_read(InboxMarkReadRequest {
+            data_generation_id: GENERATION.into(),
+            client_request_id: "inbox-read-1".into(),
+            conversation_id: conversation.id.clone(),
+            through_seq: first.into(),
+        })
+        .unwrap();
+    assert_eq!(read.unread_total, 0);
+    assert!(read.conversations[0].first_unread_id.is_none());
+
+    // 已读位置只前进不回退
+    let stale = database
+        .mark_inbox_read(InboxMarkReadRequest {
+            data_generation_id: GENERATION.into(),
+            client_request_id: "inbox-read-2".into(),
+            conversation_id: conversation.id.clone(),
+            through_seq: 0.into(),
+        })
+        .unwrap();
+    assert_eq!(stale.conversations[0].last_read_seq.0, first.to_string());
+
+    let muted = database
+        .set_inbox_muted(InboxMuteRequest {
+            data_generation_id: GENERATION.into(),
+            client_request_id: "inbox-mute-1".into(),
+            conversation_id: conversation.id.clone(),
+            muted: true,
+        })
+        .unwrap();
+    assert!(muted.conversations[0].muted);
+
+    append_agent_message(&database, &room, &agent, "第二条消息");
+    let after = database.get_inbox(GENERATION).unwrap();
+    // 免打扰仍记录自身未读数，但不汇总到全局角标。
+    assert_eq!(after.conversations[0].unread_count, 1);
+    assert_eq!(after.unread_total, 0);
+}
+
+#[test]
+fn old_news_keywords_are_ignored_without_losing_other_settings() {
+    let (_dir, mut database) = database();
+    let legacy = serde_json::json!({"news":{"revision":"4","configuration":{"enabled":true,"provider":"google_news_rss","query":"用户旧关键词","refresh_minutes":45,"max_items":5}}});
+    database.conn.execute("UPDATE global_configuration SET preferences_json = ?1 WHERE singleton = 1", [legacy.to_string()]).unwrap();
+    let state = database.get_news_configuration(GENERATION).unwrap();
+    assert_eq!(state.revision.0, "4");
+    assert_eq!(state.configuration.refresh_minutes, 45);
+    assert!(serde_json::to_value(&state).unwrap()["configuration"].get("query").is_none());
+    let saved = database.save_news_configuration(NewsConfigurationSaveRequest {
+        data_generation_id: GENERATION.into(), client_request_id: "news-migrate".into(), expected_revision: state.revision, configuration: state.configuration,
+    }).unwrap();
+    assert_eq!(saved.revision.0, "5");
+    let json: String = database.conn.query_row("SELECT preferences_json FROM global_configuration WHERE singleton = 1", [], |row| row.get(0)).unwrap();
+    assert!(!json.contains("用户旧关键词"));
+}
+
+#[test]
+fn inbox_preferences_do_not_disturb_news_configuration() {
+    let (_dir, mut database) = database();
+    let news = database.get_news_configuration(GENERATION).unwrap();
+    let mut configuration = news.configuration.clone();
+    configuration.max_items = 5;
+    let saved = database
+        .save_news_configuration(NewsConfigurationSaveRequest {
+            data_generation_id: GENERATION.into(),
+            client_request_id: "news-keep-1".into(),
+            expected_revision: news.revision,
+            configuration,
+        })
+        .unwrap();
+    let _ = database.get_inbox(GENERATION).unwrap();
     assert_eq!(database.get_news_configuration(GENERATION).unwrap(), saved);
 }

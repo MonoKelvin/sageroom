@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-news-configuration-get"
+description = "Enables the news_configuration_get command without any pre-configured scope."
+commands.allow = ["news_configuration_get"]
+
+[[permission]]
+identifier = "deny-news-configuration-get"
+description = "Denies the news_configuration_get command without any pre-configured scope."
+commands.deny = ["news_configuration_get"]

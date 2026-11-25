@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { ApplicationPageDefinition, PageId } from "./navigation"
 
-export function NavigationRail({ pages, current, onNavigate }: { pages: readonly ApplicationPageDefinition[]; current: PageId; onNavigate: (page: PageId) => void }) {
+export function NavigationRail({ pages, current, unreadTotal = 0, onNavigate }: { pages: readonly ApplicationPageDefinition[]; current: PageId; unreadTotal?: number; onNavigate: (page: PageId) => void }) {
   const [hover, setHover] = useState({ index: 0, visible: false, sliding: false })
   const activeIndex = pages.findIndex((page) => page.id === current)
 
@@ -37,7 +37,7 @@ export function NavigationRail({ pages, current, onNavigate }: { pages: readonly
                   type="button"
                   className="navigation-button"
                   data-active={selected}
-                  aria-label={page.title}
+                  aria-label={page.id === "chat" && unreadTotal > 0 ? `${page.title}，${unreadTotal} 条未读` : page.title}
                   aria-current={selected ? "page" : undefined}
                   onClick={() => onNavigate(page.id)}
                   onPointerEnter={(event) => {
@@ -45,6 +45,7 @@ export function NavigationRail({ pages, current, onNavigate }: { pages: readonly
                   }}
                 >
                   <Icon size={23} stroke={1.5} aria-hidden="true" />
+                  {page.id === "chat" && unreadTotal > 0 && <span className="unread-badge navigation-badge" aria-hidden="true">{unreadTotal > 99 ? "99+" : unreadTotal}</span>}
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right" className="navigation-tooltip">{page.title}</TooltipContent>

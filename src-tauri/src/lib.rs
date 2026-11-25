@@ -24,7 +24,10 @@ pub fn run() {
             app.manage(app::state::AppState::open(directory, handle.clone()));
             let main_window = handle.get_webview_window("main").ok_or("主窗口不存在。")?;
             app::window_frame::configure(&main_window)?;
+            app.manage(app::tray::TrayState::default());
             app::lifecycle::install_tray(&handle)?;
+            app::tray::install_popup(&handle)?;
+            app::tray::start_flasher(handle.clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -41,6 +44,14 @@ pub fn run() {
             app::commands::global_configuration_save,
             app::commands::news_configuration_get,
             app::commands::news_configuration_save,
+            app::commands::news_preview,
+            app::commands::news_secret_status,
+            app::commands::news_secret_set,
+            app::commands::inbox_get,
+            app::commands::inbox_mark_read,
+            app::commands::inbox_set_muted,
+            app::commands::tray_sync,
+            app::commands::tray_open_main,
             app::commands::agent_list,
             app::commands::agent_delete,
             app::commands::agent_save,

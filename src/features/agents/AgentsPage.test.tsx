@@ -53,7 +53,7 @@ describe("持久资源智能体页面", () => {
     expect(ipc.getGlobalConfiguration).toHaveBeenCalledTimes(1)
     expect(ipc.saveAgent).not.toHaveBeenCalled()
     expect(Array.from(document.querySelectorAll("button")).filter((button) => /保存|重新读取|丢弃/.test(button.textContent ?? ""))).toHaveLength(0)
-  }, 10000)
+  })
   it("新建即排队写入合法默认配置，稳定 ID 与 null revision，不宣称已启动", async () => {
     render(page())
     await screen.findByLabelText("配置名称", { selector: "input" })
@@ -149,7 +149,7 @@ describe("持久资源智能体页面", () => {
     await select("模型预设", "常用模型")
     await waitFor(() => expect(detail("第二位").getByLabelText("模型名称", { selector: "input" })).toHaveValue("新的全局模型"))
     expect(detail("第二位").getByLabelText("模型名称", { selector: "input" })).toHaveValue("新的全局模型")
-  }, 10000)
+  })
   it("未配置模型 option 禁用，类型选择和头像成功即时应用", async () => {
     const data = mockConfigurationIpc()
     const send = vi.spyOn(ipc, "send").mockRejectedValue(new Error("工具成员不得发起闲聊"))

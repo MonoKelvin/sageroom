@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { formatMessageTime, shouldInsertTimeTag } from "./message-time"
+import { formatConversationTime, formatMessageTime, shouldInsertTimeTag } from "./message-time"
 
 const local = (year: number, month: number, day: number, hour: number, minute: number) =>
   new Date(year, month - 1, day, hour, minute).getTime()
@@ -35,5 +35,23 @@ describe("消息时间标记", () => {
 
   it("跨天即使间隔不足十分钟也插入", () => {
     expect(shouldInsertTimeTag(local(2026, 11, 20, 23, 58), local(2026, 11, 21, 0, 2))).toBe(true)
+  })
+})
+
+describe("会话列表时间", () => {
+  it("今天只显示时分", () => {
+    expect(formatConversationTime(local(2026, 11, 21, 15, 12), now)).toBe("15:12")
+  })
+
+  it("七天内显示月日与时分", () => {
+    expect(formatConversationTime(local(2026, 11, 18, 15, 23), now)).toBe("11/18 15:23")
+  })
+
+  it("今年更早只显示月日", () => {
+    expect(formatConversationTime(local(2026, 10, 25, 9, 0), now)).toBe("10/25")
+  })
+
+  it("跨年显示完整年月日", () => {
+    expect(formatConversationTime(local(2025, 12, 12, 9, 0), now)).toBe("2025/12/12")
   })
 })

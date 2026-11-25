@@ -10,7 +10,8 @@ export default mergeConfig(
       include: ["src/**/*.test.{ts,tsx}", "src/**/*.spec.{ts,tsx}"],
       clearMocks: true,
       restoreMocks: true,
-      testTimeout: 20_000,
+      // 全量并发时用户交互类用例会逼近上限，留出资源争抢的余量。
+      testTimeout: 30_000,
     },
   }),
 )

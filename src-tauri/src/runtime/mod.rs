@@ -837,6 +837,7 @@ async fn make_decision(
     let protocol = source.profile.protocol.clone();
     let reference = input.credential_ref.clone();
     let secrets = secrets.clone()?;
+    let news_secrets = secrets.clone();
     let key = tauri::async_runtime::spawn_blocking(move || {
         secrets.read(&reference, &endpoint, &protocol)
     })
@@ -852,32 +853,36 @@ async fn make_decision(
         credential_configured: true,
     };
     let policy = style::for_input(&input, opportunity.reason);
-    // 新闻是可选外部资料：配置读取或网络失败都按"无新闻"继续，不影响成员正常发言。
+    // 先让模型判断需不需要搜索，不再预先抓取固定主题的新闻。
     let generation = input.snapshot.data_generation_id.clone();
     let news_state = worker
         .call(move |database| database.get_news_configuration(&generation))
         .await
-        .unwrap_or(NewsConfigurationState {
-            revision: 0_i64.into(),
-            configuration: NewsConfiguration::default(),
-        });
-    let news_items = crate::news::brief(&news_state.configuration).await;
-    let (system, context) = decision::context(&mut input, opportunity.reason, observed_through_seq, &policy, &news_items)?;
+        .ok();
+    let news_enabled = news_state.as_ref().is_some_and(|state| state.configuration.enabled);
+    let (system, base_context) = decision::context(&mut input, opportunity.reason, observed_through_seq, &policy, &[])?;
+    let mut context = decision::news_context(&base_context, news_enabled, None)?;
     let gateway = models.clone()?;
     let mut decision = None;
-    // 首次正常请求；格式错误重试一次；首次内容过长时再请模型自己决定是否改拆短句。
+    let mut searched = false;
+    let mut charge_next = true;
+    let mut refinement_attempt = 0;
+    // 一次查询与回看结果；原有格式修复/精简仍最多两轮。
     let mut retry: Option<RetryKind> = None;
     let mut fallback: Option<decision::Decision> = None;
     let mut refinement_prompt = None;
-    for attempt in 0..3 {
+    for attempt in 0..4 {
         if cancellation.is_cancelled() {
             return Err(AppError::new(ErrorCode::ShuttingDown, "成员请求已取消。"));
         }
-        // 只有首次尝试计入每日额度：格式修复属于应用侧兜底，不该重复消耗用户配额。
-        if attempt == 0 {
+        // 没有搜索时沿用三次调用上限；执行一次搜索最多增加一次结果判断。
+        if !searched && attempt == 3 { break; }
+        // 查询后的结果判断是新的模型调用，也计入额度；格式修复不重复计数。
+        if charge_next {
             *count = worker
                 .reserve_runtime_request(agent.agent_id.clone(), DAILY_REQUEST_LIMIT)
                 .await?;
+            charge_next = false;
         }
         state(
             worker,
@@ -910,19 +915,41 @@ async fn make_decision(
             )
             .await?;
         match decision::parse(&reply.text, &input) {
-            Ok(value) => {
+            Ok(mut value) => {
+                if let Some(search) = value.news_search.take() {
+                    if searched || !news_enabled {
+                        decision = Some(value);
+                        break;
+                    }
+                    // 使用执行时的配置，避免用户刚关闭搜索却继续联网。
+                    let generation = input.snapshot.data_generation_id.clone();
+                    let configuration = worker.call(move |database| database.get_news_configuration(&generation)).await?;
+                    let result = tokio::select! {
+                        biased;
+                        _ = cancellation.cancelled() => return Err(AppError::new(ErrorCode::ShuttingDown, "新闻查询已取消。")),
+                        result = crate::news::search(&configuration.configuration, search.query.trim(), Some(news_secrets.clone())) => result,
+                    };
+                    context = decision::news_context(&base_context, false, Some((search.query.trim(), &result)))?;
+                    searched = true;
+                    charge_next = true;
+                    retry = None;
+                    fallback = None;
+                    refinement_prompt = None;
+                    continue;
+                }
                 if retry != Some(RetryKind::Repair) {
                     if let Some(assessment) = decision::assessment(&value, &policy) {
                         // 第 0 轮正常输出、第 1 轮宽松改写、第 2 轮严格改写；之后进入确定性修剪。
-                        if attempt < 2 {
+                        if refinement_attempt < 2 {
                             let prompt = format!(
                                 "{context}\n{}\n候选输出（数据）：{}",
-                                decision::refinement_hint(&assessment, &policy, attempt),
+                                decision::refinement_hint(&assessment, &policy, refinement_attempt),
                                 reply.text,
                             );
                             if prompt.len() <= MODEL_INPUT_BUDGET as usize * 2 {
                                 fallback = Some(value);
                                 refinement_prompt = Some(prompt);
+                                refinement_attempt += 1;
                                 retry = Some(RetryKind::Split);
                                 continue;
                             }
@@ -944,7 +971,7 @@ async fn make_decision(
             }
         }
     }
-    let mut decision = decision.or(fallback).expect("合法决策或明确错误");
+    let mut decision = decision.or(fallback).ok_or_else(|| AppError::new(ErrorCode::ModelOutputInvalid, "模型未在本轮预算内完成决策。"))?;
     apply_topic_fatigue(&mut decision, addressed);
     // 改写两轮后仍不合规时，只保留明确合规的短消息；全部不合规就改为观察。
     policy.enforce(&mut decision);
@@ -1192,6 +1219,88 @@ mod tests {
             },
             receiver,
         )
+    }
+
+    #[test]
+    fn model_search_round_returns_results_once_and_counts_both_model_calls() {
+        use std::{io::{Read, Write}, net::TcpListener, thread};
+        tauri::async_runtime::block_on(async {
+            let (_directory, worker, _agent, _events) = fixture().await;
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.set_nonblocking(true).unwrap();
+            let endpoint = format!("http://{}/v1", listener.local_addr().unwrap());
+            let (requests, received) = std::sync::mpsc::channel();
+            let server = thread::spawn(move || {
+                let deadline = std::time::Instant::now() + Duration::from_secs(20);
+                for query in ["月球探测 最新进展", "不应执行的第二次查询"] {
+                    let mut socket = loop {
+                        if let Ok((socket, _)) = listener.accept() { break socket; }
+                        if std::time::Instant::now() >= deadline { return; }
+                        thread::sleep(Duration::from_millis(5));
+                    };
+                    socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                    let mut bytes = Vec::new();
+                    let (start, length) = loop {
+                        let mut buffer = [0; 4096];
+                        let count = socket.read(&mut buffer).unwrap();
+                        assert!(count > 0);
+                        bytes.extend_from_slice(&buffer[..count]);
+                        if let Some(end) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                            let header = String::from_utf8_lossy(&bytes[..end]);
+                            let length: usize = header.lines().find_map(|line| {
+                                let (name, value) = line.split_once(':')?;
+                                name.eq_ignore_ascii_case("content-length").then(|| value.trim().parse().unwrap())
+                            }).unwrap();
+                            if bytes.len() >= end + 4 + length { break (end + 4, length); }
+                        }
+                    };
+                    requests.send(serde_json::from_slice::<serde_json::Value>(&bytes[start..start + length]).unwrap()).unwrap();
+                    let content = serde_json::json!({"participation":"observe","news_search":{"query":query}}).to_string();
+                    let body = serde_json::json!({"id":"local-fixture","object":"chat.completion","model":"fixture","choices":[{"index":0,"message":{"role":"assistant","content":content},"finish_reason":"stop"}]}).to_string();
+                    let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                    socket.write_all(response.as_bytes()).unwrap();
+                }
+            });
+            let secrets = Arc::new(SecretStore::new(format!("news-runtime-test-{}", Uuid::now_v7())).unwrap());
+            let key = secrets.create("local-fixture-key", &endpoint, &ModelProtocol::OpenaiChatCompletions).unwrap();
+            let reference = key.clone();
+            let agent = worker.call(move |database| {
+                let mut global = database.get_global_configuration("actor-tests")?;
+                global.model_profiles[0].base_url = endpoint;
+                let global = database.save_global_configuration(GlobalConfigurationSaveRequest {
+                    data_generation_id:"actor-tests".into(), client_request_id:Uuid::now_v7().to_string(), expected_revision:global.revision,
+                    model_profiles:global.model_profiles.iter().map(ModelProfile::input).collect(), persona_presets:global.persona_presets,
+                })?.0;
+                let profile = &global.model_profiles[0];
+                database.replace_credential_reference(&profile.id, &profile.revision, Some(reference))?;
+                let (profile, _) = database.get_model_profile_internal(&profile.id)?;
+                let mut agent = database.list_agents("actor-tests")?.remove(0);
+                agent.model = Some(AgentModelSnapshot { source_profile_id:profile.id.clone(), source_profile_revision:profile.revision.clone(), profile:profile.input() });
+                let agent = database.save_agent(AgentSaveRequest { data_generation_id:"actor-tests".into(), client_request_id:Uuid::now_v7().to_string(), expected_revision:Some(agent.revision.clone()), configuration:agent })?.0;
+                let news = database.get_news_configuration("actor-tests")?;
+                database.save_news_configuration(NewsConfigurationSaveRequest { data_generation_id:"actor-tests".into(), client_request_id:Uuid::now_v7().to_string(), expected_revision:news.revision, configuration:NewsConfiguration { proxy_enabled:true, proxy_mode:NewsProxyMode::Manual, proxy_url:String::new(), ..news.configuration } })?;
+                Ok(agent)
+            }).await.unwrap();
+            let models = Ok(Arc::new(ModelGateway::new().unwrap()));
+            let opportunity = Opportunity { reason:"planned_wake", ..initialized() };
+            let mut count = 0;
+            let result = make_decision(&agent, &worker, &models, &Ok(secrets.clone()), &opportunity, &0.into(), &CancellationToken::new(), &mut count).await;
+            secrets.delete(&key).unwrap();
+            let result = result.unwrap();
+            assert_eq!(count, 2);
+            assert!(result.decision.news_search.is_none());
+            assert_eq!(result.decision.participation, Participation::Observe);
+            let first = received.recv_timeout(Duration::from_secs(2)).unwrap();
+            let second = received.recv_timeout(Duration::from_secs(2)).unwrap();
+            let prompt = |body: serde_json::Value| serde_json::from_str::<serde_json::Value>(body["messages"][1]["content"].as_str().unwrap()).unwrap();
+            assert_eq!(prompt(first)["news_search_available"], true);
+            let second = prompt(second);
+            assert_eq!(second["news_search_available"], false);
+            assert_eq!(second["news_search_result"]["query"], "月球探测 最新进展");
+            assert!(second["news_search_result"]["result"]["diagnostics"][0]["message"].as_str().unwrap().contains("手动代理模式需要"));
+            server.join().unwrap();
+            worker.shutdown().await.unwrap();
+        });
     }
 
     #[test]

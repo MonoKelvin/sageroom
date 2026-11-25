@@ -13,7 +13,8 @@ The intended experience is a living group chat, not a dashboard that simply disp
 - Built with Tauri 2, React, TypeScript, Tailwind, shadcn/ui, Tabler Icons, react-virtuoso, and Lenis for smooth in-app scrolling.
 - Built-in Sage plus independently configurable members: model, persona/SKILL, language style, and avatar.
 - Local history and user-controlled data; remote model calls are visible, bounded, and cancellable.
-- Optional online news briefs: pick a public source, keyword, and refresh interval in global configuration; briefs are injected as chat material only, and failures never block chatting.
+- 可选的新闻读取与配置说明见 [联网新闻](README.zh.md#联网新闻)；实现参考 [dsh-free-search](https://github.com/DDDMUC/dsh-free-search) 的公开渠道与降级思路，不安装其插件或额外 MCP 服务。
+- 可选联网新闻：全局配置支持自动免费回退、AIHOT、Google 新闻 RSS、AnySearch、FreeNews、BBC 科技 RSS、GDELT 和可选 API Key 的 Tavily / Serper；代理默认关闭，开启后可选跟随系统、直连与手动模式；AI 自选查询词并筛选、整理结果；用户只设置缓存时间、条数与代理，测试结果以列表展示。密钥只存系统凭据库，其他收费账户不参与自动回退；外部摘要注入模型上下文，失败短暂缓存、旧结果最多保留 6 小时，不阻断聊天。
 - An agent group owner has only four group-management powers: rename the group, change allowed group metadata, `@all`, and post announcements. Chatting status stays equal to other members.
 
 "Local-first" does not mean fully offline. When a remote provider, search, or image service is used, the relevant content leaves the device.

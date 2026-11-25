@@ -29,9 +29,22 @@ import type {
   GlobalConfiguration,
   GlobalConfigurationGetRequest,
   GlobalConfigurationSaveRequest,
+  InboxGetRequest,
+  InboxMarkReadRequest,
+  InboxMuteRequest,
+  InboxSummary,
+  TrayOpenRequest,
+  TrayOpenResult,
+  TraySyncRequest,
+  TraySyncState,
   NewsConfigurationGetRequest,
   NewsConfigurationSaveRequest,
   NewsConfigurationState,
+  NewsPreviewRequest,
+  NewsPreviewResponse,
+  NewsSecretStatusRequest,
+  NewsSecretSetRequest,
+  NewsSecretStatus,
   AgentConfiguration,
   AgentListRequest,
   AgentSaveRequest,
@@ -89,10 +102,26 @@ import {
   validateGlobalConfigurationGetResponse,
   validateGlobalConfigurationSaveRequest,
   validateGlobalConfigurationSaveResponse,
+  validateInboxGetRequest,
+  validateInboxGetResponse,
+  validateInboxMarkReadRequest,
+  validateInboxMarkReadResponse,
+  validateInboxMuteRequest,
+  validateInboxMuteResponse,
+  validateTraySyncRequest,
+  validateTraySyncResponse,
+  validateTrayOpenRequest,
+  validateTrayOpenResponse,
   validateNewsConfigurationGetRequest,
   validateNewsConfigurationGetResponse,
   validateNewsConfigurationSaveRequest,
   validateNewsConfigurationSaveResponse,
+  validateNewsPreviewRequest,
+  validateNewsPreviewResponse,
+  validateNewsSecretStatusRequest,
+  validateNewsSecretStatusResponse,
+  validateNewsSecretSetRequest,
+  validateNewsSecretSetResponse,
   validateAgentListRequest,
   validateAgentListResponse,
   validateAgentSaveRequest,
@@ -177,8 +206,11 @@ async function request<Input, Data>(
   let output: unknown
   try {
     output = await invoke(command, { request: input })
-  } catch {
-    throw clientError("无法连接本地应用，请重新加载或重新打开 Sageroom。")
+  } catch (cause) {
+    // Tauri 的 invoke 失败原因（命令未注册、参数解码失败、后端 panic）必须暴露，
+    // 否则界面只剩“无法连接本地应用”，无法定位具体是哪一层出错。
+    const detail = cause instanceof Error ? cause.message : String(cause)
+    throw clientError(`无法连接本地应用：${detail.slice(0, 160)}。请重新加载或重新打开 Sageroom。`)
   }
   if (!validateOutput(output)) {
     throw clientError("应用返回的数据不符合当前合同，请重新加载并保留追踪 ID。")
@@ -211,10 +243,26 @@ export const ipc = {
     request("global_configuration_get", input, validateGlobalConfigurationGetRequest, validateGlobalConfigurationGetResponse),
   saveGlobalConfiguration: (input: GlobalConfigurationSaveRequest): Promise<GlobalConfiguration> =>
     request("global_configuration_save", input, validateGlobalConfigurationSaveRequest, validateGlobalConfigurationSaveResponse),
+  traySync: (input: TraySyncRequest): Promise<TraySyncState> =>
+    request("tray_sync", input, validateTraySyncRequest, validateTraySyncResponse),
+  trayOpenMain: (input: TrayOpenRequest): Promise<TrayOpenResult> =>
+    request("tray_open_main", input, validateTrayOpenRequest, validateTrayOpenResponse),
+  getInbox: (input: InboxGetRequest): Promise<InboxSummary> =>
+    request("inbox_get", input, validateInboxGetRequest, validateInboxGetResponse),
+  markInboxRead: (input: InboxMarkReadRequest): Promise<InboxSummary> =>
+    request("inbox_mark_read", input, validateInboxMarkReadRequest, validateInboxMarkReadResponse),
+  setInboxMuted: (input: InboxMuteRequest): Promise<InboxSummary> =>
+    request("inbox_set_muted", input, validateInboxMuteRequest, validateInboxMuteResponse),
   getNewsConfiguration: (input: NewsConfigurationGetRequest): Promise<NewsConfigurationState> =>
     request("news_configuration_get", input, validateNewsConfigurationGetRequest, validateNewsConfigurationGetResponse),
   saveNewsConfiguration: (input: NewsConfigurationSaveRequest): Promise<NewsConfigurationState> =>
     request("news_configuration_save", input, validateNewsConfigurationSaveRequest, validateNewsConfigurationSaveResponse),
+  newsSecretStatus: (input: NewsSecretStatusRequest): Promise<NewsSecretStatus> =>
+    request("news_secret_status", input, validateNewsSecretStatusRequest, validateNewsSecretStatusResponse),
+  setNewsSecret: (input: NewsSecretSetRequest): Promise<NewsSecretStatus> =>
+    request("news_secret_set", input, validateNewsSecretSetRequest, validateNewsSecretSetResponse),
+  previewNews: (input: NewsPreviewRequest): Promise<NewsPreviewResponse> =>
+    request("news_preview", input, validateNewsPreviewRequest, validateNewsPreviewResponse),
   listAgents: (input: AgentListRequest): Promise<AgentConfiguration[]> =>
     request("agent_list", input, validateAgentListRequest, validateAgentListResponse),
   deleteAgent: (input: AgentDeleteRequest): Promise<void> =>

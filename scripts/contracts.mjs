@@ -27,6 +27,16 @@ const responseTypes = {
   ExitReady: "ExitResult",
   GlobalConfigurationGet: "GlobalConfiguration",
   GlobalConfigurationSave: "GlobalConfiguration",
+  NewsConfigurationGet: "NewsConfigurationState",
+  NewsConfigurationSave: "NewsConfigurationState",
+  NewsPreview: "NewsPreviewResponse",
+  NewsSecretStatus: "NewsSecretStatus",
+  NewsSecretSet: "NewsSecretStatus",
+  InboxGet: "InboxSummary",
+  InboxMarkRead: "InboxSummary",
+  InboxMute: "InboxSummary",
+  TraySync: "TraySyncState",
+  TrayOpen: "TrayOpenResult",
   AgentList: "AgentConfiguration[]",
   AgentSave: "AgentConfiguration",
   AgentDelete: "void",
@@ -96,6 +106,11 @@ try {
   writeFileSync(path.join(temporary, "validators.js"), Object.keys(exports).map((name) => `export { ${name} } from "./validators/${name}.js"`).join("\n") + "\n")
   rmSync(standalone, { recursive: true })
   const names = readdirSync(path.join(temporary, "types")).filter((file) => file.endsWith(".ts")).map((file) => file.slice(0, -3)).sort()
+  // ts-rs 的字段注释可能让类型定义产生行尾空格，规范生成产物。
+  for (const name of names) {
+    const file = path.join(temporary, "types", `${name}.ts`)
+    writeFileSync(file, readFileSync(file, "utf8").replace(/[\t ]+$/gm, ""))
+  }
   writeFileSync(path.join(temporary, "index.ts"), names.map((name) => `export type { ${name} } from "./types/${name}"`).join("\n") + "\n")
   const declarations = [
     'import type { ValidateFunction } from "ajv"',

@@ -30,7 +30,7 @@
   --text-primary: #000000;
   --selection-foreground: #ffffff;
   --text-secondary: #67676e;
-  --semantic-accent: #0969da;
+  --semantic-accent: #c94a4a;
   --semantic-accent-foreground: #ffffff;
   /* 自己发送的消息：品牌底 + 白字；选中文字时用黑底保证在品牌色上仍清晰 */
   --self-bubble-bg: var(--semantic-accent);
@@ -102,10 +102,10 @@
   --surface-workspace: #323236;
   --surface-content: #45454b;
   --surface-chrome: rgb(28 28 32 / 94%);
-  --semantic-accent: #69adff;
+  --semantic-accent: #f08a8a;
   --semantic-accent-foreground: #151517;
-  /* 深色主题的亮蓝配白字对比不足，自有气泡用加深一档的品牌蓝 */
-  --self-bubble-bg: #1158c7;
+  /* 深色主题的亮红配白字对比不足，自有气泡用加深一档的品牌红 */
+  --self-bubble-bg: #b83c3c;
   /* 深色气泡压暗到与卡片底色只差一档，避免过亮；与浅色模式的浅灰差异幅度对齐 */
   --other-bubble-bg: var(--muted);
   --surface-glass: rgb(24 24 28 / 96%);
@@ -331,6 +331,15 @@
 .navigation-button[data-active="true"] { color: var(--text-primary); }
 .navigation-button:last-of-type { margin-top: 0; }
 .navigation-tooltip { font-size: var(--font-caption); }
+/* 未读角标外观：导航、会话列表、托盘面板共用；各容器只声明自己的定位锚点。 */
+.unread-badge { display: inline-flex; align-items: center; justify-content: center; min-width: calc(var(--size-unit) * 4); height: calc(var(--size-unit) * 4); padding: 0 calc(var(--size-unit) * .75); border-radius: var(--radius-pill); background: var(--semantic-accent); color: var(--semantic-accent-foreground); font-size: calc(var(--font-caption) * .85); font-variant-numeric: tabular-nums; line-height: 1; }
+.unread-badge[data-muted] { width: calc(var(--size-unit) * 2.5); min-width: calc(var(--size-unit) * 2.5); height: calc(var(--size-unit) * 2.5); padding: 0; border-radius: 50%; background: var(--text-secondary); opacity: .55; }
+.navigation-badge { position: absolute; top: calc(var(--size-unit) * 1.5); right: calc(var(--size-unit) * 1.5); pointer-events: none; }
+/* 会话行标题：名称可省略、时间永不被压缩，聊天列表与托盘面板共用同一套规则。 */
+.conversation-heading { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.conversation-heading-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.conversation-heading-time { flex: none; color: var(--text-secondary); font-size: var(--font-caption); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.conversation-preview { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--font-caption); }
 .application-pages { display: flex; flex: 1; min-width: 0; min-height: 0; padding: 0 var(--space-4) var(--space-4) 0; }
 .application-page { display: flex; width: 100%; min-width: 0; min-height: 0; }
 .application-layers { position: absolute; inset: 0; pointer-events: none; z-index: 50; overflow: clip; contain: layout paint; border-radius: inherit; }

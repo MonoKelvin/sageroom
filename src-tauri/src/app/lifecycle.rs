@@ -7,7 +7,7 @@ use tauri::{
     AppHandle, Emitter, Manager,
     image::Image,
     menu::{Menu, MenuItem},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    tray::TrayIconBuilder,
 };
 
 use super::state::AppState;
@@ -165,16 +165,7 @@ pub fn install_tray(app: &AppHandle) -> tauri::Result<()> {
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
-            if matches!(
-                event,
-                TrayIconEvent::Click {
-                    button: MouseButton::Left,
-                    button_state: MouseButtonState::Up,
-                    ..
-                }
-            ) {
-                show_main(tray.app_handle());
-            }
+            super::tray::on_icon_event(tray.app_handle(), &event);
         })
         .build(app)?;
     Ok(())

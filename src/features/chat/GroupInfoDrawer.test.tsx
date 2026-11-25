@@ -14,7 +14,7 @@ function mount(value = snapshot()) {
   container.dataset.drawerTest = "true"
   document.body.append(container)
   const onRoomChange = vi.fn()
-  render(<GroupInfoDrawer snapshot={value} container={container} open onOpenChange={vi.fn()} onRoomChange={onRoomChange} onManageAgents={vi.fn()} onReturnFocus={vi.fn()} />)
+  render(<GroupInfoDrawer snapshot={value} container={container} open onOpenChange={vi.fn()} onRoomChange={onRoomChange} onManageAgents={vi.fn()} onReturnFocus={vi.fn()} muted={false} onMutedChange={vi.fn()} />)
   return { onRoomChange }
 }
 

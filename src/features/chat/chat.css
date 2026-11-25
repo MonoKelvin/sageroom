@@ -201,3 +201,14 @@ html[data-input-modality="keyboard"] :is(.chat-search-locate, .group-info-drawer
 @keyframes chat-typing-bounce { 0%, 60%, 100% { opacity: .3; transform: translateY(0); } 30% { opacity: .9; transform: translateY(-2px); } }
 html[data-reduced-motion="true"] .chat-typing-dots i { animation: none; opacity: .6; }
 @media (prefers-reduced-motion: reduce) { .chat-typing-dots i { animation: none; opacity: .6; } }
+
+/* 会话列表：时间与名称同行、免打扰图标与摘要同行；空间不足时只压缩名称与摘要。 */
+.chat-scene-entry { align-items: flex-start; }
+.chat-scene-main { display: flex; flex: 1; flex-direction: column; gap: calc(var(--size-unit) * .75); min-width: 0; }
+.chat-scene-muted { flex: none; color: var(--text-secondary); opacity: .65; }
+.chat-scene-avatar { position: relative; }
+/* 未读角标贴在头像右上角；外观与导航、托盘共用 .unread-badge，免打扰时退化为圆点。 */
+.chat-unread-tag { position: absolute; top: calc(var(--size-unit) * -1); right: calc(var(--size-unit) * -1); }
+.chat-conversation { position: relative; }
+.chat-unread-notice { position: absolute; top: var(--space-3); left: 50%; z-index: 2; display: flex; justify-content: center; transform: translateX(-50%); pointer-events: none; }
+.chat-unread-notice .chat-latest-button { pointer-events: auto; }

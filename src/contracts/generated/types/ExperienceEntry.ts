@@ -3,7 +3,7 @@
 /**
  * 一条经历记录：时间由后端按本地时间格式化，评分为 0–100。
  */
-export type ExperienceEntry = { id: string, 
+export type ExperienceEntry = { id: string,
 /**
  * `YYYY/MM/DD HH:mm`
  */

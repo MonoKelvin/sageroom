@@ -15,11 +15,13 @@ import { AgentsPage } from "@/features/agents/AgentsPage"
 import { SettingsPage } from "@/features/settings/SettingsPage"
 import { UserPage } from "@/features/user/UserPage"
 import type { useChatSession } from "@/features/chat/useChatSession"
+import type { InboxApi } from "@/features/chat/useInbox"
 
 export type PageId = "chat" | "agents" | "settings" | "user"
 
 export type ApplicationPageProps = {
   session: ReturnType<typeof useChatSession>
+  inbox: InboxApi
   active: boolean
   onNavigate: (page: PageId) => void
 }

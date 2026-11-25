@@ -6,9 +6,10 @@ import { ipc } from "@/app/ipc"
 import { Avatar } from "@/components/Avatar"
 import { Button } from "@/components/ui/button"
 import { EditableInput } from "@/components/ui/editable-input"
+import { Switch } from "@/components/ui/switch"
 import { validateText } from "@/features/settings/configurationDefaults"
 
-export function GroupInfoDrawer({ snapshot, container, open, onOpenChange, onRoomChange, onManageAgents, onReturnFocus }: {
+export function GroupInfoDrawer({ snapshot, container, open, onOpenChange, onRoomChange, onManageAgents, onReturnFocus, muted, onMutedChange }: {
   snapshot: AppSnapshot
   container: HTMLElement | null
   open: boolean
@@ -16,6 +17,8 @@ export function GroupInfoDrawer({ snapshot, container, open, onOpenChange, onRoo
   onRoomChange: (room: Room, generation: string) => void
   onManageAgents: () => void
   onReturnFocus: () => void
+  muted: boolean
+  onMutedChange: (muted: boolean) => void
 }) {
   const close = useRef<HTMLButtonElement>(null)
   const drawer = useRef<HTMLDivElement>(null)
@@ -75,6 +78,10 @@ export function GroupInfoDrawer({ snapshot, container, open, onOpenChange, onRoo
                 </dd>
               </div>
               <div><dt>群主</dt><dd>{owner?.display_name}</dd></div>
+              <div>
+                <dt><label htmlFor="group-muted">消息免打扰</label></dt>
+                <dd><Switch id="group-muted" label="消息免打扰" checked={muted} onCheckedChange={onMutedChange} /></dd>
+              </div>
             </dl>
           </section>
         </div>
