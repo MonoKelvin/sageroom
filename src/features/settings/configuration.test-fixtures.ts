@@ -1,6 +1,6 @@
 import { createElement, type ReactNode } from "react"
 import { afterAll, beforeAll, vi } from "vitest"
-import type { AgentConfiguration, AppSnapshot, GlobalConfiguration, UserProfile } from "@/contracts/generated"
+import type { AgentConfiguration, AppSnapshot, GlobalConfiguration, NewsConfigurationState, UserProfile } from "@/contracts/generated"
 import { ConfigurationProvider } from "@/app/ConfigurationProvider"
 import { ipc } from "@/app/ipc"
 import * as ipcModule from "@/app/ipc"
@@ -10,6 +10,9 @@ import { defaultDimensions } from "./configurationDefaults"
 
 export function globalConfiguration(): GlobalConfiguration {
   return { revision: "1", model_profiles: [{ id: "model-a", name: "常用模型", protocol: "openai_chat_completions", base_url: "https://example.com/v1", model_name: "test-model",revision: "1", credential_configured: false }], persona_presets: [{ id: "persona-a", name: "自然交流", language_style: "自然友善",skill: "整理资料", dimensions: { ...defaultDimensions }, revision: "1" }], }
+}
+export function newsConfiguration(): NewsConfigurationState {
+  return { revision: "1", configuration: { enabled: true, provider: "google_news_rss", query: "科技 人工智能", refresh_minutes: 30, max_items: 3 } }
 }
 export function agentConfiguration(id = "sage-test", name = "Sage"): AgentConfiguration {
   return { agent_id: id, revision: "1", display_name: name, gender_description: null,language_style: "自然", skill: "", dimensions: { ...defaultDimensions }, avatar_id: null, agent_type: "social", model: null, }
@@ -47,10 +50,15 @@ afterAll(() => {
 /** In-memory RPC boundary for UI tests; never invokes Tauri or model services. */
 export function mockConfigurationIpc() {
   vi.restoreAllMocks()
-  const data = { global: globalConfiguration(), agents: [agentConfiguration(), agentConfiguration("second", "第二位")], user: userProfile(), appearance: pageProps().session.snapshot!.appearance }
+  const data = { global: globalConfiguration(), news: newsConfiguration(), agents: [agentConfiguration(), agentConfiguration("second", "第二位")], user: userProfile(), appearance: pageProps().session.snapshot!.appearance }
   const nextRevision = (revision: string) => String(BigInt(revision) + 1n)
   vi.spyOn(ipcModule, "isDesktopEnvironment").mockReturnValue(false)
   vi.spyOn(ipc, "getGlobalConfiguration").mockImplementation(async () => structuredClone(data.global))
+  vi.spyOn(ipc, "getNewsConfiguration").mockImplementation(async () => structuredClone(data.news))
+  vi.spyOn(ipc, "saveNewsConfiguration").mockImplementation(async (request) => {
+    data.news = { revision: nextRevision(request.expected_revision), configuration: request.configuration }
+    return structuredClone(data.news)
+  })
   vi.spyOn(ipc, "listAgents").mockImplementation(async () => structuredClone(data.agents))
   vi.spyOn(ipc, "getUserProfile").mockImplementation(async () => structuredClone(data.user))
   vi.spyOn(ipc, "snapshot").mockImplementation(async () => ({ ...pageProps().session.snapshot!, appearance: structuredClone(data.appearance) }))

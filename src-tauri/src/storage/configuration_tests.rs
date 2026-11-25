@@ -1062,3 +1062,52 @@ fn delete_agent_removes_configuration_but_keeps_chat_history() {
         })
         .is_err());
 }
+
+#[test]
+fn news_configuration_round_trips_and_rejects_stale_revisions() {
+    let (_dir, mut database) = database();
+    let first = database.get_news_configuration(GENERATION).unwrap();
+    assert!(first.configuration.enabled);
+    assert_eq!(first.configuration.provider, NewsProvider::GoogleNewsRss);
+    assert_eq!(first.revision.0, "0");
+
+    let mut configuration = first.configuration.clone();
+    configuration.provider = NewsProvider::FreeNewsTrending;
+    configuration.query = "半导体".into();
+    configuration.refresh_minutes = 45;
+    configuration.max_items = 5;
+    let saved = database
+        .save_news_configuration(NewsConfigurationSaveRequest {
+            data_generation_id: GENERATION.into(),
+            client_request_id: "news-save-1".into(),
+            expected_revision: first.revision.clone(),
+            configuration: configuration.clone(),
+        })
+        .unwrap();
+    assert_eq!(saved.revision.0, "1");
+    assert_eq!(database.get_news_configuration(GENERATION).unwrap(), saved);
+
+    // 旧 revision 不能覆盖新配置
+    assert_code(
+        database.save_news_configuration(NewsConfigurationSaveRequest {
+            data_generation_id: GENERATION.into(),
+            client_request_id: "news-save-2".into(),
+            expected_revision: first.revision,
+            configuration,
+        }),
+        ErrorCode::ConfigConflict,
+    );
+
+    // 超出边界的刷新间隔被拒绝
+    let mut invalid = saved.configuration.clone();
+    invalid.refresh_minutes = 1;
+    assert!(database
+        .save_news_configuration(NewsConfigurationSaveRequest {
+            data_generation_id: GENERATION.into(),
+            client_request_id: "news-save-3".into(),
+            expected_revision: saved.revision.clone(),
+            configuration: invalid,
+        })
+        .is_err());
+    assert_eq!(database.get_news_configuration(GENERATION).unwrap(), saved);
+}

@@ -29,6 +29,9 @@ import type {
   GlobalConfiguration,
   GlobalConfigurationGetRequest,
   GlobalConfigurationSaveRequest,
+  NewsConfigurationGetRequest,
+  NewsConfigurationSaveRequest,
+  NewsConfigurationState,
   AgentConfiguration,
   AgentListRequest,
   AgentSaveRequest,
@@ -86,6 +89,10 @@ import {
   validateGlobalConfigurationGetResponse,
   validateGlobalConfigurationSaveRequest,
   validateGlobalConfigurationSaveResponse,
+  validateNewsConfigurationGetRequest,
+  validateNewsConfigurationGetResponse,
+  validateNewsConfigurationSaveRequest,
+  validateNewsConfigurationSaveResponse,
   validateAgentListRequest,
   validateAgentListResponse,
   validateAgentSaveRequest,
@@ -204,6 +211,10 @@ export const ipc = {
     request("global_configuration_get", input, validateGlobalConfigurationGetRequest, validateGlobalConfigurationGetResponse),
   saveGlobalConfiguration: (input: GlobalConfigurationSaveRequest): Promise<GlobalConfiguration> =>
     request("global_configuration_save", input, validateGlobalConfigurationSaveRequest, validateGlobalConfigurationSaveResponse),
+  getNewsConfiguration: (input: NewsConfigurationGetRequest): Promise<NewsConfigurationState> =>
+    request("news_configuration_get", input, validateNewsConfigurationGetRequest, validateNewsConfigurationGetResponse),
+  saveNewsConfiguration: (input: NewsConfigurationSaveRequest): Promise<NewsConfigurationState> =>
+    request("news_configuration_save", input, validateNewsConfigurationSaveRequest, validateNewsConfigurationSaveResponse),
   listAgents: (input: AgentListRequest): Promise<AgentConfiguration[]> =>
     request("agent_list", input, validateAgentListRequest, validateAgentListResponse),
   deleteAgent: (input: AgentDeleteRequest): Promise<void> =>

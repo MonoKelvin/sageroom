@@ -852,7 +852,17 @@ async fn make_decision(
         credential_configured: true,
     };
     let policy = style::for_input(&input, opportunity.reason);
-    let (system, context) = decision::context(&mut input, opportunity.reason, observed_through_seq, &policy)?;
+    // 新闻是可选外部资料：配置读取或网络失败都按"无新闻"继续，不影响成员正常发言。
+    let generation = input.snapshot.data_generation_id.clone();
+    let news_state = worker
+        .call(move |database| database.get_news_configuration(&generation))
+        .await
+        .unwrap_or(NewsConfigurationState {
+            revision: 0_i64.into(),
+            configuration: NewsConfiguration::default(),
+        });
+    let news_items = crate::news::brief(&news_state.configuration).await;
+    let (system, context) = decision::context(&mut input, opportunity.reason, observed_through_seq, &policy, &news_items)?;
     let gateway = models.clone()?;
     let mut decision = None;
     // 首次正常请求；格式错误重试一次；首次内容过长时再请模型自己决定是否改拆短句。

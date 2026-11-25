@@ -9,6 +9,7 @@ use crate::{
         contracts::*,
         error::{AppResult, now_ms},
     },
+    news::NewsItem,
     storage::{configuration::BASE_SKILL, runtime::RuntimeInput},
 };
 
@@ -342,7 +343,7 @@ pub fn parse(text: &str, input: &RuntimeInput) -> AppResult<Decision> {
     Ok(decision)
 }
 
-pub fn context(input: &mut RuntimeInput, opportunity: &str, observed: &DecimalString, policy: &style::Policy) -> AppResult<(String, String)> {
+pub fn context(input: &mut RuntimeInput, opportunity: &str, observed: &DecimalString, policy: &style::Policy, news: &[NewsItem]) -> AppResult<(String, String)> {
     let identity = json!({
         "agent_id": input.agent.agent_id, "name": input.agent.display_name,
         "gender_description": input.agent.gender_description,
@@ -366,6 +367,18 @@ pub fn context(input: &mut RuntimeInput, opportunity: &str, observed: &DecimalSt
     });
     let mut messages: Vec<_> = input.messages.iter().filter(|message| message.state == MessageState::Visible).map(to_message).collect();
     let mut quoted: Vec<_> = input.quoted_messages.iter().filter(|message| message.state == MessageState::Visible).map(to_message).collect();
+    // 外部新闻是资料而非指令；预算内才附，超出则整段丢弃，不挤掉群聊上下文。
+    let mut news_brief = Vec::new();
+    let mut news_bytes = 0;
+    for item in news {
+        let entry = json!({"title":item.title,"url":item.url,"source":item.source,"published":item.published,"summary":item.summary});
+        let length = entry.to_string().len() + 1;
+        if news_bytes + length > budget / 8 {
+            break;
+        }
+        news_bytes += length;
+        news_brief.push(entry);
+    }
     let addressed_to_me = addressed_since(input, observed);
     let mut used_experience_bytes = 0;
     let mut experiences = Vec::new();
@@ -383,6 +396,7 @@ pub fn context(input: &mut RuntimeInput, opportunity: &str, observed: &DecimalSt
             "room":input.snapshot.room,"participants":participants,
             "autonomous_wake_allowed":true,"addressed_to_me":addressed_to_me,"unread_after_seq":observed,"recent_messages":messages,
             "quoted_messages":quoted,"experiences":experiences,"response_style":policy,
+            "news_brief":news_brief,
         }).to_string();
         if context.len() + repair_hint().len() <= budget {
             input.messages.retain(|message| messages.iter().any(|visible| visible["id"] == message.id));
@@ -523,7 +537,7 @@ mod tests {
         assert!(addressed_since(&input, &1.into()));
         assert!(!addressed_since(&input, &2.into()));
         assert_eq!(participation_chance(&input, addressed_since(&input, &1.into()), now_ms()), 100);
-        let (_, prompt) = context(&mut input, "new_message", &1.into(), &style::Policy::default()).unwrap();
+        let (_, prompt) = context(&mut input, "new_message", &1.into(), &style::Policy::default(), &[]).unwrap();
         let context: Value = serde_json::from_str(&prompt).unwrap();
         assert_eq!(context["addressed_to_me"], true);
         assert_eq!(context["unread_after_seq"], "1");
@@ -585,7 +599,7 @@ mod tests {
             content: "有界经历正文".repeat(200), score: if index == 0 { 99 } else { 50 },
         }).collect();
         input.agent.language_style = "简短自然".repeat(200);
-        let (_, prompt) = context(&mut input, "new_message", &0.into(), &style::Policy::default()).unwrap();
+        let (_, prompt) = context(&mut input, "new_message", &0.into(), &style::Policy::default(), &[]).unwrap();
         assert!(prompt.len() + repair_hint().len() <= MODEL_INPUT_BUDGET as usize * 2);
         let data: Value = serde_json::from_str(&prompt).unwrap();
         assert!(data["experiences"].as_array().unwrap().len() < 32);
@@ -730,7 +744,7 @@ mod tests {
         });
         input.agent.dimensions.activity = 90;
         input.agent.dimensions.social_energy = 30;
-        let (system, prompt) = context(&mut input, "new_message", &0.into(), &style::Policy::default()).unwrap();
+        let (system, prompt) = context(&mut input, "new_message", &0.into(), &style::Policy::default(), &[]).unwrap();
         assert!(system.contains("Sageroom 通用智能体约定"));
         assert!(system.contains("social_energy"));
         assert!(system.contains("参与主动性与保持关注的意愿"));

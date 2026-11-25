@@ -172,6 +172,34 @@ pub async fn appearance_save(
 }
 
 #[tauri::command]
+pub async fn news_configuration_get(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<NewsConfigurationState>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.news_configuration(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn news_configuration_save(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<NewsConfigurationState>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.save_news_configuration(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
 pub async fn global_configuration_get(
     window: WebviewWindow,
     state: State<'_, AppState>,

@@ -13,6 +13,7 @@ The intended experience is a living group chat, not a dashboard that simply disp
 - Built with Tauri 2, React, TypeScript, Tailwind, shadcn/ui, Tabler Icons, react-virtuoso, and Lenis for smooth in-app scrolling.
 - Built-in Sage plus independently configurable members: model, persona/SKILL, language style, and avatar.
 - Local history and user-controlled data; remote model calls are visible, bounded, and cancellable.
+- Optional online news briefs: pick a public source, keyword, and refresh interval in global configuration; briefs are injected as chat material only, and failures never block chatting.
 - An agent group owner has only four group-management powers: rename the group, change allowed group metadata, `@all`, and post announcements. Chatting status stays equal to other members.
 
 "Local-first" does not mean fully offline. When a remote provider, search, or image service is used, the relevant content leaves the device.

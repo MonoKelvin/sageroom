@@ -288,7 +288,78 @@ fn read_agents(conn: &Connection) -> AppResult<Vec<AgentConfiguration>> {
         .collect()
 }
 
+const NEWS_PREFERENCES_KEY: &str = "news";
+
+fn read_news(conn: &Connection) -> AppResult<NewsConfigurationState> {
+    let json: String = conn.query_row(
+        "SELECT preferences_json FROM global_configuration WHERE singleton = 1",
+        [],
+        |row| row.get(0),
+    )?;
+    let value: serde_json::Value = serde_json::from_str(&json)?;
+    match value.get(NEWS_PREFERENCES_KEY) {
+        Some(state) => serde_json::from_value(state.clone()).map_err(Into::into),
+        None => Ok(NewsConfigurationState {
+            revision: 0_i64.into(),
+            configuration: NewsConfiguration::default(),
+        }),
+    }
+}
+
 impl Database {
+    pub fn get_news_configuration(&self, generation: &str) -> AppResult<NewsConfigurationState> {
+        self.check_generation(generation)?;
+        read_news(&self.conn)
+    }
+
+    pub fn save_news_configuration(
+        &mut self,
+        request: NewsConfigurationSaveRequest,
+    ) -> AppResult<NewsConfigurationState> {
+        self.check_generation(&request.data_generation_id)?;
+        validate_id(&request.client_request_id, "client_request_id")?;
+        bounded(&request.configuration.query, "query", 80, false)?;
+        if !(5..=720).contains(&request.configuration.refresh_minutes) {
+            return Err(AppError::invalid("refresh_minutes", "刷新间隔必须在 5 到 720 分钟之间。"));
+        }
+        if !(1..=8).contains(&request.configuration.max_items) {
+            return Err(AppError::invalid("max_items", "新闻条数必须在 1 到 8 之间。"));
+        }
+        let transaction = self
+            .conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let current = read_news(&transaction)?;
+        if current.revision != request.expected_revision {
+            return Err(AppError::new(
+                ErrorCode::ConfigConflict,
+                "新闻配置已被其他操作更新，请重试。",
+            ));
+        }
+        let revision = current
+            .revision
+            .0
+            .parse::<i64>()
+            .unwrap_or(0)
+            .saturating_add(1);
+        let next = NewsConfigurationState {
+            revision: revision.into(),
+            configuration: request.configuration,
+        };
+        let json: String = transaction.query_row(
+            "SELECT preferences_json FROM global_configuration WHERE singleton = 1",
+            [],
+            |row| row.get(0),
+        )?;
+        let mut preferences: serde_json::Value = serde_json::from_str(&json)?;
+        preferences[NEWS_PREFERENCES_KEY] = serde_json::to_value(&next)?;
+        transaction.execute(
+            "UPDATE global_configuration SET preferences_json = ?1 WHERE singleton = 1",
+            [serde_json::to_string(&preferences)?],
+        )?;
+        transaction.commit()?;
+        Ok(next)
+    }
+
     pub fn get_global_configuration(&self, generation: &str) -> AppResult<GlobalConfiguration> {
         self.check_generation(generation)?;
         read_global(&self.conn)

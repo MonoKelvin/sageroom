@@ -1,4 +1,4 @@
-import type { AgentConfiguration, AgentModelSnapshot, Appearance, AppSnapshot, ExperienceEntry, GlobalConfiguration, ModelListResult, ModelProfile, ModelProfileInput, PersonaPreset, SecretStatus, UserProfile } from "@/contracts/generated"
+import type { AgentConfiguration, AgentModelSnapshot, Appearance, AppSnapshot, ExperienceEntry, GlobalConfiguration, ModelListResult, ModelProfile, ModelProfileInput, NewsConfigurationState, PersonaPreset, SecretStatus, UserProfile } from "@/contracts/generated"
 import { defaultDimensions } from "@/features/settings/configurationDefaults"
 import { AppliedResource, type ApplicationState } from "./appliedResource"
 import { errorMessage, ipc } from "./ipc"
@@ -14,6 +14,7 @@ export function modelIsComplete(profile: ModelProfileInput) { return Boolean(pro
 
 export class ConfigurationStore {
   readonly global: AppliedResource<GlobalConfiguration>
+  readonly news: AppliedResource<NewsConfigurationState>
   readonly user: AppliedResource<UserProfile>
   readonly appearance: AppliedResource<Appearance>
   private agents = new Map<string, AppliedResource<AgentConfiguration>>()
@@ -29,6 +30,15 @@ export class ConfigurationStore {
     this.global = new AppliedResource({
       load: () => ipc.getGlobalConfiguration({ data_generation_id: generation }),
       write: (value, revision, requestId) => ipc.saveGlobalConfiguration({ data_generation_id: generation, client_request_id: requestId, expected_revision: revision, model_profiles: value.model_profiles.map(profileInput), persona_presets: value.persona_presets.map((persona) => ({ ...persona, name: persona.name.trim() })) }),
+    })
+    this.news = new AppliedResource({
+      load: () => ipc.getNewsConfiguration({ data_generation_id: generation }),
+      write: (value, revision, requestId) => ipc.saveNewsConfiguration({
+        data_generation_id: generation,
+        client_request_id: requestId,
+        expected_revision: revision,
+        configuration: value.configuration,
+      }),
     })
     this.user = new AppliedResource({
       load: () => ipc.getUserProfile({ data_generation_id: generation }),

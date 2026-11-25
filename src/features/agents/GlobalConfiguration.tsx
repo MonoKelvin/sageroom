@@ -1,26 +1,32 @@
 import { useState } from "react"
-import { IconAdjustments, IconAlertTriangle, IconChevronRight, IconCode, IconCopy, IconPlus, IconRobot, IconTool, IconTrash } from "@tabler/icons-react"
+import { IconAdjustments, IconAlertTriangle, IconChevronRight, IconCode, IconCopy, IconNews, IconPlus, IconRobot, IconTool, IconTrash } from "@tabler/icons-react"
 import { useAppliedResource, useConfiguration, useConfigurationRuntime } from "@/app/configurationContext"
 import { errorMessage } from "@/app/ipc"
+import type { NewsProvider } from "@/contracts/generated"
 import { AppDialog } from "@/components/ui/app-dialog"
 import { Button } from "@/components/ui/button"
 import { Disclosure } from "@/components/ui/disclosure"
 import { EditableInput } from "@/components/ui/editable-input"
 import { EditableTextarea } from "@/components/ui/editable-textarea"
+import { NumberInput } from "@/components/ui/number-input"
 import { SegmentedControl } from "@/components/ui/segmented-control"
+import { SettingSection } from "@/components/ui/setting-row"
+import { SettingsSelect } from "@/components/ui/settings-select"
+import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/components/ui/toast-context"
 import { validateText } from "@/features/settings/configurationDefaults"
 import { DimensionsFields, Field, ModelFields, ResourceFeedback } from "@/features/settings/ConfigurationFields"
 import { ModelCredentials } from "@/features/settings/ModelCredentials"
 
-type Section = "models" | "personas"
+type Section = "models" | "personas" | "news"
 /** 全局配置的统一标识：列表页入口按钮与右侧详情标题共用，避免两处图标漂移。 */
 export const GLOBAL_CONFIG_ICON = IconTool
 
 const sections = [
   { value: "models" as const, label: "模型配置", icon: IconRobot },
   { value: "personas" as const, label: "人格预设", icon: IconAdjustments },
+  { value: "news" as const, label: "联网新闻", icon: IconNews },
 ]
 
 function IconAction({ label, icon: Icon, onClick, disabled, danger }: {
@@ -38,6 +44,7 @@ export function GlobalConfiguration({ active }: { active: boolean }) {
   const toast = useToast()
   const config = state.value
   const [section, setSection] = useState<Section>("models")
+  const newsState = useAppliedResource(store.news, active && section === "news")
   const [deleteTarget, setDeleteTarget] = useState<{ kind: "model" | "persona"; id: string } | null>(null)
   const [importing, setImporting] = useState(false)
   const [operationError, setOperationError] = useState<string | null>(null)
@@ -139,6 +146,19 @@ export function GlobalConfiguration({ active }: { active: boolean }) {
               </section>
             })}
           </div>
+        </div>
+        <div hidden={section !== "news"} inert={section !== "news"}>
+          {!newsState.value && <p className="form-caption">{newsState.loading ? "正在读取新闻配置…" : "新闻配置尚未就绪。"}</p>}
+          {newsState.value && <div className="config-stack">
+            <SettingSection title="联网新闻" description="公开新闻摘要只作为聊天素材；成员不能直接上网或点开链接。">
+              <Field label="启用"><Switch label="启用联网新闻" checked={newsState.value.configuration.enabled} onCheckedChange={(enabled) => void run(() => store.news.change((current) => ({ ...current, configuration: { ...current.configuration, enabled } })))} /></Field>
+              <Field label="来源"><SettingsSelect label="新闻来源" value={newsState.value.configuration.provider} options={[{ value: "google_news_rss", label: "Google 新闻（中文搜索）" }, { value: "free_news_trending", label: "FreeNews 热点（全球）" }]} onValueChange={(provider) => void run(() => store.news.change((current) => ({ ...current, configuration: { ...current.configuration, provider: provider as NewsProvider } })))} /></Field>
+              <Field label="搜索关键词" caption="Google 新闻按关键词搜索；热点来源忽略此项。"><EditableInput label="搜索关键词" active={active && section === "news"} value={newsState.value.configuration.query} maxLength={80} normalize={(next) => next.trim()} onApply={(query) => run(() => store.news.change((current) => ({ ...current, configuration: { ...current.configuration, query } })))} /></Field>
+              <Field label="刷新间隔（分钟）"><NumberInput label="刷新间隔（分钟）" value={newsState.value.configuration.refresh_minutes} min={5} max={720} onValueChange={(refresh_minutes) => void run(() => store.news.change((current) => ({ ...current, configuration: { ...current.configuration, refresh_minutes } })))} /></Field>
+              <Field label="每次注入条数"><NumberInput label="每次注入条数" value={newsState.value.configuration.max_items} min={1} max={8} onValueChange={(max_items) => void run(() => store.news.change((current) => ({ ...current, configuration: { ...current.configuration, max_items } })))} /></Field>
+            </SettingSection>
+            <ResourceFeedback resource={store.news} state={newsState} />
+          </div>}
         </div>
       </fieldset>}
       </div>

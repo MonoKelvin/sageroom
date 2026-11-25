@@ -12,6 +12,19 @@ function panel(active = true, development = true) {
 }
 
 describe("即时应用的全局配置", () => {
+  it("联网新闻配置按需读取、即时保存，与模型配置互不干扰", async () => {
+    mockConfigurationIpc()
+    render(panel())
+    await screen.findByLabelText("模型名称", { selector: "input" })
+    expect(ipc.getNewsConfiguration).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole("tab", { name: "联网新闻" }))
+    await waitFor(() => expect(ipc.getNewsConfiguration).toHaveBeenCalledTimes(1))
+    expect(screen.getByRole("combobox", { name: "新闻来源" })).toHaveTextContent("Google 新闻（中文搜索）")
+    await userEvent.click(screen.getByRole("switch", { name: "启用联网新闻" }))
+    await waitFor(() => expect(ipc.saveNewsConfiguration).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(ipc.saveNewsConfiguration).mock.lastCall?.[0].configuration.enabled).toBe(false)
+    expect(ipc.saveGlobalConfiguration).not.toHaveBeenCalled()
+  })
   it("文本只在失焦应用，配置请求剔除只读元数据，没有整页保存/读取", async () => {
     render(panel())
     const input = await screen.findByLabelText("模型名称", { selector: "input" })

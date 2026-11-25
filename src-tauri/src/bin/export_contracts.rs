@@ -82,6 +82,26 @@ fn main() -> Result<(), Box<dyn Error>> {
         &config,
         &mut schemas,
     )?;
+    export::<NewsConfigurationGetRequest>(
+        "NewsConfigurationGetRequest",
+        &config,
+        &mut schemas,
+    )?;
+    export::<ApiResponse<NewsConfigurationState>>(
+        "NewsConfigurationGetResponse",
+        &config,
+        &mut schemas,
+    )?;
+    export::<NewsConfigurationSaveRequest>(
+        "NewsConfigurationSaveRequest",
+        &config,
+        &mut schemas,
+    )?;
+    export::<ApiResponse<NewsConfigurationState>>(
+        "NewsConfigurationSaveResponse",
+        &config,
+        &mut schemas,
+    )?;
     export::<AgentListRequest>("AgentListRequest", &config, &mut schemas)?;
     export::<ApiResponse<Vec<AgentConfiguration>>>("AgentListResponse", &config, &mut schemas)?;
     export::<AgentSaveRequest>("AgentSaveRequest", &config, &mut schemas)?;

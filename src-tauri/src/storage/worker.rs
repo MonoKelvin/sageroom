@@ -240,6 +240,22 @@ impl DbWorker {
         .await
     }
 
+    pub async fn get_news_configuration(
+        &self,
+        request: NewsConfigurationGetRequest,
+    ) -> AppResult<NewsConfigurationState> {
+        self.call(move |database| database.get_news_configuration(&request.data_generation_id))
+            .await
+    }
+
+    pub async fn save_news_configuration(
+        &self,
+        request: NewsConfigurationSaveRequest,
+    ) -> AppResult<NewsConfigurationState> {
+        self.call(move |database| database.save_news_configuration(request))
+            .await
+    }
+
     pub async fn get_global_configuration(
         &self,
         request: GlobalConfigurationGetRequest,

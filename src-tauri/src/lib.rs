@@ -2,6 +2,7 @@ pub mod app;
 pub mod attachments;
 pub mod domain;
 pub mod models;
+pub mod news;
 pub mod runtime;
 pub mod secrets;
 pub mod storage;
@@ -38,6 +39,8 @@ pub fn run() {
             app::commands::appearance_save,
             app::commands::global_configuration_get,
             app::commands::global_configuration_save,
+            app::commands::news_configuration_get,
+            app::commands::news_configuration_save,
             app::commands::agent_list,
             app::commands::agent_delete,
             app::commands::agent_save,

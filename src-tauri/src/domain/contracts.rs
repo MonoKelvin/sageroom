@@ -589,6 +589,57 @@ pub struct PersonaPreset {
     pub revision: DecimalString,
 }
 
+/// 联网新闻来源。仅接入无需 API Key 的公开源，避免把密钥写进配置库。
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NewsProvider {
+    GoogleNewsRss,
+    FreeNewsTrending,
+}
+
+impl Default for NewsProvider {
+    fn default() -> Self { Self::GoogleNewsRss }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct NewsConfiguration {
+    pub enabled: bool,
+    pub provider: NewsProvider,
+    #[schemars(length(max = 80))]
+    pub query: String,
+    pub refresh_minutes: u32,
+    pub max_items: u8,
+}
+
+impl Default for NewsConfiguration {
+    fn default() -> Self {
+        Self { enabled: true, provider: NewsProvider::default(), query: "科技 人工智能".into(), refresh_minutes: 30, max_items: 3 }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct NewsConfigurationState {
+    pub revision: DecimalString,
+    pub configuration: NewsConfiguration,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct NewsConfigurationGetRequest {
+    pub data_generation_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct NewsConfigurationSaveRequest {
+    pub data_generation_id: String,
+    pub client_request_id: String,
+    pub expected_revision: DecimalString,
+    pub configuration: NewsConfiguration,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(deny_unknown_fields)]
 pub struct GlobalConfiguration {

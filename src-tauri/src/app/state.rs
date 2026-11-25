@@ -109,6 +109,20 @@ impl AppState {
         self.worker()?.prune_experience(request).await
     }
 
+    pub async fn news_configuration(
+        &self,
+        request: NewsConfigurationGetRequest,
+    ) -> AppResult<NewsConfigurationState> {
+        self.worker()?.get_news_configuration(request).await
+    }
+
+    pub async fn save_news_configuration(
+        &self,
+        request: NewsConfigurationSaveRequest,
+    ) -> AppResult<NewsConfigurationState> {
+        self.worker()?.save_news_configuration(request).await
+    }
+
     pub async fn global_configuration(
         &self,
         request: GlobalConfigurationGetRequest,
