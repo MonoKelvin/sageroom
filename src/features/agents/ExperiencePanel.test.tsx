@@ -15,7 +15,11 @@ const store = {
 }
 const failure = () => new IpcError({ code: "IO_ERROR", message: "文件暂不可写", retryability: "after_user_action", field_path: null, trace_id: "test", may_have_been_charged: false })
 function panel(active = true, agentId = "agent-one") { return <ExperiencePanel store={store} agentId={agentId} active={active} disabled={false} /> }
-async function open() { await screen.findByText(first.content) }
+async function open() {
+  const toggle = screen.getByRole("button", { name: /经历（\d+条经历）/ })
+  if (toggle.getAttribute("aria-expanded") === "false") await userEvent.click(toggle)
+  await screen.findByText(first.content)
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -27,6 +31,15 @@ beforeEach(() => {
 })
 
 describe("成员经历管理", () => {
+  it("默认折叠，展开后才读取经历", async () => {
+    render(panel())
+    const toggle = screen.getByRole("button", { name: /经历（\d+条经历）/ })
+    expect(toggle).toHaveAttribute("aria-expanded", "false")
+    expect(store.listExperience).not.toHaveBeenCalled()
+    await userEvent.click(toggle)
+    await screen.findByText(first.content)
+    expect(store.listExperience).toHaveBeenCalledExactlyOnceWith("agent-one")
+  })
   it("按需读取，添加后回读，保留用户提供的重要度", async () => {
     render(panel())
     await open()
@@ -94,6 +107,7 @@ describe("成员经历管理", () => {
     let resolve!: (entries: ExperienceEntry[]) => void
     store.listExperience.mockImplementationOnce(() => new Promise((done) => { resolve = done }))
     const view = render(panel())
+    await userEvent.click(screen.getByRole("button", { name: /经历（\d+条经历）/ }))
     view.rerender(panel(true, "agent-two"))
     await screen.findByText(first.content)
     await act(async () => resolve([{ ...first, content: "来自上个成员的迟到经历" }]))
@@ -117,6 +131,7 @@ describe("成员经历管理", () => {
     let resolve!: (entries: ExperienceEntry[]) => void
     store.listExperience.mockImplementationOnce(() => new Promise((done) => { resolve = done }))
     render(panel())
+    await userEvent.click(screen.getByRole("button", { name: /经历（\d+条经历）/ }))
     const input = screen.getByRole("textbox", { name: "经历内容" })
     fireEvent.change(input, { target: { value: "等待回读" } })
     expect(screen.getByRole("button", { name: "添加经历" })).toBeDisabled()

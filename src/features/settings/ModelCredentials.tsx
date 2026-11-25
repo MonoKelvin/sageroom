@@ -80,7 +80,7 @@ export function ModelCredentials({ profile, disabled = false, active = true, onT
         <EditableInput id={fieldId} label="API 密钥" active={active} type="password" value="" resetOnApply autoComplete="new-password" spellCheck={false} placeholder={profile.credential_configured ? "已配置系统密钥" : "未配置系统密钥"} disabled={pending || unavailable} onApply={async (secret) => { await operation("set", secret) }} />
         <Tooltip disableHoverableContent>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-sm" className={result ? (result.available ? "model-test-success" : "model-test-failure") : undefined} aria-label="测试模型是否可用" disabled={pending || unavailable} onClick={() => void operation("test")}>
+            <Button variant="ghost" size="icon" className={["control-trailing-icon", result ? (result.available ? "model-test-success" : "model-test-failure") : null].filter(Boolean).join(" ")} aria-label="测试模型是否可用" disabled={pending || unavailable} onClick={() => void operation("test")}>
               {result && !result.available ? <IconPlugX size={16} aria-hidden="true" /> : <IconPlugConnected size={16} aria-hidden="true" />}
             </Button>
           </TooltipTrigger>

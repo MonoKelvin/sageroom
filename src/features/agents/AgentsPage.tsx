@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { IconAdjustments, IconCopy, IconLoader2, IconPhoto, IconPlayerPause, IconPlayerPlay, IconPlus, IconSearch, IconTrash } from "@tabler/icons-react"
+import { IconAdjustments, IconCopy, IconId, IconLoader2, IconPlayerPause, IconPlayerPlay, IconPlus, IconRobot, IconSearch, IconTrash } from "@tabler/icons-react"
 import type { ApplicationPageProps } from "@/app/navigation"
 import type { AgentConfiguration, AgentRuntimeStatus, GlobalConfiguration, Participant } from "@/contracts/generated"
 import type { AppliedResource } from "@/app/appliedResource"
@@ -18,7 +18,7 @@ import { SettingsSelect } from "@/components/ui/settings-select"
 import { validateText } from "@/features/settings/configurationDefaults"
 import { DimensionsFields, Field, ModelNamePicker, ResourceFeedback } from "@/features/settings/ConfigurationFields"
 import { usePageActivation } from "@/features/settings/useLocalEditor"
-import { GlobalConfiguration as GlobalConfigurationPanel } from "./GlobalConfiguration"
+import { GLOBAL_CONFIG_ICON, GlobalConfiguration as GlobalConfigurationPanel } from "./GlobalConfiguration"
 import { ExperiencePanel } from "./ExperiencePanel"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import "@/features/settings/configuration.css"
@@ -112,8 +112,7 @@ function AgentEditor({ resource, global, active, session, onCopy, onDelete }: {
     <header className="panel-heading"><div className="min-w-0 agent-title-group">
       <Tooltip disableHoverableContent><TooltipTrigger asChild>
         <button type="button" className="agent-avatar-button" aria-label={avatarPending ? "正在选择…" : "更换头像"} disabled={avatarPending || runtime.exiting} onClick={() => void importAvatar()}>
-          <Avatar name={agent.display_name} avatarId={agent.avatar_id} colorId={agent.agent_id} generation={generation} size={40} retryable />
-          <span className="agent-avatar-edit" aria-hidden="true"><IconPhoto size={16} /></span>
+          <Avatar name={agent.display_name} avatarId={agent.avatar_id} colorId={agent.agent_id} generation={generation} size={48} retryable />
         </button>
       </TooltipTrigger><TooltipContent>点击更换头像</TooltipContent></Tooltip>
       <div className="min-w-0"><h2 className="panel-title truncate">{agent.display_name}</h2><p className="panel-description"><span role="status">{statusLabel}</span>{agentRuntime ? ` · 今日请求 ${agentRuntime.requests_today} 次` : ""}</p></div>
@@ -132,9 +131,9 @@ function AgentEditor({ resource, global, active, session, onCopy, onDelete }: {
       <fieldset disabled={runtime.exiting} className="config-stack">
         {confirmRemoveAvatar && <div className="config-notice"><p>移除当前头像？历史消息也会改用默认头像。</p><div className="config-actions"><Button size="sm" onClick={() => void removeAvatar()}>确认移除头像</Button><Button variant="ghost" size="sm" onClick={() => setConfirmRemoveAvatar(false)}>保留头像</Button></div></div>}
         <SegmentedControl className="agent-sections" label="智能体配置分类" value={section} onChange={setSection} items={[
-          { value: "basic", label: "基本资料" },
-          { value: "persona", label: "人格与表达" },
-          { value: "model", label: "模型配置" },
+          { value: "basic", label: "基本资料", icon: IconId },
+          { value: "persona", label: "人格表达", icon: IconAdjustments },
+          { value: "model", label: "模型配置", icon: IconRobot },
         ]} />
         <div hidden={section !== "basic"} inert={section !== "basic"}>
           <Field label="名称"><EditableInput label="名称" active={active} maxLength={80} value={agent.display_name} normalize={(next) => next.trim()} validate={(next) => validateText(next, 80, true)} onApply={(display_name) => update({ display_name })} /></Field>
@@ -142,12 +141,12 @@ function AgentEditor({ resource, global, active, session, onCopy, onDelete }: {
           <ExperiencePanel store={store} agentId={agent.agent_id} active={active && section === "basic"} disabled={runtime.exiting || agent.revision === "0"} />
         </div>
         <div hidden={section !== "persona"} inert={section !== "persona"}>
-          <Field label="采用人格预设" caption="复制普通参数，之后与全局预设独立。"><SettingsSelect label="采用人格预设" value={personaId} options={[{ value: "", label: "独立编辑" }, ...global.persona_presets.map((persona) => ({ value: persona.id, label: persona.name }))]} onValueChange={(id) => selectTemplate("persona", id)} /></Field>
-          <Field label="个人介绍" caption="描述ta的性格、爱好、优缺点和讨厌的事，用自然语言写。"><EditableTextarea label="个人介绍" active={active && section === "persona"} rows={2} maxLength={2000} value={agent.language_style} validate={(next) => validateText(next, 2000)} onApply={(language_style) => update({ language_style })} /></Field>
+          <Field label="人格预设" caption="复制普通参数，之后与全局预设独立。"><SettingsSelect label="人格预设" value={personaId} options={[{ value: "", label: "独立编辑" }, ...global.persona_presets.map((persona) => ({ value: persona.id, label: persona.name }))]} onValueChange={(id) => selectTemplate("persona", id)} /></Field>
+          <Field label="个人介绍" caption="描述ta的性格、爱好、优缺点和讨厌的事。"><EditableTextarea label="个人介绍" active={active && section === "persona"} rows={2} maxLength={2000} value={agent.language_style} validate={(next) => validateText(next, 2000)} onApply={(language_style) => update({ language_style })} /></Field>
           <Disclosure title="八个人格维度（0–100）"><DimensionsFields value={agent.dimensions} onChange={(key, next) => resource.change((current) => ({ ...current, dimensions: { ...current.dimensions, [key]: next } }))} /></Disclosure>
         </div>
         <div hidden={section !== "model"} inert={section !== "model"}>
-          <Field label="模型预设" caption="模型地址、协议与密钥复用全局配置，仅模型名称可单独调整。"><SettingsSelect label="模型预设" value={agent.model?.source_profile_id ?? ""} options={global.model_profiles.filter((profile) => modelIsComplete(profile)).map((profile) => ({ value: profile.id, label: profile.name }))} onValueChange={(id) => selectTemplate("model", id)} /></Field>
+          <Field label="模型预设" caption="复用全局配置的预设模型，可单独调整模型名称。"><SettingsSelect label="模型预设" value={agent.model?.source_profile_id ?? ""} options={global.model_profiles.filter((profile) => modelIsComplete(profile)).map((profile) => ({ value: profile.id, label: profile.name }))} onValueChange={(id) => selectTemplate("model", id)} /></Field>
           {agent.model && <Field label="模型名称"><ModelNamePicker value={agent.model.profile.model_name} active={active && section === "model"} onChange={(model_name) => store.updateAgentModel(agent.agent_id, { model_name })} onListModels={() => store.listModelNames(agent.model!.source_profile_id).then((result) => result.models)} /></Field>}
           {!global.model_profiles.length && <p className="form-caption">请先在全局配置中添加模型预设。</p>}
         </div>
@@ -213,7 +212,7 @@ function AgentsWorkspace({ active, session }: ApplicationPageProps) {
           <input type="text" className="agent-search-input" value={query} placeholder="搜索智能体" aria-label="搜索智能体" onChange={(event) => setQuery(event.target.value)} />
         </label>
         <Tooltip disableHoverableContent><TooltipTrigger asChild>
-          <Button variant={selected === null ? "secondary" : "ghost"} size="icon-sm" aria-label="全局配置" aria-pressed={selected === null} onClick={() => setSelected(null)}><IconAdjustments size={18} aria-hidden="true" /></Button>
+          <Button variant={selected === null ? "secondary" : "ghost"} size="icon-sm" className="global-config-toggle" aria-label="全局配置" aria-pressed={selected === null} onClick={() => setSelected(null)}><GLOBAL_CONFIG_ICON size={18} aria-hidden="true" /></Button>
         </TooltipTrigger><TooltipContent>全局配置</TooltipContent></Tooltip>
         <Tooltip disableHoverableContent><TooltipTrigger asChild>
           <Button variant="ghost" size="icon-sm" disabled={!globalState.value || runtime.exiting} aria-label="新建智能体" onClick={() => void create()}><IconPlus size={18} aria-hidden="true" /></Button>

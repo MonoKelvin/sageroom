@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { IconAdjustments, IconAlertTriangle, IconChevronRight, IconCode, IconCopy, IconPlus, IconRobot, IconTrash } from "@tabler/icons-react"
+import { IconAdjustments, IconAlertTriangle, IconChevronRight, IconCode, IconCopy, IconPlus, IconRobot, IconTool, IconTrash } from "@tabler/icons-react"
 import { useAppliedResource, useConfiguration, useConfigurationRuntime } from "@/app/configurationContext"
 import { errorMessage } from "@/app/ipc"
 import { AppDialog } from "@/components/ui/app-dialog"
@@ -15,6 +15,9 @@ import { DimensionsFields, Field, ModelFields, ResourceFeedback } from "@/featur
 import { ModelCredentials } from "@/features/settings/ModelCredentials"
 
 type Section = "models" | "personas"
+/** 全局配置的统一标识：列表页入口按钮与右侧详情标题共用，避免两处图标漂移。 */
+export const GLOBAL_CONFIG_ICON = IconTool
+
 const sections = [
   { value: "models" as const, label: "模型配置", icon: IconRobot },
   { value: "personas" as const, label: "人格预设", icon: IconAdjustments },
@@ -62,7 +65,7 @@ export function GlobalConfiguration({ active }: { active: boolean }) {
     finally { setImporting(false) }
   }
   return <section className="surface-card">
-    <header className="panel-heading"><h2 className="panel-title">全局配置</h2></header>
+    <header className="panel-heading"><h2 className="panel-title config-panel-title"><GLOBAL_CONFIG_ICON size={18} aria-hidden="true" />全局配置</h2></header>
     <div className="panel-content panel-scroll">
       <div className="config-sections">
       <SegmentedControl items={sections} value={section} onChange={setSection} label="全局配置分类" className="config-segmented" />

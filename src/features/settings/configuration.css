@@ -22,10 +22,17 @@
 /* —— 智能体列表：内边距与聊天页中间列表一致 —— */
 .config-page .agent-scene-list { padding-top: var(--space-2); padding-left: calc(var(--space-3) - var(--space-2)); padding-right: var(--space-3); }
 .agent-list-toolbar { display: flex; align-items: center; gap: var(--space-2); padding-bottom: var(--space-2); }
-.agent-search { display: flex; flex: 1 1 auto; align-items: center; gap: var(--space-2); min-width: 0; height: var(--control-height); padding: 0 var(--space-2); border-radius: var(--radius); background: var(--control-bg); color: var(--text-secondary); transition: box-shadow var(--motion-duration) ease; }
+/* 全局配置入口选中态用反色块：深色白底黑字、浅色黑底白字，与分段选中块同一套 token。 */
+.global-config-toggle.ui-button[aria-pressed="true"] { background: var(--text-primary); color: var(--selection-foreground); }
+@media (hover: hover) and (pointer: fine) {
+  .global-config-toggle.ui-button[aria-pressed="true"]:not(:disabled):hover { background: var(--text-primary); color: var(--selection-foreground); }
+}
+.agent-search { display: flex; flex: 1 1 auto; align-items: center; gap: var(--space-2); min-width: 0; height: var(--control-height); padding: 0 var(--space-2); border-radius: var(--radius); background: var(--control-bg); color: var(--text-secondary); transition: background-color var(--motion-duration) ease; }
 /* 图标固定尺寸，不随窄窗口被压缩 */
 .agent-search > svg { flex: none; }
-.agent-search:focus-within { box-shadow: inset 0 0 0 var(--stroke-width) var(--border); }
+/* 搜索框不画描边，hover / focus 只靠底色区分 */
+.agent-search:hover { background: var(--control-hover-bg); }
+.agent-search:focus-within { background: var(--control-active-bg); }
 .agent-search-input { flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; color: var(--text-primary); font-size: var(--font-body); outline: none; }
 .agent-search-input::placeholder { color: var(--text-secondary); }
 .agent-search-empty { margin: 0; padding: var(--space-4) var(--space-3); color: var(--text-secondary); font-size: var(--font-caption); text-align: center; }
@@ -54,12 +61,14 @@
 /* 分类切换与配置内容放在同一容器，避免叠加 panel-content 的 20px 全局 gap */
 .config-sections { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .config-segmented { margin-bottom: 0; }
+/* 全局配置标题：图标与文字按中线对齐，图标不随标题字号缩放 */
+.config-panel-title { display: inline-flex; align-items: center; gap: var(--space-2); }
+.config-panel-title svg { flex: none; color: var(--text-secondary); }
 /* 标题栏右侧动作与卡片内动作同规格：图标间距 8px，并补齐卡片头的右内边距 */
 .config-page .setting-section-actions { gap: var(--space-2); padding-right: var(--space-2); }
 .model-unavailable-mark { display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--status-danger); cursor: help; }
 .credential-input-row { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0; }
 .credential-input-row > .settings-editor { flex: 1 1 auto; width: auto; min-width: 0; }
-.credential-input-row > button { flex: none; }
 .setting-section-body > .config-actions { margin-top: var(--space-2); }
 .setting-section-body > .form-caption + .form-caption { margin-top: var(--space-2); }
 .config-empty-state { margin: var(--space-3) 0 0; padding: var(--space-4); color: var(--text-secondary); font-size: var(--font-body); text-align: center; }
@@ -74,7 +83,7 @@
 .settings-textarea-long { min-height: calc(var(--size-unit) * 50); max-height: calc(var(--size-unit) * 90); }
 .model-name-field { position: relative; display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0; }
 .model-name-field > .settings-editor { flex: 1 1 auto; width: auto; min-width: 0; }
-.model-name-list { flex: none; width: var(--control-height); height: var(--control-height); padding: 0; border-radius: var(--radius); }
+.model-name-list { border-radius: var(--radius); }
 .model-name-options { position: fixed; z-index: 90; width: max-content; max-width: calc(var(--application-layer-width, 100vw) - var(--space-4)); display: flex; flex-direction: column; max-height: min(calc(var(--size-unit) * 60), calc(var(--application-layer-height, 100dvh) - var(--space-6))); padding: var(--space-1); overflow-y: auto; overflow-x: hidden; border-radius: var(--radius); }
 .model-name-option { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--control-height); padding: var(--space-2) var(--space-3); border: 0; border-radius: calc(var(--radius) * .6); background: transparent; color: var(--text-primary); font-size: var(--font-body); text-align: left; white-space: nowrap; cursor: pointer; }
 .model-name-option-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -91,10 +100,11 @@
 .experience-panel { min-width: 0; margin-top: var(--space-5); }
 .experience-disclosure { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); width: 100%; padding: var(--space-3) 0; border: 0; background: transparent; color: var(--text-primary); font-size: var(--font-body); font-weight: 400; cursor: pointer; }
 .experience-count { color: var(--text-secondary); font-size: var(--font-caption); }
-.experience-disclosure svg { flex: none; color: var(--text-secondary); transition: transform var(--motion-duration) var(--motion-ease); }
+/* 展开/折叠用缓和的 ease-in-out（比 --motion-ease-in-out 的急加速更顺），时长收短，减少拖沓感。 */
+.experience-disclosure svg { flex: none; color: var(--text-secondary); transition: transform var(--motion-duration) ease-in-out; }
 .experience-disclosure[aria-expanded="true"] svg { transform: rotate(180deg); }
-/* 折叠动画：grid 行高过渡，裁剪层无 padding 才能归零 */
-.experience-collapse { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows calc(var(--motion-duration) * 3) var(--motion-ease), opacity calc(var(--motion-duration) * 2) ease; }
+/* 折叠动画：grid 行高过渡，裁剪层无 padding 才能归零；行高与透明度同曲线、同收尾，避免两段节奏错位 */
+.experience-collapse { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows calc(var(--motion-duration) * 2) ease-in-out, opacity calc(var(--motion-duration) * 2) ease-in-out; }
 .experience-collapse[data-open="true"] { grid-template-rows: 1fr; opacity: 1; }
 .experience-collapse-clip { min-height: 0; overflow: hidden; }
 .experience-content { display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-2); }
@@ -102,12 +112,19 @@
 .experience-form-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-width: 0; }
 .experience-form-actions { justify-content: flex-end; }
 .experience-input { min-height: calc(var(--control-height) * 2); padding: var(--space-3); resize: vertical; max-height: calc(var(--control-height) * 5); font-size: var(--font-body); }
+/* 编辑态左右铺满 li 的边框盒：与顶部新增输入框同宽（日期左沿 / 叉叉右沿对齐） */
+.experience-edit { margin-inline: calc(var(--space-3) * -1); }
+/* 编辑输入默认就用 hover 态底色，避免未 hover 时与条目底色糊在一起 */
+.experience-edit .experience-input { background: var(--control-hover-bg); }
+.experience-edit .experience-input:focus { background: var(--control-active-bg); }
 /* 重要度：前缀与输入框同一块圆角背景，整体作为单一控件响应 hover/focus */
 .experience-score { display: inline-flex; flex: none; align-items: center; gap: var(--space-2); padding: 0 var(--space-3); border-radius: var(--radius); background: var(--control-bg); color: var(--text-secondary); font-size: var(--font-caption); transition: background-color var(--motion-duration) ease; }
 .experience-score:where(:hover, :focus-within) { background: var(--control-hover-bg); }
-.experience-score > span { flex: none; white-space: nowrap; }
+/* 星标触发器：与数字同高，去掉按钮默认内边距，避免图标视觉偏低 */
+.experience-score-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--text-secondary); line-height: 1; cursor: help; }
+.experience-score-icon svg { display: block; }
 /* 输入框自身不渲染独立背景，避免与容器叠加出小色块 */
-.experience-score input.settings-control { width: calc(var(--size-unit) * 12); height: var(--control-height); padding: 0; border: 0; background: transparent; color: var(--text-primary); text-align: left; font-size: var(--font-body); font-variant-numeric: tabular-nums; outline: none; box-shadow: none; transition: none; }
+.experience-score input.settings-control { width: calc(var(--size-unit) * 9); height: var(--control-height); padding: 0; border: 0; background: transparent; color: var(--text-primary); text-align: left; font-size: var(--font-body); line-height: 1; font-variant-numeric: tabular-nums; outline: none; box-shadow: none; transition: none; }
 .experience-score input.settings-control:hover, .experience-score input.settings-control:focus { background: transparent; }
 /* 数值上下箭头常驻显示 */
 .experience-score input[type="number"]::-webkit-inner-spin-button { opacity: 1; -webkit-appearance: inner-spin-button; }
@@ -123,24 +140,33 @@
 .experience-entry > * { position: relative; z-index: 1; }
 .experience-entry-body { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .experience-entry-body p { margin: 0 0 var(--space-1); }
-/* 操作按钮绝对定位在右侧，不占据文本宽度 */
-.experience-entry-actions { position: absolute; z-index: 2; right: var(--space-2); top: 50%; transform: translateY(-50%); background: var(--control-bg); border-radius: var(--radius); opacity: 0; pointer-events: none; transition: opacity var(--motion-duration) ease; }
+/* 条目元信息：星标紧贴重要度数值，作为「重要性」的视觉标识 */
+.experience-entry-meta { display: inline-flex; align-items: center; gap: var(--space-1); line-height: 1; }
+/* 星标字形在 SVG 视框内略偏下，视觉上与数字对齐需要上提 1px */
+/* 图标和数字同一触发区，hover 任一处都给出重要度说明；星标字形在 SVG 视框内偏下，上提 1px 才与数字视觉齐平 */
+.experience-entry-score-hint { display: inline-flex; align-items: center; gap: var(--space-1); line-height: 1; cursor: help; }
+.experience-entry-score-hint svg { display: block; flex: none; color: var(--text-secondary); transform: translateY(-1px); }
+/* 操作按钮绝对定位在右侧，不占据文本宽度；整组是一层毛玻璃圆角矩形，按钮各自的小圆角矩形内缩留缝。 */
+.experience-entry-actions { position: absolute; z-index: 2; right: var(--space-2); top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: var(--size-unit); padding: var(--size-unit); border-radius: calc(var(--radius) + var(--size-unit)); background: color-mix(in srgb, var(--surface-glass) 70%, transparent); backdrop-filter: blur(calc(var(--glass-blur) / 3)); opacity: 0; pointer-events: none; transition: opacity var(--motion-duration) ease; }
+.experience-entry-actions .ui-button { border-radius: calc(var(--radius) - var(--size-unit)); background: color-mix(in srgb, var(--control-bg) 78%, transparent); }
 .experience-entry[data-active] .experience-entry-actions { opacity: 1; pointer-events: auto; }
 .experience-edit { display: flex; flex: 1; flex-direction: column; gap: var(--space-2); min-width: 0; }
-.experience-edit-actions { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: var(--space-3); min-width: 0; }
+/* 窄窗口下允许确认按钮换行，避免与重要度输入框重叠 */
+.experience-edit-actions { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); min-width: 0; }
 /* 日历与重要度左对齐成组，对勾/叉叉保持最右 */
 .experience-edit-meta { display: flex; flex: 0 1 auto; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: var(--space-2); min-width: 0; }
 .experience-edit-confirm { flex: none; margin-left: auto; }
-.experience-edit-actions .search-date-trigger { width: auto; flex: 0 1 auto; min-width: calc(var(--size-unit) * 40); }
+.experience-edit-actions .search-date-trigger { width: auto; flex: 0 1 auto; min-width: calc(var(--size-unit) * 26); }
 .experience-empty { margin: 0; padding: var(--space-4) 0; color: var(--text-secondary); text-align: center; }
 html[data-reduced-motion="true"] .experience-collapse { transition: none; }
 @media (prefers-reduced-motion: reduce) { .experience-collapse { transition: none; } }
 
-/* 智能体标题：头像与昵称副标题整体垂直居中对齐 */
+/* 智能体标题：头像与昵称/副标题组成的文字块上下沿严格对齐。
+   头像 48px = 标题 24px + 间距 4px + 副标题 20px，行高固定避免受字体度量影响。 */
 .agent-title-group { display: flex; align-items: center; gap: var(--space-3); }
 .agent-title-group > div { display: flex; flex-direction: column; justify-content: center; }
-.agent-avatar-button { position: relative; flex: none; display: inline-flex; padding: 0; border: 0; border-radius: var(--radius); background: transparent; cursor: pointer; overflow: hidden; }
-.agent-avatar-button > span:first-child { display: inline-flex; }
-.agent-avatar-edit { position: absolute; inset: 0; display: grid; place-items: center; border-radius: inherit; background: color-mix(in srgb, var(--text-primary) 55%, transparent); color: var(--selection-foreground); opacity: 0; transition: opacity var(--motion-duration) ease; }
-.agent-avatar-button:hover .agent-avatar-edit, .agent-avatar-button:focus-visible .agent-avatar-edit { opacity: 1; }
+.agent-title-group .panel-title { line-height: calc(var(--size-unit) * 6); }
+.agent-title-group .panel-description { line-height: calc(var(--size-unit) * 5); }
+/* 头像按钮本身不带背景、边框与圆角，点击反馈交给 tooltip；避免任何额外几何层在 squircle 四角产生合成缝隙。 */
+.agent-avatar-button { flex: none; display: inline-flex; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .agent-sections { margin-bottom: var(--space-3); }

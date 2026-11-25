@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { IconCheck, IconChevronDown, IconEdit, IconPlus, IconRefresh, IconScissors, IconTrash, IconX } from "@tabler/icons-react"
+import { IconCheck, IconChevronDown, IconEdit, IconPlus, IconRefresh, IconScissors, IconStarFilled, IconTrash, IconX } from "@tabler/icons-react"
 import type { ExperienceEntry } from "@/contracts/generated"
 import type { ConfigurationStore } from "@/app/configurationStore"
 import { errorMessage } from "@/app/ipc"
@@ -17,6 +17,8 @@ type Props = {
 
 type Draft = { id: string; content: string; time: number; score: string }
 
+const IMPORTANCE_HINT = "重要度：数值越高表示经历越重要，对话过程越会关注该经历"
+
 const pad = (value: number) => String(value).padStart(2, "0")
 
 /** `YYYY/MM/DD HH:mm` 与本地毫秒互转。 */
@@ -31,16 +33,16 @@ function msToStamp(value: number) {
   return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-function IconAction({ label, icon: Icon, onClick, disabled, danger }: {
-  label: string; icon: typeof IconPlus; onClick: () => void; disabled?: boolean; danger?: boolean
+function IconAction({ label, hint, icon: Icon, onClick, disabled, danger }: {
+  label: string; hint?: string; icon: typeof IconPlus; onClick: () => void; disabled?: boolean; danger?: boolean
 }) {
   return <Tooltip disableHoverableContent><TooltipTrigger asChild>
     <Button variant="ghost" size="icon-sm" className={danger ? "danger-icon" : undefined} aria-label={label} disabled={disabled} onClick={onClick}><Icon size={16} aria-hidden="true" /></Button>
-  </TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip>
+  </TooltipTrigger><TooltipContent>{hint ?? label}</TooltipContent></Tooltip>
 }
 
 export function ExperiencePanel({ store, agentId, active, disabled }: Props) {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
   const [entries, setEntries] = useState<ExperienceEntry[]>([])
   const [content, setContent] = useState("")
   const [score, setScore] = useState("50")
@@ -175,7 +177,7 @@ export function ExperiencePanel({ store, agentId, active, disabled }: Props) {
         <div className="experience-content">
           <form className="experience-form" onSubmit={(event) => { event.preventDefault(); void add() }}>
             <div className="experience-form-head">
-              <label className="experience-score"><span>重要度：</span><input type="number" className="settings-control" aria-label="经历重要度" min={0} max={100} step={1} value={score} disabled={disabled || pending} onChange={(event) => setScore(event.target.value)} /></label>
+              <div className="experience-score"><Tooltip disableHoverableContent><TooltipTrigger asChild><button type="button" className="experience-score-icon" aria-label="重要度说明"><IconStarFilled size={14} aria-hidden="true" /></button></TooltipTrigger><TooltipContent>{IMPORTANCE_HINT}</TooltipContent></Tooltip><input type="number" className="settings-control" aria-label="经历重要度" min={0} max={100} step={1} value={score} disabled={disabled || pending} onChange={(event) => setScore(event.target.value)} /></div>
               <div className="config-actions experience-form-actions">
                 <IconAction label="刷新经历" icon={IconRefresh} onClick={() => void refresh()} disabled={pending || loading} />
                 <IconAction label="裁剪经历" icon={IconScissors} onClick={() => setTarget("prune")} disabled={disabled || pending || loading || !entries.length} />
@@ -185,7 +187,8 @@ export function ExperiencePanel({ store, agentId, active, disabled }: Props) {
             <textarea className="settings-control experience-input" aria-label="经历内容" placeholder="记下值得保留的事……" value={content} rows={2} maxLength={10000} disabled={disabled || pending} onChange={(event) => { revision.current += 1; setContent(event.target.value); setError(null) }} />
           </form>
           {error && <p role="alert" className="settings-control-error">{error}</p>}
-          {loading ? <p role="status" className="form-caption">正在读取经历…</p> : <>
+          {/* 默认折叠时不渲染读取状态，避免隐藏区域留下多余的 role=status。 */}
+          {loading && open ? <p role="status" className="form-caption">正在读取经历…</p> : <>
             {!entries.length && <p className="experience-empty">还没有经历</p>}
             <ul className="experience-list" aria-label="经历列表" ref={listRef}>
               {[...entries].reverse().map((entry) => {
@@ -198,7 +201,7 @@ export function ExperiencePanel({ store, agentId, active, disabled }: Props) {
                     <div className="experience-edit-actions">
                       <div className="experience-edit-meta">
                         <SearchDatePicker label="编辑经历时间" value={draft.time} time onValueChange={(time) => setDraft({ ...draft, time })} onCancel={() => setDraft((current) => (current ? { ...current, time: originalTime.current } : current))} />
-                        <label className="experience-score"><span>重要度：</span><input type="number" className="settings-control" aria-label="编辑经历重要度" min={0} max={100} value={draft.score} disabled={pending} onChange={(event) => setDraft({ ...draft, score: event.target.value })} /></label>
+                        <div className="experience-score"><Tooltip disableHoverableContent><TooltipTrigger asChild><button type="button" className="experience-score-icon" aria-label="重要度说明"><IconStarFilled size={14} aria-hidden="true" /></button></TooltipTrigger><TooltipContent>{IMPORTANCE_HINT}</TooltipContent></Tooltip><input type="number" className="settings-control" aria-label="编辑经历重要度" min={0} max={100} value={draft.score} disabled={pending} onChange={(event) => setDraft({ ...draft, score: event.target.value })} /></div>
                       </div>
                       <div className="config-actions experience-edit-confirm">
                         <IconAction label="保存经历" icon={IconCheck} onClick={() => void saveDraft()} disabled={pending} />
@@ -206,10 +209,10 @@ export function ExperiencePanel({ store, agentId, active, disabled }: Props) {
                       </div>
                     </div>
                   </div> : <>
-                    <div className="experience-entry-body"><p>{entry.content}</p><span className="form-caption">{entry.recorded_at} · {entry.score}</span></div>
+                    <div className="experience-entry-body"><p>{entry.content}</p><span className="form-caption experience-entry-meta">{entry.recorded_at} · <Tooltip disableHoverableContent><TooltipTrigger asChild><span className="experience-entry-score-hint"><IconStarFilled size={12} aria-hidden="true" />{entry.score}</span></TooltipTrigger><TooltipContent>{IMPORTANCE_HINT}</TooltipContent></Tooltip></span></div>
                     <div className="config-actions experience-entry-actions" data-visible={activeHover || undefined}>
-                      <IconAction label={`编辑经历 ${entry.content}`} icon={IconEdit} onClick={() => { const time = stampToMs(entry.recorded_at); originalTime.current = time; setDraft({ id: entry.id, content: entry.content, time, score: String(entry.score) }); setError(null) }} disabled={disabled || pending} />
-                      <IconAction label={`删除经历 ${entry.content}`} icon={IconTrash} danger onClick={() => setTarget(entry)} disabled={disabled || pending} />
+                      <IconAction label={`编辑经历 ${entry.content}`} hint="编辑" icon={IconEdit} onClick={() => { const time = stampToMs(entry.recorded_at); originalTime.current = time; setDraft({ id: entry.id, content: entry.content, time, score: String(entry.score) }); setError(null) }} disabled={disabled || pending} />
+                      <IconAction label={`删除经历 ${entry.content}`} hint="删除" icon={IconTrash} danger onClick={() => setTarget(entry)} disabled={disabled || pending} />
                     </div>
                   </>}
                 </li>

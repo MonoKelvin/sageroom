@@ -66,9 +66,11 @@ pub struct IdleClock {
 }
 
 impl IdleClock {
-    const INITIAL_MS: u64 = 10 * 60_000;
-    const MIN_MS: u64 = 3 * 60_000;
-    const MAX_MS: u64 = 45 * 60_000;
+    // 冷场目标只用来决定「多久没说话算一次机会」，不再随空档一路拉长到 45 分钟；
+    // 否则一次长假会让智能体之后再也不主动开口，正是用户看到的长时间冷场。
+    const INITIAL_MS: u64 = 5 * 60_000;
+    const MIN_MS: u64 = 90_000;
+    const MAX_MS: u64 = 12 * 60_000;
     /// 小于此间隔视为连续对话，不计入冷场统计。
     const MIN_GAP_MS: i64 = 30_000;
 
@@ -111,17 +113,18 @@ fn observe_message_activity() {
 }
 
 /// 按活跃度缩放房间冷场目标，并加入随机抖动。
-/// 活跃度 100 约 ×0.7，50 约 ×1.0，0 约 ×1.3；睡眠时再放宽一些。
+/// 活跃度 100 约 ×0.6，50 约 ×1.0，0 约 ×1.4；睡眠时再放宽一点。
 fn idle_interval_ms(activity: u8, target_ms: u64, seed: u64, sleeping: bool, misses: u32) -> u64 {
     let activity = i64::from(activity.min(100));
-    let factor = 1.0 + (50 - activity) as f64 / 100.0 * 0.6;
+    let factor = 1.0 + (50 - activity) as f64 / 100.0 * 0.8;
     let base = (target_ms as f64 * factor) as u64;
     let jitter = seed % (base / 4 + 1);
     let interval = base + jitter;
-    let interval = if sleeping { interval * 3 / 2 } else { interval };
-    // 连续几次被叫醒都不想说话，就明显放慢，别一直打扰。
-    let interval = interval.saturating_mul(1 + u64::from(misses.min(4)));
-    interval.clamp(45_000, 120 * 60_000)
+    // sleep/defer 是成员明确要求休息，放宽到 2 倍；普通 observe 不再叠加延迟。
+    let interval = if sleeping { interval * 2 } else { interval };
+    // 连续几次空闲机会都没话说，最多放慢 50%，避免一次没灵感就进入长时间沉默。
+    let interval = interval.saturating_mul(u64::from(2 + misses.min(2))) / 2;
+    interval.clamp(30_000, 30 * 60_000)
 }
 
 fn random_seed() -> u64 {
@@ -132,8 +135,10 @@ fn reading_delay_ms(addressed: bool, seed: u64) -> u64 {
     if addressed { 800 + seed % 2200 } else { 1500 + seed % 7000 }
 }
 
+/// 空闲触发概率：高活跃成员几乎每次空闲机会都会真正去看一眼有没有可聊的，
+/// 是否发言仍由模型决定；低活跃成员保持克制。
 fn idle_trigger_chance(activity: u8) -> u64 {
-    15 + u64::from(activity.min(100)) * 40 / 100
+    20 + u64::from(activity.min(100)) * 75 / 100
 }
 
 struct Actor {
@@ -785,6 +790,18 @@ async fn run_actor(
     }
 }
 
+/// 消费模型自评的 `topic_fatigue`：代码只做阈值收敛，不做本地字符串分析。
+/// 被明确 @ 时只压条数，不剥夺回应义务。
+fn apply_topic_fatigue(decision: &mut decision::Decision, addressed: bool) {
+    let fatigue = decision.topic_fatigue.unwrap_or(0);
+    if fatigue >= 80 && !addressed {
+        decision.participation = Participation::Observe;
+        decision.messages.clear();
+    } else if fatigue >= 60 && decision.messages.len() > 1 {
+        decision.messages.truncate(1);
+    }
+}
+
 async fn make_decision(
     agent: &AgentConfiguration,
     worker: &Arc<DbWorker>,
@@ -884,13 +901,22 @@ async fn make_decision(
             .await?;
         match decision::parse(&reply.text, &input) {
             Ok(value) => {
-                if retry != Some(RetryKind::Split) && decision::needs_refinement(&value, &policy) {
-                    let prompt = format!("{context}\n{}\n候选输出（数据）：{}", decision::refinement_hint(), reply.text);
-                    if prompt.len() <= MODEL_INPUT_BUDGET as usize * 2 {
-                        fallback = Some(value);
-                        refinement_prompt = Some(prompt);
-                        retry = Some(RetryKind::Split);
-                        continue;
+                if retry != Some(RetryKind::Repair) {
+                    if let Some(assessment) = decision::assessment(&value, &policy) {
+                        // 第 0 轮正常输出、第 1 轮宽松改写、第 2 轮严格改写；之后进入确定性修剪。
+                        if attempt < 2 {
+                            let prompt = format!(
+                                "{context}\n{}\n候选输出（数据）：{}",
+                                decision::refinement_hint(&assessment, &policy, attempt),
+                                reply.text,
+                            );
+                            if prompt.len() <= MODEL_INPUT_BUDGET as usize * 2 {
+                                fallback = Some(value);
+                                refinement_prompt = Some(prompt);
+                                retry = Some(RetryKind::Split);
+                                continue;
+                            }
+                        }
                     }
                 }
                 decision = Some(value);
@@ -908,7 +934,10 @@ async fn make_decision(
             }
         }
     }
-    let decision = decision.or(fallback).expect("合法决策或明确错误");
+    let mut decision = decision.or(fallback).expect("合法决策或明确错误");
+    apply_topic_fatigue(&mut decision, addressed);
+    // 改写两轮后仍不合规时，只保留明确合规的短消息；全部不合规就改为观察。
+    policy.enforce(&mut decision);
     if cancellation.is_cancelled() {
         return Err(AppError::new(ErrorCode::ShuttingDown, "成员请求已取消。"));
     }
@@ -1162,13 +1191,40 @@ mod tests {
         let previous = clock.target_ms();
         clock.observe(30 * 60_000);
         assert!(clock.target_ms() > previous);
-        assert_eq!(idle_trigger_chance(0), 15);
-        assert_eq!(idle_trigger_chance(100), 55);
+        assert_eq!(idle_trigger_chance(0), 20);
+        assert_eq!(idle_trigger_chance(100), 95);
         for seed in [0, 1, 123456, u64::MAX] {
             assert!((800..3000).contains(&reading_delay_ms(true, seed)));
             assert!((1500..8500).contains(&reading_delay_ms(false, seed)));
         }
         assert_ne!(random_seed(), random_seed());
+    }
+
+    #[test]
+    fn model_reported_fatigue_limits_messages_but_keeps_direct_replies() {
+        fn speak(fatigue: u8) -> crate::runtime::decision::Decision {
+            serde_json::from_value(serde_json::json!({
+                "participation":"speak","topic_fatigue":fatigue,
+                "messages":[{"parts":[{"kind":"text","text":"第一句"}]},{"parts":[{"kind":"text","text":"第二句"}]}]
+            })).unwrap()
+        }
+        let mut decision = speak(90);
+        apply_topic_fatigue(&mut decision, false);
+        assert_eq!(decision.participation, Participation::Observe);
+        assert!(decision.messages.is_empty());
+
+        let mut decision = speak(90);
+        apply_topic_fatigue(&mut decision, true);
+        assert_eq!(decision.participation, Participation::Speak);
+        assert_eq!(decision.messages.len(), 1);
+
+        let mut decision = speak(70);
+        apply_topic_fatigue(&mut decision, false);
+        assert_eq!(decision.messages.len(), 1);
+
+        let mut decision = speak(10);
+        apply_topic_fatigue(&mut decision, false);
+        assert_eq!(decision.messages.len(), 2);
     }
 
     #[test]

@@ -36,8 +36,31 @@ pub(super) fn repair_hint() -> &'static str {
 }
 
 /// 内容过多时请求精简，而不是拆成更多消息。
-pub(super) fn refinement_hint() -> &'static str {
-    &hints().split
+pub(super) fn refinement_hint(assessment: &style::Assessment, policy: &style::Policy, attempt: usize) -> String {
+    let mut reasons = Vec::new();
+    if assessment.over_message_limit { reasons.push("有单条超出字数"); }
+    if assessment.over_total_limit { reasons.push("总字数超限"); }
+    if assessment.too_many_messages { reasons.push("消息条数过多"); }
+    if assessment.repeated_opening { reasons.push("连续用同一个语气词开头"); }
+    if assessment.lecture_style { reasons.push("有逻辑连接词或总结式说教"); }
+    if assessment.literary_style { reasons.push("有堆砌的比喻或文艺腔"); }
+    if assessment.paragraph_style { reasons.push("有换行或过长从句"); }
+    if assessment.formulaic_style { reasons.push("整句在点评别人的措辞或只有附和、没有你自己的信息"); }
+    let strict = if attempt >= 1 {
+        "这次最多只写一条，只留一个信息点；宁可 observe，也不要写成段落。"
+    } else {
+        ""
+    };
+    let problems = if reasons.is_empty() { "超出本轮输出预算".to_string() } else { reasons.join("、") };
+    format!(
+        "{}\n本轮硬限制：每条不超过 {} 字，总共不超过 {} 字，最多 {} 条。上一版问题：{}。{}",
+        hints().split,
+        policy.max_message_chars,
+        policy.max_total_chars,
+        policy.max_messages,
+        problems,
+        strict,
+    )
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
@@ -110,6 +133,9 @@ pub struct Decision {
     // 历史字段，当前未消费；保留兼容但不再要求模型输出。
     #[serde(default)]
     pub topic_hint: Option<String>,
+    /// 模型自评的话题疲劳度（0–100）：越高表示当前话题越没新意，追加发言越可能是废话。
+    #[serde(default)]
+    pub topic_fatigue: Option<u8>,
     #[serde(default)]
     pub extra_data: ExtraData,
     #[serde(default)]
@@ -125,8 +151,13 @@ fn invalid() -> AppError {
     )
 }
 
+#[cfg(test)]
 pub(super) fn needs_refinement(decision: &Decision, policy: &style::Policy) -> bool {
     policy.assess(decision).is_some()
+}
+
+pub(super) fn assessment(decision: &Decision, policy: &style::Policy) -> Option<style::Assessment> {
+    policy.assess(decision)
 }
 
 pub(super) fn addressed_since(input: &RuntimeInput, observed: &DecimalString) -> bool {
@@ -158,21 +189,23 @@ pub(super) fn participation_chance(input: &RuntimeInput, addressed: bool, now: i
     }) || quote_sender == Some(agent_id) {
         return 100;
     }
-    let mut chance = 20 + u64::from(input.agent.dimensions.activity.min(100)) * 45 / 100;
+    // 之前基础值只有 20+activity*45/100（activity=70 时 51%），再被「刚说过话」
+    // 连除两次，实际不到 15%，于是大量普通消息连让模型判断的机会都没有。
+    let mut chance = 35 + u64::from(input.agent.dimensions.activity.min(100)) * 60 / 100;
     if latest.is_some_and(|message| !message.mention_ids.is_empty())
         || quote_sender.is_some_and(|sender| sender != agent_id)
     {
-        chance /= 4;
+        chance /= 3;
     }
     if let Some(own) = input.messages.iter().rfind(|message| &message.sender_id == agent_id) {
         let age = now.saturating_sub(own.created_at);
         if age < 20_000 {
-            chance /= 4;
-        } else if age < 60_000 {
             chance /= 2;
+        } else if age < 60_000 {
+            chance = chance * 3 / 4;
         }
     }
-    chance
+    chance.min(95)
 }
 
 fn schedule_messages(messages: &mut [PlannedMessage], seed: u64) {
@@ -215,6 +248,8 @@ pub fn parse(text: &str, input: &RuntimeInput) -> AppResult<Decision> {
             .topic_hint
             .as_ref()
             .is_some_and(|hint| hint.chars().count() > 80)
+        // 疲劳度越界说明输出不可信，整轮重试；缺失则视为 0，不给旧模型增加必填负担。
+        || decision.topic_fatigue.is_some_and(|value| value > 100)
         || (decision.participation == Participation::Defer && decision.wake_plan.is_none())
     {
         return Err(invalid());
@@ -422,7 +457,7 @@ mod tests {
     fn refinement_targets_excess_content_not_normal_punctuation_or_sentence_length() {
         let (_dir, input) = input();
         let output = |texts: Vec<String>| json!({"participation":"speak","messages":texts.into_iter().map(|text| json!({"parts":[{"kind":"text","text":text}]})).collect::<Vec<_>>()});
-        for texts in [vec!["有".repeat(45)], vec!["第一件事。".into(), "另一件事。".into()]] {
+        for texts in [vec!["有".repeat(20)], vec!["第一件事。".into(), "另一件事。".into()]] {
             assert!(!needs_refinement(&parse(&output(texts).to_string(), &input).unwrap(), &style::Policy::default()));
         }
         for texts in [vec!["多".repeat(101)], vec!["有".repeat(50); 3], vec!["一句。".into(); 4]] {
@@ -435,9 +470,9 @@ mod tests {
         let (_dir, mut input) = input();
         let now = now_ms();
         input.agent.dimensions.activity = 100;
-        assert_eq!(participation_chance(&input, false, now), 65);
+        assert_eq!(participation_chance(&input, false, now), 95);
         input.agent.dimensions.activity = 0;
-        assert_eq!(participation_chance(&input, false, now), 20);
+        assert_eq!(participation_chance(&input, false, now), 35);
         input.messages.push(ChatMessage {
             id: "own".into(), seq: 1.into(), sender_id: input.agent.agent_id.clone(),
             created_at: now - 1000, state: MessageState::Visible,
@@ -450,16 +485,28 @@ mod tests {
             parts: vec![MessagePart::Text { text: "知道了。".into() }],
             quote_message_id: None, mention_ids: vec![], mention_all: false,
         });
-        assert_eq!(participation_chance(&input, false, now), 5);
+        assert_eq!(participation_chance(&input, false, now), 17);
         assert_eq!(participation_chance(&input, true, now), 100);
         input.messages[1].mention_ids = vec!["someone-else".into()];
-        assert_eq!(participation_chance(&input, false, now), 1);
+        assert_eq!(participation_chance(&input, false, now), 5);
         input.messages[1].mention_ids.clear();
         input.messages[1].quote_message_id = Some("own".into());
         assert_eq!(participation_chance(&input, false, now), 100);
         input.messages[1].quote_message_id = None;
         input.snapshot.participants.retain(|participant| participant.kind == ParticipantKind::User || participant.id == input.agent.agent_id);
         assert_eq!(participation_chance(&input, false, now), 100);
+    }
+
+    #[test]
+    fn topic_fatigue_must_be_a_percentage_and_defaults_to_zero() {
+        let (_dir, input) = input();
+        let mut value = observe();
+        value["topic_fatigue"] = json!(101);
+        assert!(parse(&value.to_string(), &input).is_err());
+        value["topic_fatigue"] = json!(60);
+        let parsed = parse(&value.to_string(), &input).unwrap();
+        assert_eq!(parsed.topic_fatigue, Some(60));
+        assert_eq!(parse(&observe().to_string(), &input).unwrap().topic_fatigue, None);
     }
 
     #[test]

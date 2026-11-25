@@ -37,7 +37,7 @@ function TooltipContent({
         collisionBoundary={applicationFrame()}
         collisionPadding={12}
         className={cn(
-          "ui-tooltip z-[100] max-w-72 rounded-lg px-3 py-2 text-xs leading-relaxed break-words",
+          "ui-tooltip z-[100] rounded-lg px-3 py-2 text-xs leading-relaxed break-words",
           className,
         )}
         {...props}

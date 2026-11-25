@@ -1,7 +1,7 @@
 import { cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { applicationBounds, applicationLayerContainer } from "@/app/application-layers"
 import { createPortal } from "react-dom"
-import { IconList, IconLoader2, IconPhoto } from "@tabler/icons-react"
+import { IconList, IconLoader2, IconPhoto, IconVideo, IconVolume } from "@tabler/icons-react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/components/ui/toast-context"
 import type { ModelProfileInput, PersonaDimensions } from "@/contracts/generated"
@@ -44,6 +44,26 @@ export function DimensionsFields({ value, onChange }: { value: PersonaDimensions
       <NumberInput label={meta.label} value={value[key]} min={0} max={100} step={1} onValueChange={(next) => applyInteger(next, (value) => onChange(key, value))} />
     </Field>
   })}</div>
+}
+
+type ModelKind = "video" | "tts" | "image"
+
+const modelKindMeta: Record<ModelKind, { icon: typeof IconPhoto; label: string; hint: string }> = {
+  video: { icon: IconVideo, label: "可能是视频模型", hint: "当前可能是视频大模型，无法进行正常对话" },
+  tts: { icon: IconVolume, label: "可能是文本转语音模型", hint: "当前可能是文本转语音大模型，无法进行正常对话" },
+  image: { icon: IconPhoto, label: "可能是生图模型", hint: "当前模型可能是生图大模型，无法进行对话" },
+}
+
+// 按名称关键字判断「不是对话模型」。视频/语音排在生图前面，避免 video-flux 这类名字被标成生图。
+const modelKindPatterns: [ModelKind, RegExp][] = [
+  ["video", /video|sora|veo|kling|runway|pika|cogvideo|seedance/i],
+  ["tts", /tts|text[-_ ]?to[-_ ]?speech|speech[-_ ]?synth/i],
+  ["image", /image|img|生图|绘图|画/i],
+]
+
+function detectModelKind(model: string): ModelKind | null {
+  for (const [kind, pattern] of modelKindPatterns) if (pattern.test(model)) return kind
+  return null
 }
 
 export function ModelNamePicker({ value, onChange, active, readOnly, onListModels }: {
@@ -124,9 +144,11 @@ export function ModelNamePicker({ value, onChange, active, readOnly, onListModel
 
   return <div className="model-name-field" ref={box}>
     <EditableInput label="模型名称" active={active} maxLength={200} value={value} readOnly={readOnly} placeholder="服务提供的模型名称" normalize={(next) => next.trim()} validate={(next) => validateText(next, 200, readOnly)} onApply={onChange} />
-    {onListModels && <Button variant="ghost" size="icon" className="model-name-list" aria-label="获取模型列表" disabled={readOnly || !active || loading} onClick={() => void toggle()}>
-      {loading ? <IconLoader2 size={16} className="spin" aria-hidden="true" /> : <IconList size={16} aria-hidden="true" />}
-    </Button>}
+    {onListModels && <Tooltip disableHoverableContent><TooltipTrigger asChild>
+      <Button variant="ghost" size="icon" className="model-name-list control-trailing-icon" aria-label="获取模型列表" disabled={readOnly || !active || loading} onClick={() => void toggle()}>
+        {loading ? <IconLoader2 size={16} className="spin" aria-hidden="true" /> : <IconList size={16} aria-hidden="true" />}
+      </Button>
+    </TooltipTrigger><TooltipContent>获取可用模型列表</TooltipContent></Tooltip>}
     {open && models.length > 0 && createPortal(
       <div
         ref={list}
@@ -136,14 +158,16 @@ export function ModelNamePicker({ value, onChange, active, readOnly, onListModel
         style={{ top: position.top, left: position.left }}
       >
         {models.map((model) => {
-          const imageModel = /image|img|生图|绘图|画/i.test(model)
+          const kind = detectModelKind(model)
+          const meta = kind ? modelKindMeta[kind] : null
+          const mark = meta ? <span className="model-name-option-mark" aria-label={meta.label}><meta.icon size={15} aria-hidden="true" /></span> : null
           const option = <button key={model} type="button" role="option" aria-selected={model === value} className="model-name-option" onClick={() => { void onChange(model); setOpen(false) }}>
             <span className="model-name-option-label">{model}</span>
-            {imageModel && <span className="model-name-option-mark" aria-label="可能是生图模型"><IconPhoto size={15} aria-hidden="true" /></span>}
+            {mark}
           </button>
-          return imageModel ? <Tooltip key={model}>
+          return meta ? <Tooltip key={model}>
             <TooltipTrigger asChild>{option}</TooltipTrigger>
-            <TooltipContent>当前模型可能是生图大模型，可能无法进行对话</TooltipContent>
+            <TooltipContent>{meta.hint}</TooltipContent>
           </Tooltip> : option
         })}
       </div>,

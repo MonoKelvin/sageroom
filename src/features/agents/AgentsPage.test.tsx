@@ -11,7 +11,7 @@ function page(props = pageProps()) { return <ConfigurationTestProvider snapshot=
 function sidebar() { return within(screen.getByLabelText("智能体列表")) }
 async function openSage() { await userEvent.click(await sidebar().findByRole("button", { name: /Sage.*待配置/ })) }
 function detail(name: string) { return within(screen.getByText(name, { selector: "h2" }).closest("section")!) }
-async function section(name: "基本资料" | "人格与表达" | "模型配置", where: ReturnType<typeof detail> = screen) {
+async function section(name: "基本资料" | "人格表达" | "模型配置", where: ReturnType<typeof detail> = screen) {
   await userEvent.click(where.getByRole("tab", { name }))
 }
 async function select(label: string, option: string) {
@@ -71,7 +71,7 @@ describe("持久资源智能体页面", () => {
   it("八个人格维度包含可持久化活跃度，非法值不写入，重开页面读回", async () => {
     const view = render(page())
     await openSage()
-    await section("人格与表达", detail("Sage"))
+    await section("人格表达", detail("Sage"))
     await userEvent.click(detail("Sage").getByText("八个人格维度（0–100）"))
     const labels = ["专业", "正式", "随和", "幽默", "直接", "共情", "社交", "活跃度"]
     for (const label of labels) expect(detail("Sage").getByRole("spinbutton", { name: label })).toBeInTheDocument()
@@ -91,7 +91,7 @@ describe("持久资源智能体页面", () => {
     view.unmount()
     render(page())
     await openSage()
-    await section("人格与表达", detail("Sage"))
+    await section("人格表达", detail("Sage"))
     await userEvent.click(detail("Sage").getByText("八个人格维度（0–100）"))
     expect(detail("Sage").getByRole("spinbutton", { name: "活跃度" })).toHaveValue("100")
   })
@@ -131,8 +131,8 @@ describe("持久资源智能体页面", () => {
     await openSage()
     await section("模型配置", detail("Sage"))
     await select("模型预设", "常用模型")
-    await section("人格与表达", detail("Sage"))
-    await select("采用人格预设", "自然交流")
+    await section("人格表达", detail("Sage"))
+    await select("人格预设", "自然交流")
     expect(screen.getByText(/替换当前语言风格和人格维度/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "确认采用" }))
     await waitFor(() => expect(ipc.saveAgent).toHaveBeenCalledTimes(2))

@@ -9,6 +9,8 @@
 .ui-button-secondary { background: var(--control-bg); color: var(--text-primary); }
 .ui-button-ghost { background: transparent; color: var(--text-secondary); }
 .ui-button-link { background: transparent; color: var(--semantic-accent); }
+/* 输入框 / 选择框右侧的图标按钮：方形边长与左侧控件高度一致；左侧为非常规尺寸时另设专用 class。 */
+.control-trailing-icon { flex: none; width: var(--control-height); height: var(--control-height); padding: 0; }
 .ui-button:focus-visible, .settings-checkbox:focus-visible, .settings-switch:focus-visible {
   outline: calc(var(--stroke-width) * 2) solid var(--ring);
   outline-offset: calc(var(--size-unit) * .75);
@@ -104,7 +106,9 @@
 .ui-dropdown-item[data-disabled] svg, .ui-dropdown-item:disabled svg { color: var(--text-secondary); }
 .ui-tooltip {
   pointer-events: none;
-  max-width: min(18rem, calc(var(--application-layer-width, 100vw) - var(--space-5)));
+  /* 宽度先由内容决定，超过窗口 80% 才收窄并自动换行；用窗口比例而不是固定像素，缩放窗口时继续自适应。 */
+  width: max-content;
+  max-width: calc(var(--application-layer-width, 100vw) * .8);
   border: 0;
   background: var(--primary);
   color: var(--primary-foreground);
