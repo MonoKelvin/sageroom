@@ -229,7 +229,7 @@ export function GlobalConfiguration({ active }: { active: boolean }) {
           </div>}
           {newsState.value && <div className="config-stack">
             <SettingSection title="联网新闻" description="让 AI 按聊天需要查新闻，自己选关键词、筛选和整理结果。">
-              <Field label="联网搜索"><Switch label="联网搜索" checked={newsState.value.configuration.enabled} onCheckedChange={(enabled) => void run(() => store.news.change((current) => ({ ...current, configuration: { ...current.configuration, enabled } })))} /></Field>
+              <Field label="联网搜索" caption="开启后，智能体可在需要时自行联网查新闻。"><Switch label="联网搜索" checked={newsState.value.configuration.enabled} onCheckedChange={(enabled) => void run(() => store.news.change((current) => ({ ...current, configuration: { ...current.configuration, enabled } })))} /></Field>
               <Field label="搜索来源" caption={newsProviders.find((item) => item.value === newsState.value?.configuration.provider)?.caption}><SettingsSelect label="搜索来源" value={newsState.value.configuration.provider} options={newsProviders} onValueChange={(provider) => void run(() => store.news.change((current) => ({ ...current, configuration: { ...current.configuration, provider: provider as NewsProvider } })))} /></Field>
               {(["tavily", "serper"] as NewsProvider[]).includes(newsState.value.configuration.provider) && <NewsCredentials key={newsState.value.configuration.provider} provider={newsState.value.configuration.provider} active={active && section === "news"} disabled={runtime.exiting} />}
               <Field label="使用代理" caption="默认直连，需要时再开。"><Switch label="使用新闻代理" checked={newsState.value.configuration.proxy_enabled} onCheckedChange={(proxy_enabled) => void run(() => store.news.change((current) => ({ ...current, configuration: { ...current.configuration, proxy_enabled } })))} /></Field>
@@ -237,28 +237,28 @@ export function GlobalConfiguration({ active }: { active: boolean }) {
                 <SettingsSelect label="新闻代理模式" value={newsState.value.configuration.proxy_mode} options={[{ value: "system", label: "跟随系统代理" }, { value: "direct", label: "直连" }, { value: "manual", label: "手动代理" }]} onValueChange={(proxy_mode) => void run(() => store.news.change((current) => ({ ...current, configuration: { ...current.configuration, proxy_mode: proxy_mode as NewsProxyMode } })))} />
               </Field>}
               {newsState.value.configuration.proxy_enabled && newsState.value.configuration.proxy_mode === "manual" && <Field label="手动代理地址" caption="填写本机 HTTP 代理地址和端口。"><EditableInput label="新闻本地代理" active={active && section === "news"} value={newsState.value.configuration.proxy_url} maxLength={200} placeholder="http://127.0.0.1:端口" normalize={(next) => next.trim()} onApply={(proxy_url) => run(() => store.news.change((current) => ({ ...current, configuration: { ...current.configuration, proxy_url } })))} /></Field>}
-              <Field label="缓存时间（分钟）"><NumberInput label="缓存时间（分钟）" value={newsState.value.configuration.refresh_minutes} min={5} max={720} onValueChange={(refresh_minutes) => void run(() => store.news.change((current) => ({ ...current, configuration: { ...current.configuration, refresh_minutes } })))} /></Field>
-              <Field label="每次最多读取"><NumberInput label="每次最多读取" value={newsState.value.configuration.max_items} min={1} max={8} onValueChange={(max_items) => void run(() => store.news.change((current) => ({ ...current, configuration: { ...current.configuration, max_items } })))} /></Field>
+              <Field label="缓存时间（分钟）" caption="同一批新闻的复用时长，避免反复请求来源。"><NumberInput label="缓存时间（分钟）" value={newsState.value.configuration.refresh_minutes} min={5} max={720} onValueChange={(refresh_minutes) => void run(() => store.news.change((current) => ({ ...current, configuration: { ...current.configuration, refresh_minutes } })))} /></Field>
+              <Field label="每次最多读取" caption="单次查新闻写入上下文的条数上限，最多 8 条。"><NumberInput label="每次最多读取" value={newsState.value.configuration.max_items} min={1} max={8} onValueChange={(max_items) => void run(() => store.news.change((current) => ({ ...current, configuration: { ...current.configuration, max_items } })))} /></Field>
               <Field label="来源测试" caption="只测连接，不调用模型。密钥来源可能消耗额度。">
                 <div className="config-actions">
                   <Button variant="outline" size="sm" disabled={newsPreview.pending || newsState.status === "error"} onClick={() => void testNewsSource()}>{newsPreview.pending ? "正在读取…" : "测试来源"}</Button>
                 </div>
-                {visibleNewsPreview && <div className="config-stack" aria-live="polite">
-                  <p className="form-caption" role="status">{visibleNewsPreview.items.length ? `${newsLabel(visibleNewsPreview.provider)} · ${visibleNewsPreview.items.length} 条新闻` : "暂未读到新闻，请查看诊断。"}</p>
-                  {visibleNewsPreview.fetched_at && <p className="form-caption">{new Date(Number(visibleNewsPreview.fetched_at)).toLocaleString()}{visibleNewsPreview.stale ? " · 上次缓存，非实时" : " · 本次读取"}</p>}
-                  {visibleNewsPreview.provider !== newsState.value.configuration.provider && newsState.value.configuration.provider !== "auto" && <p className="form-caption">已换用免费来源。</p>}
-                  {!!visibleNewsPreview.items.length && <ol className="news-preview-list" aria-label="新闻测试结果">{visibleNewsPreview.items.map((item, index) => <li className="news-preview-item" key={`${item.url}-${index}`}>
-                    <span className="news-preview-number" aria-hidden="true">{index + 1}</span>
-                    <div className="news-preview-text">
-                      <strong>{item.title}</strong>
-                      <p className="form-caption">{item.source}{item.published ? ` · ${item.published}` : " · 日期未知"}</p>
-                      {item.summary && <p className="form-caption">{item.summary}</p>}
-                    </div>
-                  </li>)}</ol>}
-                  {!!visibleNewsPreview.diagnostics.length && <Disclosure title="来源诊断">{visibleNewsPreview.diagnostics.map((item) => <p className="form-caption" key={item.provider}>{newsLabel(item.provider)}：{item.message}</p>)}</Disclosure>}
-                </div>}
                 {newsPreview.key === newsConfigKey && newsPreview.error && <p className="form-caption" role="alert">{newsPreview.error}</p>}
               </Field>
+              {visibleNewsPreview && <div className="news-preview-result" aria-live="polite">
+                <p className="form-caption" role="status">{visibleNewsPreview.items.length ? `${newsLabel(visibleNewsPreview.provider)} · ${visibleNewsPreview.items.length} 条新闻` : "暂未读到新闻，请查看诊断。"}</p>
+                {visibleNewsPreview.fetched_at && <p className="form-caption">{new Date(Number(visibleNewsPreview.fetched_at)).toLocaleString()}{visibleNewsPreview.stale ? " · 上次缓存，非实时" : " · 本次读取"}</p>}
+                {visibleNewsPreview.provider !== newsState.value.configuration.provider && newsState.value.configuration.provider !== "auto" && <p className="form-caption">已换用免费来源。</p>}
+                {!!visibleNewsPreview.items.length && <ol className="news-preview-list" aria-label="新闻测试结果">{visibleNewsPreview.items.map((item, index) => <li className="news-preview-item" key={`${item.url}-${index}`}>
+                  <span className="news-preview-number" aria-hidden="true">{index + 1}</span>
+                  <div className="news-preview-text">
+                    <strong>{item.title}</strong>
+                    <p className="form-caption">{item.source}{item.published ? ` · ${item.published}` : " · 日期未知"}</p>
+                    {item.summary && <p className="form-caption">{item.summary}</p>}
+                  </div>
+                </li>)}</ol>}
+                {!!visibleNewsPreview.diagnostics.length && <Disclosure title="来源诊断">{visibleNewsPreview.diagnostics.map((item) => <p className="form-caption" key={item.provider}>{newsLabel(item.provider)}：{item.message}</p>)}</Disclosure>}
+              </div>}
             </SettingSection>
             <ResourceFeedback resource={store.news} state={newsState} />
           </div>}

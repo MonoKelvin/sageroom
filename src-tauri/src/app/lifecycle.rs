@@ -133,6 +133,74 @@ fn cancelled(app: &AppHandle, id: String, code: ErrorCode) -> AppError {
     error
 }
 
+/// 启动时恢复主窗口几何。位置落在任何显示器之外时只恢复尺寸，
+/// 避免显示器断开或分辨率变化后窗口消失在屏幕外。
+pub fn restore_window_state(app: &AppHandle) {
+    let Some(state) = app.try_state::<AppState>() else { return };
+    let Some(worker) = state.worker().ok() else { return };
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let Ok(Some(saved)) = worker.get_window_state(app.state::<AppState>().generation.clone()).await else {
+            return;
+        };
+        let Some(window) = app.get_webview_window("main") else { return };
+        if saved.width < 100.0 || saved.height < 100.0 {
+            return;
+        }
+        if saved.maximized {
+            let _ = window.maximize();
+            return;
+        }
+        let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize {
+            width: saved.width,
+            height: saved.height,
+        }));
+        let position = tauri::Position::Logical(tauri::LogicalPosition {
+            x: saved.x,
+            y: saved.y,
+        });
+        let inside = app
+            .primary_monitor()
+            .ok()
+            .flatten()
+            .is_some_and(|monitor| {
+                let origin = monitor.position();
+                let size = monitor.size();
+                let scale = monitor.scale_factor();
+                let (left, top) = (origin.x as f64 / scale, origin.y as f64 / scale);
+                let (right, bottom) = (
+                    left + size.width as f64 / scale,
+                    top + size.height as f64 / scale,
+                );
+                saved.x >= left && saved.y >= top && saved.x < right && saved.y < bottom
+            });
+        if inside {
+            let _ = window.set_position(position);
+        }
+    });
+}
+
+/// 关闭窗口（实际是隐藏）时保存几何，下次启动沿用用户习惯的布局。
+pub fn save_window_state(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else { return };
+    let Ok(position) = window.outer_position() else { return };
+    let Ok(size) = window.outer_size() else { return };
+    let scale = window.scale_factor().unwrap_or(1.0).max(0.01);
+    let state = crate::storage::configuration::WindowState {
+        x: position.x as f64 / scale,
+        y: position.y as f64 / scale,
+        width: size.width as f64 / scale,
+        height: size.height as f64 / scale,
+        maximized: window.is_maximized().unwrap_or(false),
+    };
+    let Some(app_state) = app.try_state::<AppState>() else { return };
+    let Ok(worker) = app_state.worker() else { return };
+    let generation = app_state.generation.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = worker.save_window_state(generation, state).await;
+    });
+}
+
 pub fn show_main(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let result = window

@@ -27,6 +27,7 @@ pub fn run() {
             app.manage(app::tray::TrayState::default());
             app::lifecycle::install_tray(&handle)?;
             app::tray::install_popup(&handle)?;
+            app::lifecycle::restore_window_state(&handle);
             app::tray::start_flasher(handle.clone());
             Ok(())
         })
@@ -83,6 +84,7 @@ pub fn run() {
                     .is_some_and(|state| !state.exit_completed())
             {
                 api.prevent_close();
+                app::lifecycle::save_window_state(&window.app_handle());
                 let _ = window.hide();
             }
         })

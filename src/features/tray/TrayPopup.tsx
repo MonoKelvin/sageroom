@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { IconMessageCircle, IconUsers } from "@tabler/icons-react"
+import { IconUsers } from "@tabler/icons-react"
 import type { AppSnapshot, InboxSummary } from "@/contracts/generated"
+import { listen } from "@tauri-apps/api/event"
 import { ipc, isDesktopEnvironment } from "@/app/ipc"
 import { useAppearance } from "@/app/useAppearance"
 import { formatConversationTime } from "@/features/chat/message-time"
@@ -19,10 +20,13 @@ export function TrayPopup() {
   const refresh = useCallback(async () => {
     if (!isDesktopEnvironment()) return
     try {
-      const next = await ipc.snapshot({ data_generation_id: null, last_event_seq: null })
-      const inbox = await ipc.getInbox({ data_generation_id: next.data_generation_id })
-      generation.current = next.data_generation_id
-      setSnapshot(next)
+      // generation 只需取一次；托盘窗口每次显示都重新拉未读汇总。
+      if (!generation.current) {
+        const next = await ipc.snapshot({ data_generation_id: null, last_event_seq: null })
+        generation.current = next.data_generation_id
+        setSnapshot(next)
+      }
+      const inbox = await ipc.getInbox({ data_generation_id: generation.current })
       setSummary(inbox)
     } catch {
       // 面板保持上一次内容；错误不影响主窗口的聊天与提示。
@@ -31,9 +35,12 @@ export function TrayPopup() {
 
   useEffect(() => {
     queueMicrotask(() => { void refresh() })
+    // Rust 在每次显示时直接推送汇总，绕过 IPC 时序；同时保留旧事件作为兜底。
+    let unlisten: (() => void) | undefined
+    void listen<InboxSummary>("sageroom-tray-summary", (event) => { setSummary(event.payload) }).then((fn) => { unlisten = fn })
     const handler = () => { void refresh() }
     window.addEventListener("sageroom-tray-refresh", handler)
-    return () => window.removeEventListener("sageroom-tray-refresh", handler)
+    return () => { window.removeEventListener("sageroom-tray-refresh", handler); unlisten?.() }
   }, [refresh])
 
   async function open(conversationId: string, throughSeq: string) {
@@ -46,14 +53,12 @@ export function TrayPopup() {
     }
   }
 
-  const conversations = summary?.conversations ?? []
-  const total = summary?.unread_total ?? 0
+  // 与 Rust 侧的弹出条件保持一致：只列有未读的会话，空房间不进面板。
+  const conversations = (summary?.conversations ?? []).filter((item) => item.unread_count > 0)
   return <div className="tray-panel">
-    <header className="tray-panel-heading">
-      <span className="tray-panel-title">会话</span>
-      {total > 0 && <span className="tray-panel-count">{total > 99 ? "99+" : total} 条未读</span>}
-    </header>
-    {conversations.length === 0
+    {!summary
+      ? <p className="tray-panel-empty">正在读取…</p>
+      : conversations.length === 0
       ? <p className="tray-panel-empty">暂无会话</p>
       : <ul className="tray-conversation-list">
         {conversations.map((item) => <li key={item.id}>
@@ -72,6 +77,5 @@ export function TrayPopup() {
           </button>
         </li>)}
       </ul>}
-    <footer className="tray-panel-footer"><IconMessageCircle size={14} stroke={1.5} aria-hidden="true" /><span>点击会话打开 Sageroom</span></footer>
   </div>
 }

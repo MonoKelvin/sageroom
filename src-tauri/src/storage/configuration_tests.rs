@@ -7,6 +7,7 @@ use tempfile::TempDir;
 use uuid::Uuid;
 
 use crate::domain::{contracts::*, error::AppResult};
+use crate::storage::configuration::WindowState;
 
 use super::{
     backup::backup_database,
@@ -1239,4 +1240,29 @@ fn inbox_preferences_do_not_disturb_news_configuration() {
         .unwrap();
     let _ = database.get_inbox(GENERATION).unwrap();
     assert_eq!(database.get_news_configuration(GENERATION).unwrap(), saved);
+}
+
+
+#[test]
+fn window_state_round_trips_in_preferences() {
+    let (_directory, mut database) = database();
+    assert!(database.get_window_state(GENERATION).unwrap().is_none());
+    let state = WindowState {
+        x: 120.5,
+        y: 80.0,
+        width: 1180.0,
+        height: 860.0,
+        maximized: false,
+    };
+    database.save_window_state(GENERATION, &state).unwrap();
+    assert_eq!(database.get_window_state(GENERATION).unwrap(), Some(state));
+
+    // 不覆盖其他偏好键
+    let json: String = database.conn.query_row(
+        "SELECT preferences_json FROM global_configuration WHERE singleton = 1",
+        [],
+        |row| row.get(0),
+    ).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert!(value.get("window").is_some());
 }

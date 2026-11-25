@@ -218,8 +218,81 @@ mod platform {
         unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
     }
 
+    /// 给窗口补上类图标与窗口图标。
+    ///
+    /// tao 注册窗口类时没有设置 hIcon，Win11 首次显示任务栏按钮时会回退到 exe 默认图标；
+    /// 隐藏再显示后系统重新读取图标才正常。这里在建窗阶段显式设置，避免首次打开的错误图标。
+    /// 图标帧直接取自内嵌的多尺寸 ICO，按最大帧创建 HICON，任务栏在高 DPI 下也不会模糊。
+    fn install_window_icon(hwnd: HWND) {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            CreateIconFromResourceEx, GCLP_HICON, GCLP_HICONSM, ICON_BIG, ICON_SMALL,
+            LR_DEFAULTCOLOR, SetClassLongPtrW, WM_SETICON,
+
+            SendMessageW,
+        };
+
+        const ICON_DIR: &[u8] = include_bytes!("../../icons/icon.ico");
+        // ICO 目录：6 字节头 + 每条 16 字节目录项（宽、高、颜色数、保留、平面、位深、字节数、偏移）。
+        if ICON_DIR.len() < 6 {
+            return;
+        }
+        let count = u16::from_le_bytes([ICON_DIR[4], ICON_DIR[5]]) as usize;
+        let mut best: Option<(u32, usize, usize)> = None; // (边长, 偏移, 字节数)
+        for index in 0..count {
+            let entry = 6 + index * 16;
+            if entry + 16 > ICON_DIR.len() {
+                break;
+            }
+            // ICO 目录里 256 用 0 编码（单字节表示不了 256）。
+            let width = if ICON_DIR[entry] == 0 { 256 } else { ICON_DIR[entry] as u32 };
+            let height = if ICON_DIR[entry + 1] == 0 { 256 } else { ICON_DIR[entry + 1] as u32 };
+            let size = u32::from_le_bytes([
+                ICON_DIR[entry + 8],
+                ICON_DIR[entry + 9],
+                ICON_DIR[entry + 10],
+                ICON_DIR[entry + 11],
+            ]) as usize;
+            let offset = u32::from_le_bytes([
+                ICON_DIR[entry + 12],
+                ICON_DIR[entry + 13],
+                ICON_DIR[entry + 14],
+                ICON_DIR[entry + 15],
+            ]) as usize;
+            if offset + size > ICON_DIR.len() {
+                continue;
+            }
+            let side = width.max(height);
+            if best.map_or(true, |(current, _, _)| side > current) {
+                best = Some((side, offset, size));
+            }
+        }
+        let Some((_, offset, size)) = best else { return };
+        let icon = unsafe {
+            CreateIconFromResourceEx(
+                ICON_DIR[offset..].as_ptr(),
+                size as u32,
+                1,
+                0x0003_0000,
+                0,
+                0,
+                LR_DEFAULTCOLOR,
+            )
+        };
+        if icon.is_null() {
+            return;
+        }
+        unsafe {
+            // 类图标决定任务栏首次按钮的图标；窗口图标用于 Alt-Tab 与标题栏。
+            SetClassLongPtrW(hwnd, GCLP_HICON, icon as isize);
+            SetClassLongPtrW(hwnd, GCLP_HICONSM, icon as isize);
+            SendMessageW(hwnd, WM_SETICON, ICON_BIG as usize, icon as isize);
+            SendMessageW(hwnd, WM_SETICON, ICON_SMALL as usize, icon as isize);
+        }
+    }
+
     pub fn configure(window: &WebviewWindow) -> Result<(), Box<dyn std::error::Error>> {
         let hwnd = window.hwnd()?.0 as HWND;
+        install_window_icon(hwnd);
         let corner = DWMWCP_DONOTROUND;
         let result = unsafe {
             DwmSetWindowAttribute(

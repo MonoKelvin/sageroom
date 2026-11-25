@@ -1,12 +1,12 @@
 use std::{sync::Mutex, time::Duration};
 
 use tauri::{
-    AppHandle, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
     image::Image,
     tray::{MouseButton, MouseButtonState, TrayIconEvent},
 };
 
-use crate::domain::contracts::TraySyncState;
+use crate::domain::contracts::{InboxGetRequest, InboxSummary, TraySyncState};
 
 pub const POPUP_LABEL: &str = "tray_popup";
 pub const TRAY_ID: &str = "sageroom";
@@ -42,6 +42,10 @@ impl TrayState {
     /// 没有会话时悬停不弹面板：空列表没有可点的东西，弹出来只是遮挡。
     fn has_conversations(&self) -> bool {
         self.0.lock().expect("托盘状态锁被污染").conversation_count > 0
+    }
+
+    fn conversation_count(&self) -> u32 {
+        self.0.lock().expect("托盘状态锁被污染").conversation_count
     }
 
     fn set_anchor(&self, anchor: PhysicalPosition<f64>) {
@@ -173,6 +177,14 @@ pub fn show_popup(app: &AppHandle, position: PhysicalPosition<f64>) {
     };
     let state = app.state::<TrayState>();
     state.set_anchor(position);
+    // 面板高度按未读会话数伸缩，避免少数会话时留大片空白、多会话时被固定高度裁切。
+    let count = app.state::<TrayState>().conversation_count();
+    let logical_height = (52.0 + count.min(5) as f64 * 56.0).max(108.0);
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize {
+        width: (POPUP_WIDTH * scale) as u32,
+        height: (logical_height * scale) as u32,
+    }));
     let size = window
         .outer_size()
         .unwrap_or(tauri::PhysicalSize::new(POPUP_WIDTH as u32, POPUP_HEIGHT as u32));
@@ -199,8 +211,16 @@ pub fn show_popup(app: &AppHandle, position: PhysicalPosition<f64>) {
     }
     let _ = window.set_position(PhysicalPosition::new(x, y));
     let _ = window.show();
-    // 面板每次显示都刷新数据，避免悬浮期间读到旧未读。
-    let _ = window.eval("window.dispatchEvent(new CustomEvent('sageroom-tray-refresh'))");
+    // 直接读取并推送汇总，避免面板自己两次 IPC 与事件监听的时序竞态。
+    let push_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let Some(state) = push_app.try_state::<crate::app::state::AppState>() else { return };
+        let Ok(worker) = state.worker() else { return };
+        let generation = state.generation.clone();
+        if let Ok(summary) = worker.get_inbox(InboxGetRequest { data_generation_id: generation }).await {
+            let _ = push_app.emit("sageroom-tray-summary", summary);
+        }
+    });
     watch_popup(app.clone());
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "sageroom",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "productName": "Sageroom",
   "description": "本地优先的桌面智能体聊天室",

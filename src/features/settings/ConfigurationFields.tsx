@@ -185,7 +185,7 @@ export function ModelFields({ value, onChange, sourceReadOnly = false, active = 
 }) {
   return <div className="config-stack">
     <Field label="配置名称"><EditableInput label="配置名称" active={active} maxLength={80} readOnly={sourceReadOnly} value={value.name} normalize={(next) => next.trim()} validate={(next) => validateText(next, 80, true)} onApply={(name) => onChange({ name })} /></Field>
-    <Field label="协议类型"><SettingsSelect label="协议类型" value={value.protocol} disabled={sourceReadOnly} options={[
+    <Field label="协议类型"><SettingsSelect label="协议类型" className="settings-select-wide" value={value.protocol} disabled={sourceReadOnly} options={[
       { value: "openai_chat_completions", label: "OpenAI Chat Completions" }, { value: "anthropic_messages", label: "Anthropic Messages" }, { value: "openai_responses", label: "OpenAI Responses" },
     ]} onValueChange={(protocol) => onChange({ protocol: protocol as ModelProfileInput["protocol"] })} /></Field>
     <Field label="API 地址" caption={sourceReadOnly ? "来源地址只读；更换服务请创建独立全局预设。" : undefined}><EditableInput label="API 地址" active={active} maxLength={2048} readOnly={sourceReadOnly} value={value.base_url} placeholder="https://api.example.com/v1" normalize={(next) => next.trim()} validate={validateModelUrl} onApply={(base_url) => onChange({ base_url })} /></Field>

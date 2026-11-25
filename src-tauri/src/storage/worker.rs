@@ -302,6 +302,14 @@ impl DbWorker {
             .await
     }
 
+    pub async fn get_window_state(&self, generation: String) -> AppResult<Option<super::configuration::WindowState>> {
+        self.call(move |database| database.get_window_state(&generation)).await
+    }
+
+    pub async fn save_window_state(&self, generation: String, state: super::configuration::WindowState) -> AppResult<()> {
+        self.call(move |database| database.save_window_state(&generation, &state)).await
+    }
+
     pub async fn delete_agent(&self, request: AgentDeleteRequest) -> AppResult<()> {
         self.call(move |database| database.delete_agent(request)).await
     }

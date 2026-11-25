@@ -20,7 +20,9 @@
   cursor: not-allowed;
 }
 
-.settings-editor { width: 100%; min-width: 0; }
+/* 下拉触发器按内容宽度收窄后靠右，与右列其他控件对齐；日历月/年选择器用 width:100% 占满，不受影响 */
+.settings-editor { display: flex; justify-content: flex-end; width: 100%; min-width: 0; }
+.settings-editor > .settings-select-trigger { margin-left: auto; }
 .settings-control {
   width: 100%;
   min-width: 0;
@@ -69,7 +71,7 @@
   .settings-editor-trigger:where(:hover, :focus-visible) { background: var(--control-bg); }
   .settings-editor-trigger:where(:hover, :focus-visible) > svg { opacity: 1; }
 }
-.settings-textarea-container { position: relative; min-width: 0; border-radius: var(--radius); overflow: clip; }
+.settings-textarea-container { position: relative; width: 100%; min-width: 0; border-radius: var(--radius); overflow: clip; }
 .settings-textarea { display: block; min-height: calc(var(--size-unit) * 28); padding: calc(var(--size-unit) * 2.5) var(--space-3) calc(var(--size-unit) * 11.75); resize: vertical; }
 .settings-textarea-actions {
   position: absolute;
@@ -120,7 +122,7 @@
 .ui-tooltip[data-state="delayed-open"] { animation: settings-tooltip-in var(--motion-duration) var(--motion-ease); }
 @keyframes settings-tooltip-in { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
 
-.settings-select-trigger { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: var(--control-height); padding: var(--space-2) var(--space-3); cursor: pointer; text-align: left; }
+.settings-select-trigger { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); width: fit-content; max-width: 100%; min-width: min(calc(var(--select-label-width, 12ch) + var(--space-6) + var(--control-height)), 100%); min-height: var(--control-height); padding: var(--space-2) var(--space-3); cursor: pointer; text-align: left; }
 .settings-select-trigger > span:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .settings-select-trigger > span:last-child { display: flex; flex: none; color: var(--text-secondary); }
 .settings-select-content {
@@ -207,3 +209,6 @@ html[data-reduced-motion="true"] :is(.ui-button, .settings-checkbox, .settings-s
 @media (prefers-reduced-motion: reduce) {
   :is(.ui-button, .settings-checkbox, .settings-switch, .ui-tooltip) { transition: none !important; animation: none !important; transform: none !important; }
 }
+/* 需要与其他全宽控件对齐时显式声明，默认下拉仍按内容宽度 */
+.settings-editor:has(> .settings-select-wide) { justify-content: stretch; }
+.settings-editor > .settings-select-wide { width: 100%; min-width: 0; margin-left: 0; }

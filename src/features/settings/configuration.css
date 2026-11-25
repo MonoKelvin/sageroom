@@ -66,7 +66,7 @@
 .config-item-actions button.danger-icon { color: var(--status-danger); }
 /* 分类切换与配置内容放在同一容器，避免叠加 panel-content 的 20px 全局 gap */
 .config-sections { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
-.config-segmented { margin-bottom: 0; }
+.config-segmented { margin-bottom: var(--space-5); }
 /* 全局配置标题：图标与文字按中线对齐，图标不随标题字号缩放 */
 .config-panel-title { display: inline-flex; align-items: center; gap: var(--space-2); }
 .config-panel-title svg { flex: none; color: var(--text-secondary); }
@@ -176,3 +176,6 @@ html[data-reduced-motion="true"] .experience-collapse { transition: none; }
 /* 头像按钮本身不带背景、边框与圆角，点击反馈交给 tooltip；避免任何额外几何层在 squircle 四角产生合成缝隙。 */
 .agent-avatar-button { flex: none; display: inline-flex; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .agent-sections { margin-bottom: var(--space-3); }
+/* 来源测试结果独立成块，不挤占「来源测试」字段的右列 */
+.news-preview-result { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding-top: var(--space-3); border-top: var(--stroke-width) solid var(--border); }
+.news-preview-result > .form-caption { margin: 0; }

@@ -9,7 +9,7 @@
 .search-calendar-heading { display: flex; align-items: center; gap: var(--space-1); margin-bottom: var(--space-2); }
 .search-calendar-heading .ui-button, .search-calendar-actions .ui-button { transform: none; }
 .search-calendar-month { display: flex; justify-content: center; align-items: center; flex: 1; gap: var(--space-1); min-width: 0; }
-.search-calendar-month .settings-select-trigger { background: transparent; gap: var(--space-1); padding-inline: var(--space-2); }
+.search-calendar-month .settings-select-trigger { flex: 1; width: 100%; background: transparent; gap: var(--space-1); padding-inline: var(--space-2); }
 .search-calendar-grid { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: calc(var(--size-unit) * .5); font-variant-numeric: tabular-nums; }
 .search-calendar-grid th { height: var(--space-6); color: var(--text-secondary); font-size: var(--font-caption); font-weight: 400; text-align: center; }
 .search-calendar-grid td { padding: 0; }

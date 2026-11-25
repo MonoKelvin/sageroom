@@ -12,21 +12,17 @@ html[data-tray-popup="true"] body { overflow: hidden; }
   padding: var(--space-2);
   border: var(--stroke-width) solid var(--floating-border);
   border-radius: var(--radius-card);
-  background: var(--surface-content);
+  background: var(--surface-canvas);
   box-shadow: var(--floating-shadow);
   overflow: hidden;
 }
-.tray-panel-heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--space-2) var(--space-1); }
-.tray-panel-title { color: var(--text-primary); font-size: var(--font-body); font-weight: 500; }
-.tray-panel-count { color: var(--text-secondary); font-size: var(--font-caption); font-variant-numeric: tabular-nums; }
 .tray-panel-empty { margin: 0; padding: 0 var(--space-2); color: var(--text-secondary); font-size: var(--font-caption); }
-.tray-conversation-list { display: flex; flex-direction: column; gap: calc(var(--size-unit) * .5); min-height: 0; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.tray-conversation-list { display: flex; flex-direction: column; gap: calc(var(--size-unit) * .5); min-height: 0; margin: 0; padding: var(--space-1) 0; overflow: auto; list-style: none; }
 .tray-conversation { display: flex; align-items: flex-start; width: 100%; min-width: 0; gap: var(--space-2); padding: var(--space-2); border: 0; border-radius: var(--radius); background: transparent; color: var(--text-primary); text-align: left; cursor: pointer; }
 .tray-avatar { position: relative; display: grid; place-items: center; flex: none; width: calc(var(--size-unit) * 9); height: calc(var(--size-unit) * 9); border-radius: var(--radius); background: var(--accent); color: var(--text-primary); }
 /* 角标外观与导航、聊天列表共用 .unread-badge，这里只声明面板内的锚点。 */
 .tray-unread-tag { position: absolute; top: calc(var(--size-unit) * -1); right: calc(var(--size-unit) * -1); }
 .tray-conversation-main { display: flex; flex: 1; flex-direction: column; gap: calc(var(--size-unit) * .5); min-width: 0; }
-.tray-panel-footer { display: flex; align-items: center; gap: var(--space-1); margin-top: auto; padding: var(--space-2); color: var(--text-secondary); font-size: var(--font-caption); }
 @media (hover: hover) and (pointer: fine) {
   .tray-conversation:hover { background: var(--control-hover-bg); }
 }

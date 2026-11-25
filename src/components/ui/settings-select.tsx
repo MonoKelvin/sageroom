@@ -1,4 +1,4 @@
-import { useId, type ComponentProps } from "react"
+import { useId, type CSSProperties, type ComponentProps } from "react"
 import * as SelectPrimitive from "@radix-ui/react-select"
 import { IconCheck, IconChevronDown, IconChevronUp } from "@tabler/icons-react"
 import { applicationFrame, applicationLayerContainer } from "@/app/application-layers"
@@ -25,8 +25,15 @@ export function SettingsSelect({
   const selectedIndex = options.findIndex((option) => option.value === value)
   // 业务空值不能交给 Radix Item，所有值统一走索引以免碰撞。
   const internalValue = selectedIndex < 0 ? "" : String(selectedIndex)
+  // 宽度按最长选项估算：中文按 1ch、ASCII 按 0.55ch，再加图标与左右内边距。
+  // 用 ch 而非固定宽度，切换选项时触发器宽度不跳动，最长项也能完整显示。
+  const widest = options.reduce((longest, option) => {
+    const units = [...option.label].reduce((sum, char) => sum + (char.charCodeAt(0) > 255 ? 1 : 0.55), 0)
+    return Math.max(longest, units)
+  }, placeholder.length)
+  const widthStyle = { "--select-label-width": `${Math.ceil(widest)}ch` } as CSSProperties
   return (
-    <div className="settings-editor">
+    <div className="settings-editor" style={widthStyle}>
       <SelectPrimitive.Root
         value={internalValue}
         disabled={disabled}

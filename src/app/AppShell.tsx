@@ -47,7 +47,8 @@ function ApplicationShell({ session }: { session: ReturnType<typeof useChatSessi
   // 托盘只在窗口未激活、或激活但不在聊天页时闪动；免打扰未读不计入汇总。
   const generation = session.snapshot?.data_generation_id ?? null
   const unreadTotal = inbox.summary?.unread_total ?? 0
-  const conversationCount = inbox.summary?.conversations.length ?? 0
+  // 托盘只在有未读会话时弹出面板；空房间列表不该让 hover 出一块空面板。
+  const conversationCount = inbox.summary?.conversations.filter((item) => item.unread_count > 0).length ?? 0
   const trayFlashing = unreadTotal > 0 && (!focused || currentPage !== "chat")
   useEffect(() => {
     if (!generation) return

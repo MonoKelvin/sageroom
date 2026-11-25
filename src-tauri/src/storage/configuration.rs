@@ -915,6 +915,56 @@ fn write_inbox_preferences(conn: &Connection, preferences: &InboxPreferences) ->
     Ok(())
 }
 
+/// 主窗口几何。逻辑像素，避免跨 DPI 显示器时按物理像素恢复导致漂移。
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct WindowState {
+    #[serde(default)]
+    pub x: f64,
+    #[serde(default)]
+    pub y: f64,
+    #[serde(default)]
+    pub width: f64,
+    #[serde(default)]
+    pub height: f64,
+    #[serde(default)]
+    pub maximized: bool,
+}
+
+const WINDOW_PREFERENCES_KEY: &str = "window";
+
+impl Database {
+    pub fn get_window_state(&self, generation: &str) -> AppResult<Option<WindowState>> {
+        self.check_generation(generation)?;
+        let json: String = self.conn.query_row(
+            "SELECT preferences_json FROM global_configuration WHERE singleton = 1",
+            [],
+            |row| row.get(0),
+        )?;
+        let value: serde_json::Value = serde_json::from_str(&json)?;
+        match value.get(WINDOW_PREFERENCES_KEY) {
+            Some(state) => serde_json::from_value(state.clone()).map(Some).map_err(Into::into),
+            None => Ok(None),
+        }
+    }
+
+    pub fn save_window_state(&mut self, generation: &str, state: &WindowState) -> AppResult<()> {
+        self.check_generation(generation)?;
+        let json: String = self.conn.query_row(
+            "SELECT preferences_json FROM global_configuration WHERE singleton = 1",
+            [],
+            |row| row.get(0),
+        )?;
+        let mut value: serde_json::Value = serde_json::from_str(&json)?;
+        value[WINDOW_PREFERENCES_KEY] = serde_json::to_value(state)?;
+        self.conn.execute(
+            "UPDATE global_configuration SET preferences_json = ?1 WHERE singleton = 1",
+            [serde_json::to_string(&value)?],
+        )?;
+        Ok(())
+    }
+}
+
 const IMAGE_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "webp", "gif", "bmp", "avif"];
 
 /// 把消息片段转成一行文本摘要：附件与表情不暴露内部 ID。
