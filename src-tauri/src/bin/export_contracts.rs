@@ -120,6 +120,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     export::<ApiResponse<InboxSummary>>("InboxMarkReadResponse", &config, &mut schemas)?;
     export::<InboxMuteRequest>("InboxMuteRequest", &config, &mut schemas)?;
     export::<ApiResponse<InboxSummary>>("InboxMuteResponse", &config, &mut schemas)?;
+    export::<ApiResponse<()>>("OpenExternalLinkResponse", &config, &mut schemas)?;
+    export::<DataDirectoryMigrateRequest>("DataDirectoryMigrateRequest", &config, &mut schemas)?;
+    export::<ApiResponse<Option<String>>>("DataDirectoryPickResponse", &config, &mut schemas)?;
+    export::<ApiResponse<()>>("DataDirectoryMigrateResponse", &config, &mut schemas)?;
+    export::<ApiResponse<()>>("DataDirectoryResetResponse", &config, &mut schemas)?;
+    export::<UiPreferencesGetRequest>("UiPreferencesGetRequest", &config, &mut schemas)?;
+    export::<UiPreferences>("UiPreferences", &config, &mut schemas)?;
+    export::<UiPreferencesSaveRequest>("UiPreferencesSaveRequest", &config, &mut schemas)?;
+    export::<ApiResponse<UiPreferences>>("UiPreferencesGetResponse", &config, &mut schemas)?;
+    export::<ApiResponse<()>>("UiPreferencesSaveResponse", &config, &mut schemas)?;
     export::<TraySyncRequest>("TraySyncRequest", &config, &mut schemas)?;
     export::<ApiResponse<TraySyncState>>("TraySyncResponse", &config, &mut schemas)?;
     export::<TrayOpenRequest>("TrayOpenRequest", &config, &mut schemas)?;

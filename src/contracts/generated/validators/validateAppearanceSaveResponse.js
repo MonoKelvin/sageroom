@@ -1,11 +1,11 @@
 import { t as require_ucs2length } from "./ucs2length.js";
 // generated/raw-validators/validateAppearanceSaveResponse.js
 var validateAppearanceSaveResponse = validate107;
-var schema146 = {
+var schema147 = {
 	"enum": ["0.3"],
 	"type": "string"
 };
-var schema145 = {
+var schema146 = {
 	"enum": [
 		"system",
 		"light",
@@ -108,7 +108,7 @@ function validate109(data, { instancePath = "", parentData, parentDataProperty, 
 								instancePath: instancePath + "/theme",
 								schemaPath: "#/$defs/Theme/enum",
 								keyword: "enum",
-								params: { allowedValues: schema145.enum },
+								params: { allowedValues: schema146.enum },
 								message: "must be equal to one of the allowed values"
 							}];
 							return false;
@@ -200,7 +200,7 @@ function validate108(data, { instancePath = "", parentData, parentDataProperty, 
 									instancePath: instancePath + "/schema_version",
 									schemaPath: "#/$defs/SchemaVersion/enum",
 									keyword: "enum",
-									params: { allowedValues: schema146.enum },
+									params: { allowedValues: schema147.enum },
 									message: "must be equal to one of the allowed values"
 								}];
 								return false;
@@ -229,7 +229,7 @@ validate108.evaluated = {
 	"dynamicProps": false,
 	"dynamicItems": false
 };
-var schema148 = {
+var schema149 = {
 	"additionalProperties": false,
 	"properties": {
 		"code": { "$ref": "#/$defs/ErrorCode" },
@@ -249,7 +249,7 @@ var schema148 = {
 	],
 	"type": "object"
 };
-var schema149 = { "oneOf": [{
+var schema150 = { "oneOf": [{
 	"enum": [
 		"INVALID_INPUT",
 		"PERMISSION_DENIED",
@@ -276,7 +276,7 @@ var schema149 = { "oneOf": [{
 	"description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
 	"type": "string"
 }] };
-var schema150 = {
+var schema151 = {
 	"enum": [
 		"never",
 		"retry",
@@ -339,7 +339,7 @@ function validate113(data, { instancePath = "", parentData, parentDataProperty, 
 								instancePath: instancePath + "/code",
 								schemaPath: "#/$defs/ErrorCode/oneOf/0/enum",
 								keyword: "enum",
-								params: { allowedValues: schema149.oneOf[0].enum },
+								params: { allowedValues: schema150.oneOf[0].enum },
 								message: "must be equal to one of the allowed values"
 							};
 							if (vErrors === null) vErrors = [err1];
@@ -415,7 +415,7 @@ function validate113(data, { instancePath = "", parentData, parentDataProperty, 
 									instancePath: instancePath + "/field_path",
 									schemaPath: "#/properties/field_path/type",
 									keyword: "type",
-									params: { type: schema148.properties.field_path.type },
+									params: { type: schema149.properties.field_path.type },
 									message: "must be string,null"
 								}];
 								return false;
@@ -471,7 +471,7 @@ function validate113(data, { instancePath = "", parentData, parentDataProperty, 
 												instancePath: instancePath + "/retryability",
 												schemaPath: "#/$defs/Retryability/enum",
 												keyword: "enum",
-												params: { allowedValues: schema150.enum },
+												params: { allowedValues: schema151.enum },
 												message: "must be equal to one of the allowed values"
 											}];
 											return false;
@@ -583,7 +583,7 @@ function validate112(data, { instancePath = "", parentData, parentDataProperty, 
 									instancePath: instancePath + "/schema_version",
 									schemaPath: "#/$defs/SchemaVersion/enum",
 									keyword: "enum",
-									params: { allowedValues: schema146.enum },
+									params: { allowedValues: schema147.enum },
 									message: "must be equal to one of the allowed values"
 								}];
 								return false;

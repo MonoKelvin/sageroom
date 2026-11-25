@@ -201,6 +201,28 @@ pub fn save_window_state(app: &AppHandle) {
     });
 }
 
+/// 主窗口关闭请求：按用户偏好决定隐藏到托盘还是退出应用。
+/// 事件回调必须同步调用 prevent_close，读取偏好放到异步任务里完成。
+pub fn handle_close_request(app: &AppHandle) {
+    save_window_state(app);
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let exit = match handle.try_state::<AppState>().and_then(|state| state.worker().ok()) {
+            Some(worker) => {
+                let generation = handle.state::<AppState>().generation.clone();
+                worker.get_ui_preferences(generation).await
+                    .is_ok_and(|preferences| preferences.close_action == crate::domain::contracts::CloseAction::Exit)
+            }
+            None => false,
+        };
+        if exit {
+            request_exit(handle);
+        } else if let Some(window) = handle.get_webview_window("main") {
+            let _ = window.hide();
+        }
+    });
+}
+
 pub fn show_main(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let result = window

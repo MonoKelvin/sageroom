@@ -1,3 +1,4 @@
+import { sendOnEnter } from "@/app/uiPreferences"
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
 import { IconAt, IconClipboard, IconCopy, IconCut, IconSelectAll, IconSendFilled, IconTrash, IconX } from "@tabler/icons-react"
 import type { ChatMessage, Participant } from "@/contracts/generated"
@@ -193,7 +194,10 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key !== "Enter" || event.shiftKey) return
+    if (event.key !== "Enter") return
+    const enterSends = sendOnEnter()
+    // Enter 发送模式下 Shift+Enter 换行；Ctrl+Enter 发送模式下 Enter 换行。
+    if (enterSends ? event.shiftKey : !(event.ctrlKey || event.metaKey)) return
     if (composing.current || event.nativeEvent.isComposing || event.keyCode === 229) return
     event.preventDefault()
     void submit()

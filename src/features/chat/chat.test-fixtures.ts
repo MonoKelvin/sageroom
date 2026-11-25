@@ -72,7 +72,7 @@ export function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
     events: [],
     requires_full_reload: true,
     data_directory: "C:/Sageroom-test/data",
-    data_usage: { database_bytes: "262144", avatar_bytes: "0" },
+    data_usage: { database_bytes: "262144", avatar_bytes: "0", disk_total_bytes: "0", disk_letter: "" },
     app_version: APP_METADATA.version,
     development_tools_available: true,
     ...overrides,

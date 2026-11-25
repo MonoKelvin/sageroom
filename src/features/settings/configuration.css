@@ -6,7 +6,7 @@
 .news-preview-text strong { font-size: var(--font-body); font-weight: 500; }
 .news-preview-text p { margin: 0; }
 .config-page .workspace-detail > .surface-card { display: flex; flex: 1; flex-direction: column; overflow: hidden; }
-.config-page .panel-content.panel-scroll { flex: 1; display: flex; flex-direction: column; gap: var(--space-5); container: configuration-detail / inline-size; }
+.config-page .panel-content.panel-scroll { flex: 1; display: flex; flex-direction: column; gap: var(--space-5); padding-top: var(--space-4); container: configuration-detail / inline-size; }
 .config-page fieldset { min-width: 0; padding: 0; margin: 0; border: 0; }
 .config-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .config-disclosure { min-width: 0; }
@@ -78,11 +78,6 @@
 .setting-section-body > .config-actions { margin-top: var(--space-2); }
 .setting-section-body > .form-caption + .form-caption { margin-top: var(--space-2); }
 .config-empty-state { margin: var(--space-3) 0 0; padding: var(--space-4); color: var(--text-secondary); font-size: var(--font-body); text-align: center; }
-.config-about dl { display: grid; gap: var(--space-2); margin: 0; }
-.config-about dl > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--space-4); padding-block: var(--space-2); }
-.config-about dt { color: var(--text-secondary); font-size: var(--font-caption); }
-.config-about dd { margin: 0; overflow-wrap: anywhere; }
-.config-about a { color: var(--semantic-accent); text-decoration: underline; text-underline-offset: var(--space-1); }
 .config-operation-status { padding: var(--space-3); border-radius: var(--radius); background: var(--control-bg); color: var(--text-primary); font-weight: 500; }
 .config-operation-status p { margin: 0; }
 .config-operation-status .form-caption { margin-top: var(--space-2); font-weight: 400; }
@@ -179,3 +174,46 @@ html[data-reduced-motion="true"] .experience-collapse { transition: none; }
 /* 来源测试结果独立成块，不挤占「来源测试」字段的右列 */
 .news-preview-result { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding-top: var(--space-3); border-top: var(--stroke-width) solid var(--border); }
 .news-preview-result > .form-caption { margin: 0; }
+.config-stats { display: grid; gap: var(--space-2); margin: 0; }
+.config-stats > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--space-4); padding-block: var(--space-2); border-bottom: var(--stroke-width) solid var(--border); }
+.config-stats > div:last-child { border-bottom: 0; }
+.config-stats dt { color: var(--text-secondary); font-size: var(--font-caption); }
+.config-stats dd { display: flex; justify-content: flex-end; min-width: 0; margin: 0; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.config-stats a { color: var(--semantic-accent); text-decoration: underline; text-underline-offset: var(--space-1); }
+.settings-tight { gap: var(--space-3); }
+.data-directory-value { display: flex; flex: 1 1 auto; flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: var(--space-1); min-width: 0; }
+.data-directory-value > .ui-button { flex: none; }
+.data-directory-path-wrap { display: block; flex: 1 1 0; min-width: 0; overflow: hidden; }
+.data-directory-path { display: inline-block; max-width: 100%; white-space: nowrap; color: var(--text-primary); cursor: default; font-variant-numeric: tabular-nums; }
+.disk-total { color: var(--text-secondary); }
+.about-brand { display: flex; align-items: center; gap: var(--space-4); padding-bottom: var(--space-5); border-bottom: var(--stroke-width) solid var(--border); }
+.about-logo { flex: none; width: calc(var(--size-unit) * 28.8); height: calc(var(--size-unit) * 28.8); border-radius: var(--radius); object-fit: contain; }
+.about-brand-copy { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.about-brand-copy strong { color: var(--text-primary); font-size: var(--font-title); font-weight: 600; }
+.about-brand-copy p { margin: 0; color: var(--text-secondary); font-size: var(--font-caption); line-height: 1.6; }
+/* 隐私协议对话框：占窗口有效高度的 80%，内容区独立滚动 */
+.privacy-dialog { width: calc(var(--application-layer-width, 100vw) * 0.8); max-width: calc(100vw - var(--space-8)); height: calc(var(--application-layer-height, 100dvh) * 0.8); max-height: none; }
+.privacy-dialog .app-dialog-body { overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 0 var(--space-4) 0 var(--space-5); }
+.privacy-text { color: var(--text-primary); font-size: var(--font-body); line-height: 1.75; }
+.privacy-text h2 { margin: 0 0 var(--space-3); font-size: var(--font-title); font-weight: 600; }
+.privacy-text h3 { margin: var(--space-5) 0 var(--space-2); color: var(--text-primary); font-size: var(--font-body); font-weight: 600; }
+.privacy-text h4 { margin: var(--space-4) 0 var(--space-2); color: var(--text-primary); font-size: var(--font-body); font-weight: 500; }
+.privacy-text p { margin: 0 0 var(--space-3); }
+.privacy-text strong { color: var(--text-primary); font-weight: 600; }
+.privacy-text a { color: var(--semantic-accent); text-decoration: underline; text-underline-offset: var(--space-1); }
+.privacy-text ul, .privacy-text ol { display: block; margin: 0 0 var(--space-3); padding-left: var(--space-6); }
+.privacy-text li { display: list-item; padding-left: var(--space-1); line-height: 1.75; }
+.privacy-text li + li { margin-top: var(--space-2); }
+.privacy-text li::marker { color: var(--text-secondary); }
+.privacy-text ul { list-style-type: disc; }
+.privacy-text ol { list-style-type: decimal; }
+.privacy-divider { height: 0; margin: var(--space-5) 0; border: 0; border-top: var(--stroke-width) solid var(--border); }
+.privacy-table { display: flex; flex-direction: column; margin: var(--space-2) 0 var(--space-4); border: var(--stroke-width) solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.privacy-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); padding: var(--space-2) var(--space-3); font-size: var(--font-caption); }
+.privacy-row + .privacy-row { border-top: var(--stroke-width) solid var(--border); }
+.privacy-table-head { background: var(--control-bg); color: var(--text-primary); font-weight: 600; }
+.privacy-row span { min-width: 0; overflow-wrap: anywhere; }
+/* 隐私协议底部操作区：上下与右侧间距一致，按钮不再紧贴内容 */
+.privacy-dialog .app-dialog-footer { align-items: center; gap: var(--space-2); padding: var(--space-4) var(--space-5); border-top: var(--stroke-width) solid var(--border); }
+.config-stats .config-about-link { display: inline-flex; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+.config-stats .config-about-link svg { flex: none; color: var(--text-secondary); }

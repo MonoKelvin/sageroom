@@ -1,10 +1,10 @@
 // generated/raw-validators/validateNewsSecretStatusResponse.js
-var validateNewsSecretStatusResponse = validate416;
-var schema542 = {
+var validateNewsSecretStatusResponse = validate438;
+var schema568 = {
 	"enum": ["0.3"],
 	"type": "string"
 };
-var schema541 = {
+var schema567 = {
 	"description": "联网新闻来源。API Key 独立存放在系统凭据库，配置中不包含密钥。",
 	"enum": [
 		"auto",
@@ -19,15 +19,15 @@ var schema541 = {
 	],
 	"type": "string"
 };
-function validate418(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate440(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
-	const evaluated0 = validate418.evaluated;
+	const evaluated0 = validate440.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		let missing0;
 		if (data.provider === void 0 && (missing0 = "provider") || data.configured === void 0 && (missing0 = "configured")) {
-			validate418.errors = [{
+			validate440.errors = [{
 				instancePath,
 				schemaPath: "#/required",
 				keyword: "required",
@@ -37,7 +37,7 @@ function validate418(data, { instancePath = "", parentData, parentDataProperty, 
 			return false;
 		} else {
 			for (const key0 in data) if (!(key0 === "configured" || key0 === "provider")) {
-				validate418.errors = [{
+				validate440.errors = [{
 					instancePath,
 					schemaPath: "#/additionalProperties",
 					keyword: "additionalProperties",
@@ -48,7 +48,7 @@ function validate418(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 			if (data.configured !== void 0) {
 				if (typeof data.configured !== "boolean") {
-					validate418.errors = [{
+					validate440.errors = [{
 						instancePath: instancePath + "/configured",
 						schemaPath: "#/properties/configured/type",
 						keyword: "type",
@@ -63,7 +63,7 @@ function validate418(data, { instancePath = "", parentData, parentDataProperty, 
 				if (data.provider !== void 0) {
 					let data1 = data.provider;
 					if (typeof data1 !== "string") {
-						validate418.errors = [{
+						validate440.errors = [{
 							instancePath: instancePath + "/provider",
 							schemaPath: "#/$defs/NewsProvider/type",
 							keyword: "type",
@@ -73,11 +73,11 @@ function validate418(data, { instancePath = "", parentData, parentDataProperty, 
 						return false;
 					}
 					if (!(data1 === "auto" || data1 === "google_news_rss" || data1 === "ai_hot" || data1 === "free_news_trending" || data1 === "gdelt" || data1 === "bbc_technology" || data1 === "any_search" || data1 === "tavily" || data1 === "serper")) {
-						validate418.errors = [{
+						validate440.errors = [{
 							instancePath: instancePath + "/provider",
 							schemaPath: "#/$defs/NewsProvider/enum",
 							keyword: "enum",
-							params: { allowedValues: schema541.enum },
+							params: { allowedValues: schema567.enum },
 							message: "must be equal to one of the allowed values"
 						}];
 						return false;
@@ -87,7 +87,7 @@ function validate418(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 		}
 	} else {
-		validate418.errors = [{
+		validate440.errors = [{
 			instancePath,
 			schemaPath: "#/type",
 			keyword: "type",
@@ -96,25 +96,25 @@ function validate418(data, { instancePath = "", parentData, parentDataProperty, 
 		}];
 		return false;
 	}
-	validate418.errors = vErrors;
+	validate440.errors = vErrors;
 	return true;
 }
-validate418.evaluated = {
+validate440.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false
 };
-function validate417(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate439(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
 	let errors = 0;
-	const evaluated0 = validate417.evaluated;
+	const evaluated0 = validate439.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (errors === 0) {
 		if (data && typeof data == "object" && !Array.isArray(data)) {
 			let missing0;
 			if (data.schema_version === void 0 && (missing0 = "schema_version") || data.data === void 0 && (missing0 = "data")) {
-				validate417.errors = [{
+				validate439.errors = [{
 					instancePath,
 					schemaPath: "#/required",
 					keyword: "required",
@@ -125,7 +125,7 @@ function validate417(data, { instancePath = "", parentData, parentDataProperty, 
 			} else {
 				const _errs1 = errors;
 				for (const key0 in data) if (!(key0 === "data" || key0 === "schema_version")) {
-					validate417.errors = [{
+					validate439.errors = [{
 						instancePath,
 						schemaPath: "#/additionalProperties",
 						keyword: "additionalProperties",
@@ -137,14 +137,14 @@ function validate417(data, { instancePath = "", parentData, parentDataProperty, 
 				if (_errs1 === errors) {
 					if (data.data !== void 0) {
 						const _errs2 = errors;
-						if (!validate418(data.data, {
+						if (!validate440(data.data, {
 							instancePath: instancePath + "/data",
 							parentData: data,
 							parentDataProperty: "data",
 							rootData,
 							dynamicAnchors
 						})) {
-							vErrors = vErrors === null ? validate418.errors : vErrors.concat(validate418.errors);
+							vErrors = vErrors === null ? validate440.errors : vErrors.concat(validate440.errors);
 							errors = vErrors.length;
 						}
 						var valid0 = _errs2 === errors;
@@ -154,7 +154,7 @@ function validate417(data, { instancePath = "", parentData, parentDataProperty, 
 							let data1 = data.schema_version;
 							const _errs3 = errors;
 							if (typeof data1 !== "string") {
-								validate417.errors = [{
+								validate439.errors = [{
 									instancePath: instancePath + "/schema_version",
 									schemaPath: "#/$defs/SchemaVersion/type",
 									keyword: "type",
@@ -164,11 +164,11 @@ function validate417(data, { instancePath = "", parentData, parentDataProperty, 
 								return false;
 							}
 							if (!(data1 === "0.3")) {
-								validate417.errors = [{
+								validate439.errors = [{
 									instancePath: instancePath + "/schema_version",
 									schemaPath: "#/$defs/SchemaVersion/enum",
 									keyword: "enum",
-									params: { allowedValues: schema542.enum },
+									params: { allowedValues: schema568.enum },
 									message: "must be equal to one of the allowed values"
 								}];
 								return false;
@@ -179,7 +179,7 @@ function validate417(data, { instancePath = "", parentData, parentDataProperty, 
 				}
 			}
 		} else {
-			validate417.errors = [{
+			validate439.errors = [{
 				instancePath,
 				schemaPath: "#/type",
 				keyword: "type",
@@ -189,15 +189,15 @@ function validate417(data, { instancePath = "", parentData, parentDataProperty, 
 			return false;
 		}
 	}
-	validate417.errors = vErrors;
+	validate439.errors = vErrors;
 	return errors === 0;
 }
-validate417.evaluated = {
+validate439.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false
 };
-var schema544 = {
+var schema570 = {
 	"additionalProperties": false,
 	"properties": {
 		"code": { "$ref": "#/$defs/ErrorCode" },
@@ -217,7 +217,7 @@ var schema544 = {
 	],
 	"type": "object"
 };
-var schema545 = { "oneOf": [{
+var schema571 = { "oneOf": [{
 	"enum": [
 		"INVALID_INPUT",
 		"PERMISSION_DENIED",
@@ -244,7 +244,7 @@ var schema545 = { "oneOf": [{
 	"description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
 	"type": "string"
 }] };
-var schema546 = {
+var schema572 = {
 	"enum": [
 		"never",
 		"retry",
@@ -252,17 +252,17 @@ var schema546 = {
 	],
 	"type": "string"
 };
-function validate422(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate444(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
 	let errors = 0;
-	const evaluated0 = validate422.evaluated;
+	const evaluated0 = validate444.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (errors === 0) {
 		if (data && typeof data == "object" && !Array.isArray(data)) {
 			let missing0;
 			if (data.code === void 0 && (missing0 = "code") || data.message === void 0 && (missing0 = "message") || data.retryability === void 0 && (missing0 = "retryability") || data.field_path === void 0 && (missing0 = "field_path") || data.trace_id === void 0 && (missing0 = "trace_id") || data.may_have_been_charged === void 0 && (missing0 = "may_have_been_charged")) {
-				validate422.errors = [{
+				validate444.errors = [{
 					instancePath,
 					schemaPath: "#/required",
 					keyword: "required",
@@ -273,7 +273,7 @@ function validate422(data, { instancePath = "", parentData, parentDataProperty, 
 			} else {
 				const _errs1 = errors;
 				for (const key0 in data) if (!(key0 === "code" || key0 === "field_path" || key0 === "may_have_been_charged" || key0 === "message" || key0 === "retryability" || key0 === "trace_id")) {
-					validate422.errors = [{
+					validate444.errors = [{
 						instancePath,
 						schemaPath: "#/additionalProperties",
 						keyword: "additionalProperties",
@@ -307,7 +307,7 @@ function validate422(data, { instancePath = "", parentData, parentDataProperty, 
 								instancePath: instancePath + "/code",
 								schemaPath: "#/$defs/ErrorCode/oneOf/0/enum",
 								keyword: "enum",
-								params: { allowedValues: schema545.oneOf[0].enum },
+								params: { allowedValues: schema571.oneOf[0].enum },
 								message: "must be equal to one of the allowed values"
 							};
 							if (vErrors === null) vErrors = [err1];
@@ -363,7 +363,7 @@ function validate422(data, { instancePath = "", parentData, parentDataProperty, 
 							if (vErrors === null) vErrors = [err4];
 							else vErrors.push(err4);
 							errors++;
-							validate422.errors = vErrors;
+							validate444.errors = vErrors;
 							return false;
 						} else {
 							errors = _errs4;
@@ -379,11 +379,11 @@ function validate422(data, { instancePath = "", parentData, parentDataProperty, 
 							let data1 = data.field_path;
 							const _errs9 = errors;
 							if (typeof data1 !== "string" && data1 !== null) {
-								validate422.errors = [{
+								validate444.errors = [{
 									instancePath: instancePath + "/field_path",
 									schemaPath: "#/properties/field_path/type",
 									keyword: "type",
-									params: { type: schema544.properties.field_path.type },
+									params: { type: schema570.properties.field_path.type },
 									message: "must be string,null"
 								}];
 								return false;
@@ -394,7 +394,7 @@ function validate422(data, { instancePath = "", parentData, parentDataProperty, 
 							if (data.may_have_been_charged !== void 0) {
 								const _errs11 = errors;
 								if (typeof data.may_have_been_charged !== "boolean") {
-									validate422.errors = [{
+									validate444.errors = [{
 										instancePath: instancePath + "/may_have_been_charged",
 										schemaPath: "#/properties/may_have_been_charged/type",
 										keyword: "type",
@@ -409,7 +409,7 @@ function validate422(data, { instancePath = "", parentData, parentDataProperty, 
 								if (data.message !== void 0) {
 									const _errs13 = errors;
 									if (typeof data.message !== "string") {
-										validate422.errors = [{
+										validate444.errors = [{
 											instancePath: instancePath + "/message",
 											schemaPath: "#/properties/message/type",
 											keyword: "type",
@@ -425,7 +425,7 @@ function validate422(data, { instancePath = "", parentData, parentDataProperty, 
 										let data4 = data.retryability;
 										const _errs15 = errors;
 										if (typeof data4 !== "string") {
-											validate422.errors = [{
+											validate444.errors = [{
 												instancePath: instancePath + "/retryability",
 												schemaPath: "#/$defs/Retryability/type",
 												keyword: "type",
@@ -435,11 +435,11 @@ function validate422(data, { instancePath = "", parentData, parentDataProperty, 
 											return false;
 										}
 										if (!(data4 === "never" || data4 === "retry" || data4 === "after_user_action")) {
-											validate422.errors = [{
+											validate444.errors = [{
 												instancePath: instancePath + "/retryability",
 												schemaPath: "#/$defs/Retryability/enum",
 												keyword: "enum",
-												params: { allowedValues: schema546.enum },
+												params: { allowedValues: schema572.enum },
 												message: "must be equal to one of the allowed values"
 											}];
 											return false;
@@ -450,7 +450,7 @@ function validate422(data, { instancePath = "", parentData, parentDataProperty, 
 										if (data.trace_id !== void 0) {
 											const _errs18 = errors;
 											if (typeof data.trace_id !== "string") {
-												validate422.errors = [{
+												validate444.errors = [{
 													instancePath: instancePath + "/trace_id",
 													schemaPath: "#/properties/trace_id/type",
 													keyword: "type",
@@ -469,7 +469,7 @@ function validate422(data, { instancePath = "", parentData, parentDataProperty, 
 				}
 			}
 		} else {
-			validate422.errors = [{
+			validate444.errors = [{
 				instancePath,
 				schemaPath: "#/type",
 				keyword: "type",
@@ -479,25 +479,25 @@ function validate422(data, { instancePath = "", parentData, parentDataProperty, 
 			return false;
 		}
 	}
-	validate422.errors = vErrors;
+	validate444.errors = vErrors;
 	return errors === 0;
 }
-validate422.evaluated = {
+validate444.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false
 };
-function validate421(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate443(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
 	let errors = 0;
-	const evaluated0 = validate421.evaluated;
+	const evaluated0 = validate443.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (errors === 0) {
 		if (data && typeof data == "object" && !Array.isArray(data)) {
 			let missing0;
 			if (data.schema_version === void 0 && (missing0 = "schema_version") || data.error === void 0 && (missing0 = "error")) {
-				validate421.errors = [{
+				validate443.errors = [{
 					instancePath,
 					schemaPath: "#/required",
 					keyword: "required",
@@ -508,7 +508,7 @@ function validate421(data, { instancePath = "", parentData, parentDataProperty, 
 			} else {
 				const _errs1 = errors;
 				for (const key0 in data) if (!(key0 === "error" || key0 === "schema_version")) {
-					validate421.errors = [{
+					validate443.errors = [{
 						instancePath,
 						schemaPath: "#/additionalProperties",
 						keyword: "additionalProperties",
@@ -520,14 +520,14 @@ function validate421(data, { instancePath = "", parentData, parentDataProperty, 
 				if (_errs1 === errors) {
 					if (data.error !== void 0) {
 						const _errs2 = errors;
-						if (!validate422(data.error, {
+						if (!validate444(data.error, {
 							instancePath: instancePath + "/error",
 							parentData: data,
 							parentDataProperty: "error",
 							rootData,
 							dynamicAnchors
 						})) {
-							vErrors = vErrors === null ? validate422.errors : vErrors.concat(validate422.errors);
+							vErrors = vErrors === null ? validate444.errors : vErrors.concat(validate444.errors);
 							errors = vErrors.length;
 						}
 						var valid0 = _errs2 === errors;
@@ -537,7 +537,7 @@ function validate421(data, { instancePath = "", parentData, parentDataProperty, 
 							let data1 = data.schema_version;
 							const _errs3 = errors;
 							if (typeof data1 !== "string") {
-								validate421.errors = [{
+								validate443.errors = [{
 									instancePath: instancePath + "/schema_version",
 									schemaPath: "#/$defs/SchemaVersion/type",
 									keyword: "type",
@@ -547,11 +547,11 @@ function validate421(data, { instancePath = "", parentData, parentDataProperty, 
 								return false;
 							}
 							if (!(data1 === "0.3")) {
-								validate421.errors = [{
+								validate443.errors = [{
 									instancePath: instancePath + "/schema_version",
 									schemaPath: "#/$defs/SchemaVersion/enum",
 									keyword: "enum",
-									params: { allowedValues: schema542.enum },
+									params: { allowedValues: schema568.enum },
 									message: "must be equal to one of the allowed values"
 								}];
 								return false;
@@ -562,7 +562,7 @@ function validate421(data, { instancePath = "", parentData, parentDataProperty, 
 				}
 			}
 		} else {
-			validate421.errors = [{
+			validate443.errors = [{
 				instancePath,
 				schemaPath: "#/type",
 				keyword: "type",
@@ -572,45 +572,45 @@ function validate421(data, { instancePath = "", parentData, parentDataProperty, 
 			return false;
 		}
 	}
-	validate421.errors = vErrors;
+	validate443.errors = vErrors;
 	return errors === 0;
 }
-validate421.evaluated = {
+validate443.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false
 };
-function validate416(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate438(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
 	let errors = 0;
-	const evaluated0 = validate416.evaluated;
+	const evaluated0 = validate438.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	const _errs0 = errors;
 	let valid0 = false;
 	const _errs1 = errors;
-	if (!validate417(data, {
+	if (!validate439(data, {
 		instancePath,
 		parentData,
 		parentDataProperty,
 		rootData,
 		dynamicAnchors
 	})) {
-		vErrors = vErrors === null ? validate417.errors : vErrors.concat(validate417.errors);
+		vErrors = vErrors === null ? validate439.errors : vErrors.concat(validate439.errors);
 		errors = vErrors.length;
 	}
 	var _valid0 = _errs1 === errors;
 	valid0 = valid0 || _valid0;
 	if (_valid0) var props0 = true;
 	const _errs2 = errors;
-	if (!validate421(data, {
+	if (!validate443(data, {
 		instancePath,
 		parentData,
 		parentDataProperty,
 		rootData,
 		dynamicAnchors
 	})) {
-		vErrors = vErrors === null ? validate421.errors : vErrors.concat(validate421.errors);
+		vErrors = vErrors === null ? validate443.errors : vErrors.concat(validate443.errors);
 		errors = vErrors.length;
 	}
 	var _valid0 = _errs2 === errors;
@@ -629,7 +629,7 @@ function validate416(data, { instancePath = "", parentData, parentDataProperty, 
 		if (vErrors === null) vErrors = [err0];
 		else vErrors.push(err0);
 		errors++;
-		validate416.errors = vErrors;
+		validate438.errors = vErrors;
 		return false;
 	} else {
 		errors = _errs0;
@@ -638,11 +638,11 @@ function validate416(data, { instancePath = "", parentData, parentDataProperty, 
 			else vErrors = null;
 		}
 	}
-	validate416.errors = vErrors;
+	validate438.errors = vErrors;
 	evaluated0.props = props0;
 	return errors === 0;
 }
-validate416.evaluated = {
+validate438.evaluated = {
 	"dynamicProps": true,
 	"dynamicItems": false
 };

@@ -1,11 +1,11 @@
 import { t as require_ucs2length } from "./ucs2length.js";
 // generated/raw-validators/validateChatResolveQuotesResponse.js
 var validateChatResolveQuotesResponse = validate165;
-var schema224 = {
+var schema225 = {
 	"enum": ["0.3"],
 	"type": "string"
 };
-var schema220 = {
+var schema221 = {
 	"additionalProperties": false,
 	"properties": {
 		"created_at": {
@@ -42,7 +42,7 @@ var schema220 = {
 	],
 	"type": "object"
 };
-var schema223 = {
+var schema224 = {
 	"enum": [
 		"visible",
 		"recalled",
@@ -73,7 +73,7 @@ function validate167(data, { instancePath = "", parentData, parentDataProperty, 
 				return false;
 			} else {
 				const _errs1 = errors;
-				for (const key0 in data) if (!func1.call(schema220.properties, key0)) {
+				for (const key0 in data) if (!func1.call(schema221.properties, key0)) {
 					validate167.errors = [{
 						instancePath,
 						schemaPath: "#/additionalProperties",
@@ -554,7 +554,7 @@ function validate167(data, { instancePath = "", parentData, parentDataProperty, 
 													instancePath: instancePath + "/quote_message_id",
 													schemaPath: "#/properties/quote_message_id/type",
 													keyword: "type",
-													params: { type: schema220.properties.quote_message_id.type },
+													params: { type: schema221.properties.quote_message_id.type },
 													message: "must be string,null"
 												}];
 												return false;
@@ -633,7 +633,7 @@ function validate167(data, { instancePath = "", parentData, parentDataProperty, 
 																instancePath: instancePath + "/state",
 																schemaPath: "#/$defs/MessageState/enum",
 																keyword: "enum",
-																params: { allowedValues: schema223.enum },
+																params: { allowedValues: schema224.enum },
 																message: "must be equal to one of the allowed values"
 															}];
 															return false;
@@ -752,7 +752,7 @@ function validate166(data, { instancePath = "", parentData, parentDataProperty, 
 									instancePath: instancePath + "/schema_version",
 									schemaPath: "#/$defs/SchemaVersion/enum",
 									keyword: "enum",
-									params: { allowedValues: schema224.enum },
+									params: { allowedValues: schema225.enum },
 									message: "must be equal to one of the allowed values"
 								}];
 								return false;
@@ -781,7 +781,7 @@ validate166.evaluated = {
 	"dynamicProps": false,
 	"dynamicItems": false
 };
-var schema226 = {
+var schema227 = {
 	"additionalProperties": false,
 	"properties": {
 		"code": { "$ref": "#/$defs/ErrorCode" },
@@ -801,7 +801,7 @@ var schema226 = {
 	],
 	"type": "object"
 };
-var schema227 = { "oneOf": [{
+var schema228 = { "oneOf": [{
 	"enum": [
 		"INVALID_INPUT",
 		"PERMISSION_DENIED",
@@ -828,7 +828,7 @@ var schema227 = { "oneOf": [{
 	"description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
 	"type": "string"
 }] };
-var schema228 = {
+var schema229 = {
 	"enum": [
 		"never",
 		"retry",
@@ -891,7 +891,7 @@ function validate171(data, { instancePath = "", parentData, parentDataProperty, 
 								instancePath: instancePath + "/code",
 								schemaPath: "#/$defs/ErrorCode/oneOf/0/enum",
 								keyword: "enum",
-								params: { allowedValues: schema227.oneOf[0].enum },
+								params: { allowedValues: schema228.oneOf[0].enum },
 								message: "must be equal to one of the allowed values"
 							};
 							if (vErrors === null) vErrors = [err1];
@@ -967,7 +967,7 @@ function validate171(data, { instancePath = "", parentData, parentDataProperty, 
 									instancePath: instancePath + "/field_path",
 									schemaPath: "#/properties/field_path/type",
 									keyword: "type",
-									params: { type: schema226.properties.field_path.type },
+									params: { type: schema227.properties.field_path.type },
 									message: "must be string,null"
 								}];
 								return false;
@@ -1023,7 +1023,7 @@ function validate171(data, { instancePath = "", parentData, parentDataProperty, 
 												instancePath: instancePath + "/retryability",
 												schemaPath: "#/$defs/Retryability/enum",
 												keyword: "enum",
-												params: { allowedValues: schema228.enum },
+												params: { allowedValues: schema229.enum },
 												message: "must be equal to one of the allowed values"
 											}];
 											return false;
@@ -1135,7 +1135,7 @@ function validate170(data, { instancePath = "", parentData, parentDataProperty, 
 									instancePath: instancePath + "/schema_version",
 									schemaPath: "#/$defs/SchemaVersion/enum",
 									keyword: "enum",
-									params: { allowedValues: schema224.enum },
+									params: { allowedValues: schema225.enum },
 									message: "must be equal to one of the allowed values"
 								}];
 								return false;

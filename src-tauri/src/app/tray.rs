@@ -6,7 +6,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconEvent},
 };
 
-use crate::domain::contracts::{InboxGetRequest, InboxSummary, TraySyncState};
+use crate::domain::contracts::{InboxGetRequest, TraySyncState};
 
 pub const POPUP_LABEL: &str = "tray_popup";
 pub const TRAY_ID: &str = "sageroom";

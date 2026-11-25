@@ -1,7 +1,7 @@
 import { t as require_ucs2length } from "./ucs2length.js";
 // generated/raw-validators/validateAppSnapshotResponse.js
 var validateAppSnapshotResponse = validate78;
-var schema129 = {
+var schema130 = {
 	"enum": ["0.3"],
 	"type": "string"
 };
@@ -184,7 +184,7 @@ function validate83(data, { instancePath = "", parentData, parentDataProperty, r
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		let missing0;
-		if (data.database_bytes === void 0 && (missing0 = "database_bytes") || data.avatar_bytes === void 0 && (missing0 = "avatar_bytes")) {
+		if (data.database_bytes === void 0 && (missing0 = "database_bytes") || data.avatar_bytes === void 0 && (missing0 = "avatar_bytes") || data.disk_total_bytes === void 0 && (missing0 = "disk_total_bytes") || data.disk_letter === void 0 && (missing0 = "disk_letter")) {
 			validate83.errors = [{
 				instancePath,
 				schemaPath: "#/required",
@@ -194,7 +194,7 @@ function validate83(data, { instancePath = "", parentData, parentDataProperty, r
 			}];
 			return false;
 		} else {
-			for (const key0 in data) if (!(key0 === "avatar_bytes" || key0 === "database_bytes")) {
+			for (const key0 in data) if (!(key0 === "avatar_bytes" || key0 === "database_bytes" || key0 === "disk_letter" || key0 === "disk_total_bytes")) {
 				validate83.errors = [{
 					instancePath,
 					schemaPath: "#/additionalProperties",
@@ -273,6 +273,57 @@ function validate83(data, { instancePath = "", parentData, parentDataProperty, r
 					}
 					var valid0 = true;
 				} else var valid0 = true;
+				if (valid0) {
+					if (data.disk_letter !== void 0) {
+						if (typeof data.disk_letter !== "string") {
+							validate83.errors = [{
+								instancePath: instancePath + "/disk_letter",
+								schemaPath: "#/properties/disk_letter/type",
+								keyword: "type",
+								params: { type: "string" },
+								message: "must be string"
+							}];
+							return false;
+						}
+						var valid0 = true;
+					} else var valid0 = true;
+					if (valid0) {
+						if (data.disk_total_bytes !== void 0) {
+							let data3 = data.disk_total_bytes;
+							if (typeof data3 === "string") {
+								if (func2(data3) > 19) {
+									validate83.errors = [{
+										instancePath: instancePath + "/disk_total_bytes",
+										schemaPath: "#/$defs/DecimalString/maxLength",
+										keyword: "maxLength",
+										params: { limit: 19 },
+										message: "must NOT have more than 19 characters"
+									}];
+									return false;
+								} else if (!pattern4.test(data3)) {
+									validate83.errors = [{
+										instancePath: instancePath + "/disk_total_bytes",
+										schemaPath: "#/$defs/DecimalString/pattern",
+										keyword: "pattern",
+										params: { pattern: "^(0|[1-9][0-9]*)$" },
+										message: "must match pattern \"^(0|[1-9][0-9]*)$\""
+									}];
+									return false;
+								}
+							} else {
+								validate83.errors = [{
+									instancePath: instancePath + "/disk_total_bytes",
+									schemaPath: "#/$defs/DecimalString/type",
+									keyword: "type",
+									params: { type: "string" },
+									message: "must be string"
+								}];
+								return false;
+							}
+							var valid0 = true;
+						} else var valid0 = true;
+					}
+				}
 			}
 		}
 	} else {
@@ -454,7 +505,7 @@ validate87.evaluated = {
 	"dynamicProps": false,
 	"dynamicItems": false
 };
-var schema120 = {
+var schema121 = {
 	"additionalProperties": false,
 	"properties": {
 		"avatar_id": {
@@ -483,15 +534,15 @@ var schema120 = {
 	],
 	"type": "object"
 };
-var schema121 = {
+var schema122 = {
 	"enum": ["user", "agent"],
 	"type": "string"
 };
-var schema126 = {
+var schema127 = {
 	"enum": ["present", "needs_configuration"],
 	"type": "string"
 };
-var schema123 = {
+var schema124 = {
 	"additionalProperties": false,
 	"properties": {
 		"agent_id": { "type": "string" },
@@ -518,7 +569,7 @@ var schema123 = {
 	],
 	"type": "object"
 };
-var schema125 = {
+var schema126 = {
 	"enum": [
 		"needs_configuration",
 		"observing",
@@ -614,7 +665,7 @@ function validate92(data, { instancePath = "", parentData, parentDataProperty, r
 								instancePath: instancePath + "/detail",
 								schemaPath: "#/properties/detail/type",
 								keyword: "type",
-								params: { type: schema123.properties.detail.type },
+								params: { type: schema124.properties.detail.type },
 								message: "must be string,null"
 							}];
 							return false;
@@ -629,7 +680,7 @@ function validate92(data, { instancePath = "", parentData, parentDataProperty, r
 									instancePath: instancePath + "/next_wake_at",
 									schemaPath: "#/properties/next_wake_at/type",
 									keyword: "type",
-									params: { type: schema123.properties.next_wake_at.type },
+									params: { type: schema124.properties.next_wake_at.type },
 									message: "must be integer,null"
 								}];
 								return false;
@@ -684,7 +735,7 @@ function validate92(data, { instancePath = "", parentData, parentDataProperty, r
 											instancePath: instancePath + "/status",
 											schemaPath: "#/$defs/AgentRuntimeStatus/enum",
 											keyword: "enum",
-											params: { allowedValues: schema125.enum },
+											params: { allowedValues: schema126.enum },
 											message: "must be equal to one of the allowed values"
 										}];
 										return false;
@@ -754,7 +805,7 @@ function validate91(data, { instancePath = "", parentData, parentDataProperty, r
 								instancePath: instancePath + "/avatar_id",
 								schemaPath: "#/properties/avatar_id/type",
 								keyword: "type",
-								params: { type: schema120.properties.avatar_id.type },
+								params: { type: schema121.properties.avatar_id.type },
 								message: "must be string,null"
 							}];
 							return false;
@@ -825,7 +876,7 @@ function validate91(data, { instancePath = "", parentData, parentDataProperty, r
 												instancePath: instancePath + "/kind",
 												schemaPath: "#/$defs/ParticipantKind/enum",
 												keyword: "enum",
-												params: { allowedValues: schema121.enum },
+												params: { allowedValues: schema122.enum },
 												message: "must be equal to one of the allowed values"
 											}];
 											return false;
@@ -945,7 +996,7 @@ function validate91(data, { instancePath = "", parentData, parentDataProperty, r
 															instancePath: instancePath + "/status",
 															schemaPath: "#/$defs/ParticipantStatus/enum",
 															keyword: "enum",
-															params: { allowedValues: schema126.enum },
+															params: { allowedValues: schema127.enum },
 															message: "must be equal to one of the allowed values"
 														}];
 														return false;
@@ -2105,7 +2156,7 @@ function validate85(data, { instancePath = "", parentData, parentDataProperty, r
 													instancePath: instancePath + "/schema_version",
 													schemaPath: "#/$defs/SchemaVersion/enum",
 													keyword: "enum",
-													params: { allowedValues: schema129.enum },
+													params: { allowedValues: schema130.enum },
 													message: "must be equal to one of the allowed values"
 												}];
 												return false;
@@ -2544,7 +2595,7 @@ function validate79(data, { instancePath = "", parentData, parentDataProperty, r
 									instancePath: instancePath + "/schema_version",
 									schemaPath: "#/$defs/SchemaVersion/enum",
 									keyword: "enum",
-									params: { allowedValues: schema129.enum },
+									params: { allowedValues: schema130.enum },
 									message: "must be equal to one of the allowed values"
 								}];
 								return false;
@@ -2573,7 +2624,7 @@ validate79.evaluated = {
 	"dynamicProps": false,
 	"dynamicItems": false
 };
-var schema134 = {
+var schema135 = {
 	"additionalProperties": false,
 	"properties": {
 		"code": { "$ref": "#/$defs/ErrorCode" },
@@ -2593,7 +2644,7 @@ var schema134 = {
 	],
 	"type": "object"
 };
-var schema135 = { "oneOf": [{
+var schema136 = { "oneOf": [{
 	"enum": [
 		"INVALID_INPUT",
 		"PERMISSION_DENIED",
@@ -2620,7 +2671,7 @@ var schema135 = { "oneOf": [{
 	"description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
 	"type": "string"
 }] };
-var schema136 = {
+var schema137 = {
 	"enum": [
 		"never",
 		"retry",
@@ -2683,7 +2734,7 @@ function validate103(data, { instancePath = "", parentData, parentDataProperty, 
 								instancePath: instancePath + "/code",
 								schemaPath: "#/$defs/ErrorCode/oneOf/0/enum",
 								keyword: "enum",
-								params: { allowedValues: schema135.oneOf[0].enum },
+								params: { allowedValues: schema136.oneOf[0].enum },
 								message: "must be equal to one of the allowed values"
 							};
 							if (vErrors === null) vErrors = [err1];
@@ -2759,7 +2810,7 @@ function validate103(data, { instancePath = "", parentData, parentDataProperty, 
 									instancePath: instancePath + "/field_path",
 									schemaPath: "#/properties/field_path/type",
 									keyword: "type",
-									params: { type: schema134.properties.field_path.type },
+									params: { type: schema135.properties.field_path.type },
 									message: "must be string,null"
 								}];
 								return false;
@@ -2815,7 +2866,7 @@ function validate103(data, { instancePath = "", parentData, parentDataProperty, 
 												instancePath: instancePath + "/retryability",
 												schemaPath: "#/$defs/Retryability/enum",
 												keyword: "enum",
-												params: { allowedValues: schema136.enum },
+												params: { allowedValues: schema137.enum },
 												message: "must be equal to one of the allowed values"
 											}];
 											return false;
@@ -2927,7 +2978,7 @@ function validate102(data, { instancePath = "", parentData, parentDataProperty, 
 									instancePath: instancePath + "/schema_version",
 									schemaPath: "#/$defs/SchemaVersion/enum",
 									keyword: "enum",
-									params: { allowedValues: schema129.enum },
+									params: { allowedValues: schema130.enum },
 									message: "must be equal to one of the allowed values"
 								}];
 								return false;

@@ -99,6 +99,21 @@ description = "把主窗口的未读汇总与聚焦状态同步给托盘图标"
 commands.allow = ["tray_sync"]
 
 [[permission]]
+identifier = "external-link"
+description = "在系统默认浏览器中打开外部网页链接"
+commands.allow = ["open_external_link"]
+
+[[permission]]
+identifier = "data-directory"
+description = "选择并迁移本地数据目录"
+commands.allow = ["data_directory_pick", "data_directory_migrate", "data_directory_reset"]
+
+[[permission]]
+identifier = "ui-preferences"
+description = "读取与保存界面偏好（关闭行为、发送键）"
+commands.allow = ["ui_preferences_get", "ui_preferences_save"]
+
+[[permission]]
 identifier = "tray-open"
 description = "登录托盘面板的点击唤回主窗口并定位到指定会话"
 commands.allow = ["tray_open_main"]

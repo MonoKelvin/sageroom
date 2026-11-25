@@ -1,6 +1,7 @@
 pub mod backup;
 pub mod chat;
 pub mod configuration;
+pub mod data_root;
 pub mod database;
 pub mod experience;
 pub mod runtime;
@@ -11,6 +12,46 @@ pub mod worker;
 mod configuration_tests;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod data_root_tests {
+    use std::fs;
+
+    use tempfile::TempDir;
+
+    use super::data_root;
+
+    #[test]
+    fn migrate_copies_data_and_configures_root() {
+        let dir = TempDir::new().unwrap();
+        let current = dir.path().join("current");
+        let target = dir.path().join("target");
+        let config = dir.path().join("config");
+        fs::create_dir_all(current.join("data")).unwrap();
+        fs::write(current.join("data/marker.txt"), b"hello").unwrap();
+        fs::create_dir_all(&target).unwrap();
+
+        assert!(data_root::configured_root(&config).is_none());
+        data_root::migrate(&current, &config, &target).unwrap();
+        assert_eq!(fs::read_to_string(target.join("data/marker.txt")).unwrap(), "hello");
+        assert_eq!(data_root::configured_root(&config), Some(target.clone()));
+
+        data_root::reset(&config).unwrap();
+        assert!(data_root::configured_root(&config).is_none());
+    }
+
+    #[test]
+    fn migrate_rejects_non_empty_target() {
+        let dir = TempDir::new().unwrap();
+        let current = dir.path().join("current");
+        let target = dir.path().join("target");
+        let config = dir.path().join("config");
+        fs::create_dir_all(&current).unwrap();
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("occupied"), b"x").unwrap();
+        assert!(data_root::migrate(&current, &config, &target).is_err());
+    }
+}
 
 #[cfg(test)]
 mod experience_tests {

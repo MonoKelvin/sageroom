@@ -1,7 +1,7 @@
 import { t as require_ucs2length } from "./ucs2length.js";
 // generated/raw-validators/validateAppearanceSaveRequest.js
 var validateAppearanceSaveRequest = validate106;
-var schema140 = {
+var schema141 = {
 	"enum": [
 		"system",
 		"light",
@@ -132,7 +132,7 @@ function validate106(data, { instancePath = "", parentData, parentDataProperty, 
 										instancePath: instancePath + "/theme",
 										schemaPath: "#/$defs/Theme/enum",
 										keyword: "enum",
-										params: { allowedValues: schema140.enum },
+										params: { allowedValues: schema141.enum },
 										message: "must be equal to one of the allowed values"
 									}];
 									return false;

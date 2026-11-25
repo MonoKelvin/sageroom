@@ -1,5 +1,5 @@
 import type { ValidateFunction } from "ajv"
-import type { AgentConfiguration, AgentDeleteRequest, AgentListRequest, AgentModelSnapshot, AgentRuntimeControlRequest, AgentRuntimeState, AgentRuntimeStatus, AgentSaveRequest, AgentType, ApiFailure, ApiResponse, ApiSuccess, AppError, AppLifecycleEvent, AppLifecyclePayload, AppSnapshot, AppSnapshotRequest, Appearance, AppearanceSaveRequest, AvatarData, AvatarImportRequest, AvatarObject, AvatarReadRequest, CancelSearchRequest, CancelSearchResult, ChatListRequest, ChatMessage, ChatRecallRequest, ChatRecallResult, ChatResolveQuotesRequest, ChatSearchRequest, ChatSendRequest, ChatSendResult, DataUsage, DecimalString, DevelopmentModelImportRequest, DomainEvent, ErrorCode, EventPayload, ExitReadyRequest, ExitRequest, ExitResult, ExperienceAddRequest, ExperienceAgentRequest, ExperienceDeleteRequest, ExperienceEntry, ExperiencePruneRequest, ExperienceUpdateRequest, GlobalConfiguration, GlobalConfigurationGetRequest, GlobalConfigurationSaveRequest, InboxConversation, InboxGetRequest, InboxMarkReadRequest, InboxMuteRequest, InboxSummary, MessagePage, MessagePart, MessageState, ModelListRequest, ModelListResult, ModelProfile, ModelProfileInput, ModelProfileTestRequest, ModelProtocol, ModelTestResult, NewsConfiguration, NewsConfigurationGetRequest, NewsConfigurationSaveRequest, NewsConfigurationState, NewsItem, NewsPreviewRequest, NewsPreviewResponse, NewsProvider, NewsProxyMode, NewsSecretSetRequest, NewsSecretStatus, NewsSecretStatusRequest, NewsSourceDiagnostic, Participant, ParticipantKind, ParticipantStatus, PersonaDimensions, PersonaPreset, Retryability, Room, RoomSaveRequest, SchemaVersion, SearchHit, SearchPage, SearchSemantics, SecretSetRequest, SecretStatus, SecretStatusRequest, Theme, TrayOpenRequest, TrayOpenResult, TraySyncRequest, TraySyncState, UserProfile, UserProfileGetRequest, UserProfileSaveRequest } from "./index"
+import type { AgentConfiguration, AgentDeleteRequest, AgentListRequest, AgentModelSnapshot, AgentRuntimeControlRequest, AgentRuntimeState, AgentRuntimeStatus, AgentSaveRequest, AgentType, ApiFailure, ApiResponse, ApiSuccess, AppError, AppLifecycleEvent, AppLifecyclePayload, AppSnapshot, AppSnapshotRequest, Appearance, AppearanceSaveRequest, AvatarData, AvatarImportRequest, AvatarObject, AvatarReadRequest, CancelSearchRequest, CancelSearchResult, ChatListRequest, ChatMessage, ChatRecallRequest, ChatRecallResult, ChatResolveQuotesRequest, ChatSearchRequest, ChatSendRequest, ChatSendResult, CloseAction, DataDirectoryMigrateRequest, DataUsage, DecimalString, DevelopmentModelImportRequest, DomainEvent, ErrorCode, EventPayload, ExitReadyRequest, ExitRequest, ExitResult, ExperienceAddRequest, ExperienceAgentRequest, ExperienceDeleteRequest, ExperienceEntry, ExperiencePruneRequest, ExperienceUpdateRequest, GlobalConfiguration, GlobalConfigurationGetRequest, GlobalConfigurationSaveRequest, InboxConversation, InboxGetRequest, InboxMarkReadRequest, InboxMuteRequest, InboxSummary, MessagePage, MessagePart, MessageState, ModelListRequest, ModelListResult, ModelProfile, ModelProfileInput, ModelProfileTestRequest, ModelProtocol, ModelTestResult, NewsConfiguration, NewsConfigurationGetRequest, NewsConfigurationSaveRequest, NewsConfigurationState, NewsItem, NewsPreviewRequest, NewsPreviewResponse, NewsProvider, NewsProxyMode, NewsSecretSetRequest, NewsSecretStatus, NewsSecretStatusRequest, NewsSourceDiagnostic, Participant, ParticipantKind, ParticipantStatus, PersonaDimensions, PersonaPreset, Retryability, Room, RoomSaveRequest, SchemaVersion, SearchHit, SearchPage, SearchSemantics, SecretSetRequest, SecretStatus, SecretStatusRequest, SendKey, Theme, TrayOpenRequest, TrayOpenResult, TraySyncRequest, TraySyncState, UiPreferences, UiPreferencesGetRequest, UiPreferencesSaveRequest, UserProfile, UserProfileGetRequest, UserProfileSaveRequest } from "./index"
 export const validateAgentDeleteRequest: ValidateFunction<AgentDeleteRequest>
 export const validateAgentDeleteResponse: ValidateFunction<ApiResponse<void>>
 export const validateAgentListRequest: ValidateFunction<AgentListRequest>
@@ -29,6 +29,10 @@ export const validateChatSearchRequest: ValidateFunction<ChatSearchRequest>
 export const validateChatSearchResponse: ValidateFunction<ApiResponse<SearchPage>>
 export const validateChatSendRequest: ValidateFunction<ChatSendRequest>
 export const validateChatSendResponse: ValidateFunction<ApiResponse<ChatSendResult>>
+export const validateDataDirectoryMigrateRequest: ValidateFunction<DataDirectoryMigrateRequest>
+export const validateDataDirectoryMigrateResponse: ValidateFunction<ApiResponse<void>>
+export const validateDataDirectoryPickResponse: ValidateFunction<ApiResponse<string | null>>
+export const validateDataDirectoryResetResponse: ValidateFunction<ApiResponse<void>>
 export const validateDevelopmentModelImportRequest: ValidateFunction<DevelopmentModelImportRequest>
 export const validateDevelopmentModelImportResponse: ValidateFunction<ApiResponse<GlobalConfiguration>>
 export const validateDomainEvent: ValidateFunction<DomainEvent>
@@ -72,6 +76,7 @@ export const validateNewsSecretSetResponse: ValidateFunction<ApiResponse<NewsSec
 export const validateNewsSecretStatusRequest: ValidateFunction<NewsSecretStatusRequest>
 export const validateNewsSecretStatusResponse: ValidateFunction<ApiResponse<NewsSecretStatus>>
 export const validateNewsSourceDiagnostic: ValidateFunction<NewsSourceDiagnostic>
+export const validateOpenExternalLinkResponse: ValidateFunction<ApiResponse<void>>
 export const validateRoomSaveRequest: ValidateFunction<RoomSaveRequest>
 export const validateRoomSaveResponse: ValidateFunction<ApiResponse<Room>>
 export const validateSecretSetRequest: ValidateFunction<SecretSetRequest>
@@ -82,6 +87,11 @@ export const validateTrayOpenRequest: ValidateFunction<TrayOpenRequest>
 export const validateTrayOpenResponse: ValidateFunction<ApiResponse<TrayOpenResult>>
 export const validateTraySyncRequest: ValidateFunction<TraySyncRequest>
 export const validateTraySyncResponse: ValidateFunction<ApiResponse<TraySyncState>>
+export const validateUiPreferences: ValidateFunction<UiPreferences>
+export const validateUiPreferencesGetRequest: ValidateFunction<UiPreferencesGetRequest>
+export const validateUiPreferencesGetResponse: ValidateFunction<ApiResponse<UiPreferences>>
+export const validateUiPreferencesSaveRequest: ValidateFunction<UiPreferencesSaveRequest>
+export const validateUiPreferencesSaveResponse: ValidateFunction<ApiResponse<void>>
 export const validateUserProfileGetRequest: ValidateFunction<UserProfileGetRequest>
 export const validateUserProfileGetResponse: ValidateFunction<ApiResponse<UserProfile>>
 export const validateUserProfileSaveRequest: ValidateFunction<UserProfileSaveRequest>

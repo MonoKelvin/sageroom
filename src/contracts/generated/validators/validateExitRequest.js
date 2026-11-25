@@ -1,6 +1,6 @@
 // generated/raw-validators/validateExitRequest.js
-var validateExitRequest = validate230;
-var schema304 = {
+var validateExitRequest = validate252;
+var schema330 = {
 	"$schema": "https://json-schema.org/draft/2020-12/schema",
 	"additionalProperties": false,
 	"properties": { "data_generation_id": {
@@ -10,14 +10,14 @@ var schema304 = {
 	"title": "ExitRequest",
 	"type": "object"
 };
-function validate230(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate252(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
-	const evaluated0 = validate230.evaluated;
+	const evaluated0 = validate252.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		for (const key0 in data) if (!(key0 === "data_generation_id")) {
-			validate230.errors = [{
+			validate252.errors = [{
 				instancePath,
 				schemaPath: "#/additionalProperties",
 				keyword: "additionalProperties",
@@ -29,18 +29,18 @@ function validate230(data, { instancePath = "", parentData, parentDataProperty, 
 		if (data.data_generation_id !== void 0) {
 			let data0 = data.data_generation_id;
 			if (typeof data0 !== "string" && data0 !== null) {
-				validate230.errors = [{
+				validate252.errors = [{
 					instancePath: instancePath + "/data_generation_id",
 					schemaPath: "#/properties/data_generation_id/type",
 					keyword: "type",
-					params: { type: schema304.properties.data_generation_id.type },
+					params: { type: schema330.properties.data_generation_id.type },
 					message: "must be string,null"
 				}];
 				return false;
 			}
 		}
 	} else {
-		validate230.errors = [{
+		validate252.errors = [{
 			instancePath,
 			schemaPath: "#/type",
 			keyword: "type",
@@ -49,10 +49,10 @@ function validate230(data, { instancePath = "", parentData, parentDataProperty, 
 		}];
 		return false;
 	}
-	validate230.errors = vErrors;
+	validate252.errors = vErrors;
 	return true;
 }
-validate230.evaluated = {
+validate252.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

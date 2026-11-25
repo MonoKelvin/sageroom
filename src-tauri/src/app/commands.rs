@@ -242,6 +242,112 @@ pub async fn news_preview(
 }
 
 #[tauri::command]
+pub async fn open_external_link(
+    window: WebviewWindow,
+    request: Value,
+) -> Result<ApiResponse<()>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let value: serde_json::Value = decode(request)?;
+        let url = value
+            .get("url")
+            .and_then(|item| item.as_str())
+            .ok_or_else(|| AppError::invalid("url", "缺少链接地址。"))?;
+        let parsed = url::Url::parse(url)
+            .map_err(|_| AppError::invalid("url", "链接格式无效。"))?;
+        if !crate::app::external_links::is_external(&parsed) {
+            return Err(AppError::invalid("url", "只允许打开外部网页链接。"));
+        }
+        crate::app::external_links::open_external(&parsed);
+        Ok(())
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn data_directory_pick(
+    window: WebviewWindow,
+) -> Result<ApiResponse<Option<String>>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        Ok(window
+            .app_handle()
+            .dialog()
+            .file()
+            .blocking_pick_folder()
+            .and_then(|path| path.into_path().ok()).and_then(|path| path.to_str().map(str::to_owned)))
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn data_directory_migrate(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<()>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let request: DataDirectoryMigrateRequest = decode(request)?;
+        state.worker()?.call(move |database| database.check_generation(&request.data_generation_id)).await?;
+        let app = window.app_handle();
+        let config_dir = app.path().app_config_dir().map_err(|error| AppError::new(crate::domain::contracts::ErrorCode::IoError, error.to_string()))?;
+        let current = app.path().app_local_data_dir().map_err(|error| AppError::new(crate::domain::contracts::ErrorCode::IoError, error.to_string()))?;
+        crate::storage::data_root::migrate(&current, &config_dir, std::path::Path::new(&request.target))
+            .map_err(|message| AppError::new(crate::domain::contracts::ErrorCode::IoError, message))
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn data_directory_reset(
+    window: WebviewWindow,
+) -> Result<ApiResponse<()>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let app = window.app_handle();
+        let config_dir = app.path().app_config_dir().map_err(|error| AppError::new(crate::domain::contracts::ErrorCode::IoError, error.to_string()))?;
+        crate::storage::data_root::reset(&config_dir)
+            .map_err(|message| AppError::new(crate::domain::contracts::ErrorCode::IoError, message))
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn ui_preferences_get(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<UiPreferences>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let request: UiPreferencesGetRequest = decode(request)?;
+        state.worker()?.get_ui_preferences(request.data_generation_id).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn ui_preferences_save(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<()>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let request: UiPreferencesSaveRequest = decode(request)?;
+        state.worker()?.save_ui_preferences(request.data_generation_id, request.preferences).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
 pub async fn tray_sync(
     window: WebviewWindow,
     state: State<'_, AppState>,

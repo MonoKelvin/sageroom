@@ -1,6 +1,6 @@
 [package]
 name = "sageroom"
-version = "0.2.1"
+version = "0.2.2"
 description = "本地优先的智能体聊天室"
 authors = ["MonoKelvin"]
 edition = "2024"

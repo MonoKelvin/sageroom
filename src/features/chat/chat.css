@@ -131,7 +131,8 @@ html[data-reduced-motion="true"] .chat-message-enter { animation: none; }
 .group-info-meta { display: flex; flex-direction: column; gap: var(--space-4); margin: 0; }
 .group-info-meta > div { display: grid; grid-template-columns: calc(var(--size-unit) * 16) minmax(0, 1fr); align-items: center; gap: var(--space-3); }
 .group-info-meta dt { color: var(--text-secondary); font-size: var(--font-body); }
-.group-info-meta dd { min-width: 0; margin: 0; font-size: var(--font-body); text-align: right; overflow-wrap: anywhere; }
+.group-info-meta dd { display: flex; justify-content: flex-end; min-width: 0; margin: 0; font-size: var(--font-body); text-align: right; overflow-wrap: anywhere; }
+.group-info-meta dd > .settings-toggle-field { margin-left: auto; }
 .group-info-meta .settings-editor { width: min(100%, calc(var(--size-unit) * 40)); margin-left: auto; }
 .group-info-meta .settings-editor-reveal { width: fit-content; max-width: 100%; }
 .group-info-meta .settings-input { width: calc(100% + var(--space-3) * 2); margin-inline: calc(var(--space-3) * -1); padding-block: 0; font-size: var(--font-body); text-align: right; }

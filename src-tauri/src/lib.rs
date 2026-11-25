@@ -20,7 +20,10 @@ pub fn run() {
         }))
         .setup(|app| {
             let handle = app.handle().clone();
-            let directory = app.path().app_local_data_dir();
+            let config_dir = app.path().app_config_dir().unwrap_or_default();
+            let directory = crate::storage::data_root::configured_root(&config_dir)
+                .map(Ok)
+                .unwrap_or_else(|| app.path().app_local_data_dir());
             app.manage(app::state::AppState::open(directory, handle.clone()));
             let main_window = handle.get_webview_window("main").ok_or("主窗口不存在。")?;
             app::window_frame::configure(&main_window)?;
@@ -51,6 +54,12 @@ pub fn run() {
             app::commands::inbox_get,
             app::commands::inbox_mark_read,
             app::commands::inbox_set_muted,
+            app::commands::open_external_link,
+            app::commands::data_directory_pick,
+            app::commands::data_directory_migrate,
+            app::commands::data_directory_reset,
+            app::commands::ui_preferences_get,
+            app::commands::ui_preferences_save,
             app::commands::tray_sync,
             app::commands::tray_open_main,
             app::commands::agent_list,
@@ -84,8 +93,7 @@ pub fn run() {
                     .is_some_and(|state| !state.exit_completed())
             {
                 api.prevent_close();
-                app::lifecycle::save_window_state(&window.app_handle());
-                let _ = window.hide();
+                app::lifecycle::handle_close_request(&window.app_handle());
             }
         })
         .build(tauri::generate_context!())

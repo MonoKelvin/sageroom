@@ -1,6 +1,6 @@
 // generated/raw-validators/validateNewsSourceDiagnostic.js
-var validateNewsSourceDiagnostic = validate425;
-var schema549 = {
+var validateNewsSourceDiagnostic = validate447;
+var schema575 = {
 	"description": "联网新闻来源。API Key 独立存放在系统凭据库，配置中不包含密钥。",
 	"enum": [
 		"auto",
@@ -15,15 +15,15 @@ var schema549 = {
 	],
 	"type": "string"
 };
-function validate425(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate447(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
-	const evaluated0 = validate425.evaluated;
+	const evaluated0 = validate447.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		let missing0;
 		if (data.provider === void 0 && (missing0 = "provider") || data.message === void 0 && (missing0 = "message")) {
-			validate425.errors = [{
+			validate447.errors = [{
 				instancePath,
 				schemaPath: "#/required",
 				keyword: "required",
@@ -33,7 +33,7 @@ function validate425(data, { instancePath = "", parentData, parentDataProperty, 
 			return false;
 		} else {
 			for (const key0 in data) if (!(key0 === "message" || key0 === "provider")) {
-				validate425.errors = [{
+				validate447.errors = [{
 					instancePath,
 					schemaPath: "#/additionalProperties",
 					keyword: "additionalProperties",
@@ -44,7 +44,7 @@ function validate425(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 			if (data.message !== void 0) {
 				if (typeof data.message !== "string") {
-					validate425.errors = [{
+					validate447.errors = [{
 						instancePath: instancePath + "/message",
 						schemaPath: "#/properties/message/type",
 						keyword: "type",
@@ -59,7 +59,7 @@ function validate425(data, { instancePath = "", parentData, parentDataProperty, 
 				if (data.provider !== void 0) {
 					let data1 = data.provider;
 					if (typeof data1 !== "string") {
-						validate425.errors = [{
+						validate447.errors = [{
 							instancePath: instancePath + "/provider",
 							schemaPath: "#/$defs/NewsProvider/type",
 							keyword: "type",
@@ -69,11 +69,11 @@ function validate425(data, { instancePath = "", parentData, parentDataProperty, 
 						return false;
 					}
 					if (!(data1 === "auto" || data1 === "google_news_rss" || data1 === "ai_hot" || data1 === "free_news_trending" || data1 === "gdelt" || data1 === "bbc_technology" || data1 === "any_search" || data1 === "tavily" || data1 === "serper")) {
-						validate425.errors = [{
+						validate447.errors = [{
 							instancePath: instancePath + "/provider",
 							schemaPath: "#/$defs/NewsProvider/enum",
 							keyword: "enum",
-							params: { allowedValues: schema549.enum },
+							params: { allowedValues: schema575.enum },
 							message: "must be equal to one of the allowed values"
 						}];
 						return false;
@@ -83,7 +83,7 @@ function validate425(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 		}
 	} else {
-		validate425.errors = [{
+		validate447.errors = [{
 			instancePath,
 			schemaPath: "#/type",
 			keyword: "type",
@@ -92,10 +92,10 @@ function validate425(data, { instancePath = "", parentData, parentDataProperty, 
 		}];
 		return false;
 	}
-	validate425.errors = vErrors;
+	validate447.errors = vErrors;
 	return true;
 }
-validate425.evaluated = {
+validate447.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

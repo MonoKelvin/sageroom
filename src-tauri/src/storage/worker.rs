@@ -302,6 +302,14 @@ impl DbWorker {
             .await
     }
 
+    pub async fn get_ui_preferences(&self, generation: String) -> AppResult<UiPreferences> {
+        self.call(move |database| database.get_ui_preferences(&generation)).await
+    }
+
+    pub async fn save_ui_preferences(&self, generation: String, preferences: UiPreferences) -> AppResult<()> {
+        self.call(move |database| database.save_ui_preferences(&generation, &preferences)).await
+    }
+
     pub async fn get_window_state(&self, generation: String) -> AppResult<Option<super::configuration::WindowState>> {
         self.call(move |database| database.get_window_state(&generation)).await
     }

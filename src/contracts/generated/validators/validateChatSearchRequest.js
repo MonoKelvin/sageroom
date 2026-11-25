@@ -1,7 +1,7 @@
 import { t as require_ucs2length } from "./ucs2length.js";
 // generated/raw-validators/validateChatSearchRequest.js
 var validateChatSearchRequest = validate174;
-var schema230 = {
+var schema231 = {
 	"$schema": "https://json-schema.org/draft/2020-12/schema",
 	"additionalProperties": false,
 	"properties": {
@@ -85,7 +85,7 @@ function validate174(data, { instancePath = "", parentData, parentDataProperty, 
 						instancePath: instancePath + "/created_after",
 						schemaPath: "#/properties/created_after/type",
 						keyword: "type",
-						params: { type: schema230.properties.created_after.type },
+						params: { type: schema231.properties.created_after.type },
 						message: "must be integer,null"
 					}];
 					return false;
@@ -127,7 +127,7 @@ function validate174(data, { instancePath = "", parentData, parentDataProperty, 
 							instancePath: instancePath + "/created_before",
 							schemaPath: "#/properties/created_before/type",
 							keyword: "type",
-							params: { type: schema230.properties.created_before.type },
+							params: { type: schema231.properties.created_before.type },
 							message: "must be integer,null"
 						}];
 						return false;
@@ -169,7 +169,7 @@ function validate174(data, { instancePath = "", parentData, parentDataProperty, 
 								instancePath: instancePath + "/cursor",
 								schemaPath: "#/properties/cursor/type",
 								keyword: "type",
-								params: { type: schema230.properties.cursor.type },
+								params: { type: schema231.properties.cursor.type },
 								message: "must be string,null"
 							}];
 							return false;
@@ -289,7 +289,7 @@ function validate174(data, { instancePath = "", parentData, parentDataProperty, 
 													instancePath: instancePath + "/sender_id",
 													schemaPath: "#/properties/sender_id/type",
 													keyword: "type",
-													params: { type: schema230.properties.sender_id.type },
+													params: { type: schema231.properties.sender_id.type },
 													message: "must be string,null"
 												}];
 												return false;

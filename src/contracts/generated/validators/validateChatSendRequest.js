@@ -1,6 +1,6 @@
 // generated/raw-validators/validateChatSendRequest.js
 var validateChatSendRequest = validate186;
-var schema243 = {
+var schema244 = {
 	"$defs": { "MessagePart": { "oneOf": [
 		{
 			"additionalProperties": false,
@@ -539,7 +539,7 @@ function validate186(data, { instancePath = "", parentData, parentDataProperty, 
 													instancePath: instancePath + "/quote_message_id",
 													schemaPath: "#/properties/quote_message_id/type",
 													keyword: "type",
-													params: { type: schema243.properties.quote_message_id.type },
+													params: { type: schema244.properties.quote_message_id.type },
 													message: "must be string,null"
 												}];
 												return false;

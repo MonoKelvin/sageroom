@@ -1,14 +1,14 @@
 // generated/raw-validators/validateGlobalConfigurationGetRequest.js
-var validateGlobalConfigurationGetRequest = validate278;
-function validate278(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+var validateGlobalConfigurationGetRequest = validate300;
+function validate300(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
-	const evaluated0 = validate278.evaluated;
+	const evaluated0 = validate300.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		let missing0;
 		if (data.data_generation_id === void 0 && (missing0 = "data_generation_id")) {
-			validate278.errors = [{
+			validate300.errors = [{
 				instancePath,
 				schemaPath: "#/required",
 				keyword: "required",
@@ -18,7 +18,7 @@ function validate278(data, { instancePath = "", parentData, parentDataProperty, 
 			return false;
 		} else {
 			for (const key0 in data) if (!(key0 === "data_generation_id")) {
-				validate278.errors = [{
+				validate300.errors = [{
 					instancePath,
 					schemaPath: "#/additionalProperties",
 					keyword: "additionalProperties",
@@ -29,7 +29,7 @@ function validate278(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 			if (data.data_generation_id !== void 0) {
 				if (typeof data.data_generation_id !== "string") {
-					validate278.errors = [{
+					validate300.errors = [{
 						instancePath: instancePath + "/data_generation_id",
 						schemaPath: "#/properties/data_generation_id/type",
 						keyword: "type",
@@ -41,7 +41,7 @@ function validate278(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 		}
 	} else {
-		validate278.errors = [{
+		validate300.errors = [{
 			instancePath,
 			schemaPath: "#/type",
 			keyword: "type",
@@ -50,10 +50,10 @@ function validate278(data, { instancePath = "", parentData, parentDataProperty, 
 		}];
 		return false;
 	}
-	validate278.errors = vErrors;
+	validate300.errors = vErrors;
 	return true;
 }
-validate278.evaluated = {
+validate300.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

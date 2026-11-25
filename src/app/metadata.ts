@@ -13,6 +13,7 @@ export const APP_METADATA = {
   name: packageJson.name,
   productName: packageJson.productName,
   version: packageJson.version,
+  releaseDate: packageJson.releaseDate,
   description: packageJson.description,
   license: packageJson.license,
   homepage: packageJson.homepage,

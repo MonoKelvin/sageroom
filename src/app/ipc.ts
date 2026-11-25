@@ -36,6 +36,10 @@ import type {
   TrayOpenRequest,
   TrayOpenResult,
   TraySyncRequest,
+  UiPreferences,
+  UiPreferencesSaveRequest,
+  UiPreferencesGetRequest,
+  DataDirectoryMigrateRequest,
   TraySyncState,
   NewsConfigurationGetRequest,
   NewsConfigurationSaveRequest,
@@ -109,6 +113,15 @@ import {
   validateInboxMuteRequest,
   validateInboxMuteResponse,
   validateTraySyncRequest,
+  validateUiPreferencesGetRequest,
+  validateDataDirectoryPickResponse,
+  validateOpenExternalLinkResponse,
+  validateDataDirectoryMigrateRequest,
+  validateDataDirectoryMigrateResponse,
+  validateDataDirectoryResetResponse,
+  validateUiPreferencesGetResponse,
+  validateUiPreferencesSaveRequest,
+  validateUiPreferencesSaveResponse,
   validateTraySyncResponse,
   validateTrayOpenRequest,
   validateTrayOpenResponse,
@@ -191,6 +204,8 @@ export function isDesktopEnvironment(): boolean {
   return isTauri()
 }
 
+const acceptAny: Validator = (value) => value !== undefined
+
 async function request<Input, Data>(
   command: string,
   input: Input,
@@ -243,6 +258,18 @@ export const ipc = {
     request("global_configuration_get", input, validateGlobalConfigurationGetRequest, validateGlobalConfigurationGetResponse),
   saveGlobalConfiguration: (input: GlobalConfigurationSaveRequest): Promise<GlobalConfiguration> =>
     request("global_configuration_save", input, validateGlobalConfigurationSaveRequest, validateGlobalConfigurationSaveResponse),
+  openExternalLink: (url: string): Promise<void> =>
+    request("open_external_link", { url }, acceptAny, validateOpenExternalLinkResponse),
+  pickDataDirectory: (): Promise<string | null> =>
+    request("data_directory_pick", {}, acceptAny, validateDataDirectoryPickResponse),
+  migrateDataDirectory: (input: DataDirectoryMigrateRequest): Promise<void> =>
+    request("data_directory_migrate", input, validateDataDirectoryMigrateRequest, validateDataDirectoryMigrateResponse),
+  resetDataDirectory: (): Promise<void> =>
+    request("data_directory_reset", {}, acceptAny, validateDataDirectoryResetResponse),
+  getUiPreferences: (input: UiPreferencesGetRequest): Promise<UiPreferences> =>
+    request("ui_preferences_get", input, validateUiPreferencesGetRequest, validateUiPreferencesGetResponse),
+  saveUiPreferences: (input: UiPreferencesSaveRequest): Promise<void> =>
+    request("ui_preferences_save", input, validateUiPreferencesSaveRequest, validateUiPreferencesSaveResponse),
   traySync: (input: TraySyncRequest): Promise<TraySyncState> =>
     request("tray_sync", input, validateTraySyncRequest, validateTraySyncResponse),
   trayOpenMain: (input: TrayOpenRequest): Promise<TrayOpenResult> =>

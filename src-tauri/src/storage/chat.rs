@@ -438,6 +438,32 @@ pub(crate) fn insert_message(
     ))
 }
 
+/// 查询路径所在磁盘的总容量与卷标。无法获取时返回 (0, "")。
+fn disk_capacity(path: &std::path::Path) -> (u64, String) {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+
+        let root = path.ancestors().find(|candidate| candidate.parent().is_none()).unwrap_or(path);
+        let wide: Vec<u16> = root.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+        let mut total = 0_u64;
+        let ok = unsafe {
+            GetDiskFreeSpaceExW(wide.as_ptr(), std::ptr::null_mut(), &mut total, std::ptr::null_mut())
+        };
+        if ok == 0 {
+            return (0, String::new());
+        }
+        let letter = root.to_string_lossy().trim_end_matches('\\').to_string();
+        (total, letter)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = path;
+        (0, String::new())
+    }
+}
+
 impl Database {
     pub fn check_generation(&self, generation: &str) -> AppResult<()> {
         if generation != self.generation_id {
@@ -482,9 +508,12 @@ impl Database {
             [],
             |row| row.get(0),
         )?;
+        let (disk_total_bytes, disk_letter) = disk_capacity(&self.root);
         let data_usage = DataUsage {
             database_bytes: database_bytes.into(),
             avatar_bytes: avatar_bytes.into(),
+            disk_total_bytes: (disk_total_bytes as i64).into(),
+            disk_letter,
         };
         let after = request
             .last_event_seq

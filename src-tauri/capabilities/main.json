@@ -32,6 +32,9 @@
     "inbox-read",
     "inbox-write",
     "tray-sync",
+    "ui-preferences",
+    "data-directory",
+    "external-link",
     "appearance-save",
     "app-exit"
   ]

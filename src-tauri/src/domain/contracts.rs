@@ -305,6 +305,10 @@ pub struct AppSnapshotRequest {
 pub struct DataUsage {
     pub database_bytes: DecimalString,
     pub avatar_bytes: DecimalString,
+    /// 数据目录所在磁盘的总容量，0 表示无法获取。
+    pub disk_total_bytes: DecimalString,
+    /// 磁盘卷标，例如 "D:"。
+    pub disk_letter: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
@@ -789,6 +793,53 @@ pub struct InboxMuteRequest {
 
 /// 主窗口把“是否需要托盘提醒”推给 Rust；闪烁节奏由 Rust 统一控制。
 /// `conversation_count` 让托盘在没有会话时不做任何弹出，避免 hover 出一块空面板。
+/// 界面偏好：不影响配置版本，存 preferences_json 的 ui 键。
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct UiPreferences {
+    /// 关闭主窗口时是退出应用还是隐藏到托盘。
+    #[serde(default = "default_close_action")]
+    pub close_action: CloseAction,
+    /// 聊天发送键：Enter 直接发送 / Ctrl+Enter 发送。
+    #[serde(default = "default_send_key")]
+    pub send_key: SendKey,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CloseAction { Hide, Exit }
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SendKey { Enter, CtrlEnter }
+
+fn default_close_action() -> CloseAction { CloseAction::Hide }
+fn default_send_key() -> SendKey { SendKey::Enter }
+
+impl Default for UiPreferences {
+    fn default() -> Self { Self { close_action: default_close_action(), send_key: default_send_key() } }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct DataDirectoryMigrateRequest {
+    pub data_generation_id: String,
+    pub target: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct UiPreferencesGetRequest {
+    pub data_generation_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct UiPreferencesSaveRequest {
+    pub data_generation_id: String,
+    pub preferences: UiPreferences,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(deny_unknown_fields)]
 pub struct TraySyncRequest {

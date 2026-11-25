@@ -1642,11 +1642,21 @@
           },
           "database_bytes": {
             "$ref": "#/$defs/DecimalString"
+          },
+          "disk_letter": {
+            "description": "磁盘卷标，例如 \"D:\"。",
+            "type": "string"
+          },
+          "disk_total_bytes": {
+            "$ref": "#/$defs/DecimalString",
+            "description": "数据目录所在磁盘的总容量，0 表示无法获取。"
           }
         },
         "required": [
           "database_bytes",
-          "avatar_bytes"
+          "avatar_bytes",
+          "disk_total_bytes",
+          "disk_letter"
         ],
         "type": "object"
       },
@@ -4029,6 +4039,408 @@
         "maxLength": 19,
         "pattern": "^(0|[1-9][0-9]*)$",
         "type": "string"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "DataDirectoryMigrateRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      },
+      "target": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "target"
+    ],
+    "title": "DataDirectoryMigrateRequest",
+    "type": "object"
+  },
+  "DataDirectoryMigrateResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "null"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "DataDirectoryPickResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "DataDirectoryResetResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "null"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
       },
       "ErrorCode": {
         "oneOf": [
@@ -9309,6 +9721,133 @@
     "title": "NewsSourceDiagnostic",
     "type": "object"
   },
+  "OpenExternalLinkResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "null"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
   "RoomSaveRequest": {
     "$defs": {
       "DecimalString": {
@@ -10029,7 +10568,6 @@
   "TraySyncRequest": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
-    "description": "主窗口把“是否需要托盘提醒”推给 Rust；闪烁节奏由 Rust 统一控制。\n`conversation_count` 让托盘在没有会话时不做任何弹出，避免 hover 出一块空面板。",
     "properties": {
       "conversation_count": {
         "format": "uint32",
@@ -10177,6 +10715,395 @@
           "flashing"
         ],
         "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "UiPreferences": {
+    "$defs": {
+      "CloseAction": {
+        "enum": [
+          "hide",
+          "exit"
+        ],
+        "type": "string"
+      },
+      "SendKey": {
+        "enum": [
+          "enter",
+          "ctrl_enter"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "主窗口把“是否需要托盘提醒”推给 Rust；闪烁节奏由 Rust 统一控制。\n`conversation_count` 让托盘在没有会话时不做任何弹出，避免 hover 出一块空面板。\n界面偏好：不影响配置版本，存 preferences_json 的 ui 键。",
+    "properties": {
+      "close_action": {
+        "$ref": "#/$defs/CloseAction",
+        "default": "hide",
+        "description": "关闭主窗口时是退出应用还是隐藏到托盘。"
+      },
+      "send_key": {
+        "$ref": "#/$defs/SendKey",
+        "default": "enter",
+        "description": "聊天发送键：Enter 直接发送 / Ctrl+Enter 发送。"
+      }
+    },
+    "title": "UiPreferences",
+    "type": "object"
+  },
+  "UiPreferencesGetRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data_generation_id"
+    ],
+    "title": "UiPreferencesGetRequest",
+    "type": "object"
+  },
+  "UiPreferencesGetResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/UiPreferences"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "CloseAction": {
+        "enum": [
+          "hide",
+          "exit"
+        ],
+        "type": "string"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      },
+      "SendKey": {
+        "enum": [
+          "enter",
+          "ctrl_enter"
+        ],
+        "type": "string"
+      },
+      "UiPreferences": {
+        "additionalProperties": false,
+        "description": "主窗口把“是否需要托盘提醒”推给 Rust；闪烁节奏由 Rust 统一控制。\n`conversation_count` 让托盘在没有会话时不做任何弹出，避免 hover 出一块空面板。\n界面偏好：不影响配置版本，存 preferences_json 的 ui 键。",
+        "properties": {
+          "close_action": {
+            "$ref": "#/$defs/CloseAction",
+            "default": "hide",
+            "description": "关闭主窗口时是退出应用还是隐藏到托盘。"
+          },
+          "send_key": {
+            "$ref": "#/$defs/SendKey",
+            "default": "enter",
+            "description": "聊天发送键：Enter 直接发送 / Ctrl+Enter 发送。"
+          }
+        },
+        "required": [
+          "close_action",
+          "send_key"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "UiPreferencesSaveRequest": {
+    "$defs": {
+      "CloseAction": {
+        "enum": [
+          "hide",
+          "exit"
+        ],
+        "type": "string"
+      },
+      "SendKey": {
+        "enum": [
+          "enter",
+          "ctrl_enter"
+        ],
+        "type": "string"
+      },
+      "UiPreferences": {
+        "additionalProperties": false,
+        "description": "主窗口把“是否需要托盘提醒”推给 Rust；闪烁节奏由 Rust 统一控制。\n`conversation_count` 让托盘在没有会话时不做任何弹出，避免 hover 出一块空面板。\n界面偏好：不影响配置版本，存 preferences_json 的 ui 键。",
+        "properties": {
+          "close_action": {
+            "$ref": "#/$defs/CloseAction",
+            "default": "hide",
+            "description": "关闭主窗口时是退出应用还是隐藏到托盘。"
+          },
+          "send_key": {
+            "$ref": "#/$defs/SendKey",
+            "default": "enter",
+            "description": "聊天发送键：Enter 直接发送 / Ctrl+Enter 发送。"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      },
+      "preferences": {
+        "$ref": "#/$defs/UiPreferences"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "preferences"
+    ],
+    "title": "UiPreferencesSaveRequest",
+    "type": "object"
+  },
+  "UiPreferencesSaveResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "null"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
       }
     },
     "$schema": "https://json-schema.org/draft/2020-12/schema",
