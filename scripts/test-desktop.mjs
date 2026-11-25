@@ -13,6 +13,7 @@ import { chromium, expect } from "@playwright/test"
 import { createServer } from "vite"
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+const packageMetadata = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"))
 const useRealModel = process.argv.includes("--real-model") && !process.argv.includes("--local-model-only")
 const defaultAgents = JSON.parse(readFileSync(path.join(root, "agent/agents.json"), "utf8")).agents
 const runId = randomUUID().replaceAll("-", "").slice(0, 12)
@@ -20,7 +21,7 @@ const identifier = `app.sageroom.desktop.e2e.r${runId}`
 const productName = `Sageroom 测试 ${runId}`
 const output = path.join(root, ".test-results", `desktop-${runId}`)
 mkdirSync(output, { recursive: true })
-const report = { platform: `${os.platform()} ${os.release()}`, app_version: "0.1.0", build: "debug", identifier, cpu: os.cpus()[0]?.model, memory_bytes: os.totalmem(), tests: [], screenshots: [], page_errors: [], console_errors: [], limitations: ["其他 Windows 版本未验收", "真实中文输入法需人工走查；自动化只验证组合输入事件", "安装态通知、release 性能、24h 和完整备份恢复未验收"] }
+const report = { platform: `${os.platform()} ${os.release()}`, app_version: packageMetadata.version, build: "debug", identifier, cpu: os.cpus()[0]?.model, memory_bytes: os.totalmem(), tests: [], screenshots: [], page_errors: [], console_errors: [], limitations: ["其他 Windows 版本未验收", "真实中文输入法需人工走查；自动化只验证组合输入事件", "安装态通知、release 性能、24h 和完整备份恢复未验收"] }
 const desktopTarget = path.join(root, ".test-results", "desktop-target")
 const executable = path.join(desktopTarget, "debug", "sageroom.exe")
 let server
@@ -512,7 +513,7 @@ try {
   await expect(page.getByRole("button", { name: /保存|重新读取/ })).toHaveCount(0)
   await screenshot(page, "settings-appearance")
   await page.getByRole("button", { name: "关于与数据", exact: true }).click()
-  await expect(page.getByText("MIT", { exact: true })).toBeVisible()
+  await expect(page.getByText(packageMetadata.license, { exact: true })).toBeVisible()
   const currentUsage = data(await invoke(page, "app_get_snapshot", { data_generation_id: generation, last_event_seq: null })).data_usage
   const avatarBytes = BigInt(currentUsage.avatar_bytes)
   const avatarUnit = avatarBytes < 1048576n ? 1024n : 1048576n

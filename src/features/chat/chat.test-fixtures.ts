@@ -1,3 +1,4 @@
+import { APP_METADATA } from "@/app/metadata"
 import type { AppSnapshot, ChatMessage, DomainEvent, MessagePage, SearchPage } from "@/contracts/generated"
 
 export const GENERATION = "generation-test"
@@ -31,7 +32,7 @@ export function snapshot(overrides: Partial<AppSnapshot> = {}): AppSnapshot {
     requires_full_reload: true,
     data_directory: "C:/Sageroom-test/data",
     data_usage: { database_bytes: "262144", avatar_bytes: "0" },
-    app_version: "0.1.0",
+    app_version: APP_METADATA.version,
     development_tools_available: true,
     ...overrides,
   }

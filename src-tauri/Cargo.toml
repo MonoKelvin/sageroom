@@ -1,8 +1,8 @@
 [package]
 name = "sageroom"
-version = "0.1.0"
+version = "0.2.0"
 description = "本地优先的智能体聊天室"
-authors = ["Sageroom contributors"]
+authors = ["MonoKelvin"]
 edition = "2024"
 rust-version = "1.90"
 license = "MIT"

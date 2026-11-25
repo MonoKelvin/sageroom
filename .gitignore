@@ -8,6 +8,7 @@ __pycache__/
 .env
 .env.*
 /src-tauri/target/
+/src-tauri/contracts/target/
 /src-tauri/gen/schemas/
 /test-results/
 /playwright-report/

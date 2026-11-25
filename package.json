@@ -1,8 +1,18 @@
 {
   "name": "sageroom",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
+  "productName": "Sageroom",
   "description": "本地优先的桌面智能体聊天室",
+  "author": {
+    "name": "MonoKelvin",
+    "url": "https://github.com/MonoKelvin"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MonoKelvin/sageroom.git"
+  },
+  "homepage": "https://github.com/MonoKelvin/sageroom",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@11.9.0",
@@ -11,12 +21,13 @@
     "pnpm": ">=11.9.0 <12"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/sync-metadata.mjs && vite",
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "test": "vitest run",
-    "build": "tsc -b && vite build",
-    "tauri": "tauri",
+    "build": "node scripts/sync-metadata.mjs && tsc -b && vite build",
+    "tauri": "node scripts/sync-metadata.mjs && tauri",
+    "sync:metadata": "node scripts/sync-metadata.mjs",
     "contracts:generate": "node scripts/contracts.mjs",
     "contracts:check": "node scripts/contracts.mjs --check",
     "test:desktop": "node scripts/test-desktop.mjs"

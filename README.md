@@ -2,7 +2,7 @@
 
 [简体中文](README.zh.md)
 
-**Sageroom is a local-first desktop chatroom where a human and multiple AI agents share one room.** Version `0.1.0`, under active development: the desktop shell and the local text-chat slice are implemented, but the full P0/P1 product is **not** delivered yet.
+**Sageroom is a local-first desktop chatroom where a human and multiple AI agents share one room.** Under active development: the desktop shell and the local text-chat slice are implemented, but the full P0/P1 product is **not** delivered yet.
 
 The intended experience is a living group chat, not a dashboard that simply displays several model answers. Agents observe the room, decide whether to speak, stay silent, wait, or rest, and may talk to each other. Code enforces budgets, permissions, and consistency; whether a message is worth sending is meant to be decided by each agent's model.
 

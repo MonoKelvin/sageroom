@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { IconBrush, IconInfoCircle, IconLogout } from "@tabler/icons-react"
+import { APP_METADATA } from "@/app/metadata"
 import type { ApplicationPageProps } from "@/app/navigation"
 import { useAppliedResource, useConfiguration, useConfigurationRuntime } from "@/app/configurationContext"
 import { Button } from "@/components/ui/button"
@@ -41,7 +42,7 @@ function ExitControl() {
   const runtime = useConfigurationRuntime()
   const [confirmExit, setConfirmExit] = useState(false)
   return <div className="config-stack"><Button variant="ghost" size="sm" className="self-start" disabled={runtime.exiting} onClick={() => { runtime.clearError(); setConfirmExit(true) }}><IconLogout size={16} aria-hidden="true" />退出应用</Button>
-    {confirmExit && <div className="config-notice"><p>确定退出 Sageroom？已应用的修改会完成写入；仍在编辑的文本不会自动提交。</p><div className="config-actions"><Button size="sm" disabled={runtime.exiting} onClick={() => void runtime.requestExit()}>{runtime.exiting ? "退出中…" : "确认退出"}</Button><Button variant="ghost" size="sm" disabled={runtime.exiting} onClick={() => { setConfirmExit(false); runtime.clearError() }}>继续使用</Button></div></div>}
+    {confirmExit && <div className="config-notice"><p>确定退出 {APP_METADATA.productName}？已应用的修改会完成写入；仍在编辑的文本不会自动提交。</p><div className="config-actions"><Button size="sm" disabled={runtime.exiting} onClick={() => void runtime.requestExit()}>{runtime.exiting ? "退出中…" : "确认退出"}</Button><Button variant="ghost" size="sm" disabled={runtime.exiting} onClick={() => { setConfirmExit(false); runtime.clearError() }}>继续使用</Button></div></div>}
     {runtime.error && <p role="alert">{runtime.error}</p>}
   </div>
 }
@@ -57,7 +58,7 @@ function SettingsEditor({ session, active, onNavigate }: ApplicationPageProps) {
     <div className="workspace-detail"><section className="surface-card"><header className="panel-heading"><h2 className="panel-title">{title}</h2></header>
       <div className="panel-content panel-scroll">
         <div hidden={section !== "appearance"} inert={section !== "appearance"}><AppearanceCard active={active && section === "appearance"} /></div>
-        {section === "about" && <div className="config-stack config-about"><SettingSection title="Sageroom"><dl><div><dt>版本</dt><dd>{snapshot.app_version}</dd></div><div><dt>许可证</dt><dd>MIT</dd></div><div><dt>数据目录</dt><dd>{snapshot.data_directory}</dd></div><div><dt>数据库占用（含 WAL/SHM）</dt><dd>{formatBytes(snapshot.data_usage.database_bytes)}</dd></div><div><dt>头像占用</dt><dd>{formatBytes(snapshot.data_usage.avatar_bytes)}</dd></div><div><dt>开源项目</dt><dd><a href="https://github.com/MonoKelvin/sageroom" target="_blank" rel="noreferrer">github.com/MonoKelvin/sageroom</a></dd></div><div><dt>作者</dt><dd><a href="https://github.com/MonoKelvin" target="_blank" rel="noreferrer">MonoKelvin</a></dd></div></dl></SettingSection>
+        {section === "about" && <div className="config-stack config-about"><SettingSection title={APP_METADATA.productName}><dl><div><dt>版本</dt><dd>{snapshot.app_version}</dd></div><div><dt>许可证</dt><dd>{APP_METADATA.license}</dd></div><div><dt>数据目录</dt><dd>{snapshot.data_directory}</dd></div><div><dt>数据库占用（含 WAL/SHM）</dt><dd>{formatBytes(snapshot.data_usage.database_bytes)}</dd></div><div><dt>头像占用</dt><dd>{formatBytes(snapshot.data_usage.avatar_bytes)}</dd></div><div><dt>开源项目</dt><dd><a href={APP_METADATA.homepage} target="_blank" rel="noreferrer">{APP_METADATA.homepage.replace(/^https?:\/\//u, "")}</a></dd></div><div><dt>作者</dt><dd><a href={APP_METADATA.author.url} target="_blank" rel="noreferrer">{APP_METADATA.author.name}</a></dd></div></dl></SettingSection>
           <SettingSection title="本地数据"><p className="form-caption">聊天、配置和经历保存在本机，密钥放在系统凭据库。连接测试和已配置成员的运行会访问对应模型服务，发送上下文并可能产生费用。</p><p className="form-caption">当前未提供备份与恢复入口。</p></SettingSection>
           <SettingSection title="退出应用" description="关闭窗口会隐藏到托盘；退出会等待已应用配置落盘。"><ExitControl /></SettingSection>
         </div>}

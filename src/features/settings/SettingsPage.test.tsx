@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ipc, IpcError } from "@/app/ipc"
 import { useConfigurationAppearance } from "@/app/configurationContext"
+import { APP_METADATA } from "@/app/metadata"
 import { ConfigurationTestProvider, mockConfigurationIpc, pageProps } from "./configuration.test-fixtures"
 import { SettingsPage } from "./SettingsPage"
 
@@ -54,8 +55,8 @@ describe("软件设置直接应用", () => {
     await userEvent.click(screen.getByRole("button", { name: "关于与数据" }))
     expect(props.session.reload).toHaveBeenCalledOnce()
     expect(screen.getByText("C:/Sageroom-test/data")).toBeInTheDocument()
-    expect(screen.getByText("MIT")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "MonoKelvin" })).toHaveAttribute("href", "https://github.com/MonoKelvin")
+    expect(screen.getByText(APP_METADATA.license)).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: APP_METADATA.author.name })).toHaveAttribute("href", APP_METADATA.author.url)
     expect(screen.queryByRole("button", { name: /备份|恢复/ })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "退出应用" }))
     expect(ipc.exit).not.toHaveBeenCalled()

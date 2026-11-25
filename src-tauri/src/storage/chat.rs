@@ -547,6 +547,7 @@ impl Database {
                 requires_full_reload,
                 data_directory,
                 data_usage,
+                // 版本只定义在根 package.json，由 scripts/sync-metadata.mjs 同步到 Cargo.toml。
                 app_version: env!("CARGO_PKG_VERSION").to_owned(),
                 development_tools_available: cfg!(debug_assertions),
             },
