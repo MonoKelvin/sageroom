@@ -95,7 +95,8 @@
   backdrop-filter: blur(var(--glass-blur)) saturate(140%);
 }
 .ui-dropdown-content { transform-origin: var(--radix-dropdown-menu-content-transform-origin); }
-.ui-dropdown-item[data-highlighted] { background: var(--control-bg); color: var(--text-primary); }
+/* 菜单项没有持久选中态，高亮即 hover：用列表同款浅色 */
+.ui-dropdown-item[data-highlighted] { background: var(--control-hover-bg); color: var(--text-primary); }
 .ui-dropdown-item[data-highlighted][data-variant="destructive"] { color: var(--destructive); }
 /* 禁用项：文字与图标统一变浅，且不响应悬停/焦点高亮 */
 .ui-dropdown-item[data-disabled], .ui-dropdown-item:disabled { color: var(--text-secondary); opacity: .45; cursor: default; }
@@ -130,7 +131,10 @@
 }
 .settings-select-viewport { padding: calc(var(--size-unit) * 1.25); }
 .settings-select-item { position: relative; display: flex; align-items: center; min-height: calc(var(--size-unit) * 8.5); padding: calc(var(--size-unit) * 1.75) var(--space-6) calc(var(--size-unit) * 1.75) calc(var(--size-unit) * 2.5); border-radius: calc(var(--radius) * .7); font-size: var(--font-caption); line-height: 1.4; cursor: default; outline: none; user-select: none; overflow-wrap: anywhere; }
-.settings-select-item[data-highlighted] { background: var(--primary); color: var(--primary-foreground); }
+/* hover/键盘导航：浅色；真正选中的条目：主题反色（定义在后以覆盖 hover） */
+.settings-select-item[data-highlighted] { background: var(--control-hover-bg); color: var(--text-primary); }
+.settings-select-item[data-state="checked"] { background: var(--text-primary); color: var(--selection-foreground); }
+.settings-select-item[data-highlighted] .settings-select-check, .settings-select-item[data-state="checked"] .settings-select-check { color: inherit; }
 .settings-select-item[data-disabled] { opacity: 0.4; pointer-events: none; }
 .settings-select-check { position: absolute; right: var(--space-2); display: flex; align-items: center; }
 .settings-select-scroll { display: flex; align-items: center; justify-content: center; height: calc(var(--size-unit) * 6); color: var(--text-secondary); }

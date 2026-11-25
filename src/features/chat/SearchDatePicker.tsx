@@ -27,9 +27,15 @@ type Props = {
   onValueChange: (value: number) => void
   onClear?: () => void
   onCurrent?: () => void
+  /** 显示时、分输入；确认时保留所选时刻（搜索场景默认只选日，不传此项）。 */
+  time?: boolean
+  /** 取消时的回调；time 模式下会显示「取消」按钮，调用方负责还原数值。 */
+  onCancel?: () => void
 }
 
-function Calendar({ initialValue, currentTime, min, max, onConfirm, onClear, onCurrent }: Omit<Props, "value" | "label" | "onValueChange"> & { initialValue: number; currentTime: number; onConfirm: (value: number) => void }) {
+const timeFormatter = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })
+
+function Calendar({ initialValue, currentTime, min, max, onConfirm, onClear, onCurrent, onCancel, time = false }: Omit<Props, "value" | "label" | "onValueChange"> & { initialValue: number; currentTime: number; onConfirm: (value: number) => void }) {
   const initial = bounded(initialValue, min, max)
   const [draft, setDraft] = useState(initial)
   const [month, setMonth] = useState(() => monthStart(new Date(initial)))
@@ -95,6 +101,16 @@ function Calendar({ initialValue, currentTime, min, max, onConfirm, onClear, onC
     navigate(day)
   }
 
+  function setTimePart(part: "hour" | "minute", raw: string) {
+    const number = Number(raw)
+    if (!Number.isInteger(number)) return
+    const next = new Date(value)
+    const hour = part === "hour" ? number : next.getHours()
+    const minute = part === "minute" ? number : next.getMinutes()
+    next.setHours(hour, minute, 0, 0)
+    setDraft(bounded(next.getTime(), min, max))
+  }
+
   return <>
     <div className="search-calendar-heading">
       <Button variant="ghost" size="icon-sm" aria-label="上个月" onClick={() => navigate(new Date(month.getFullYear(), month.getMonth() - 1, 1))}><IconChevronLeft size={17} aria-hidden="true" /></Button>
@@ -112,15 +128,22 @@ function Calendar({ initialValue, currentTime, min, max, onConfirm, onClear, onC
         return <td key={key} aria-selected={selected}><button type="button" className="search-calendar-day" data-day={key} data-focused={key === focusedDay} data-outside={day.getMonth() !== month.getMonth()} data-selected={selected} aria-label={dayFormatter.format(day)} aria-current={key === today ? "date" : undefined} disabled={disabled(day)} tabIndex={key === focusedDay && !disabled(day) ? 0 : -1} onFocus={() => setFocusedDay(key)} onKeyDown={(event) => moveFocus(event, day)} onClick={() => selectDay(day)}>{day.getDate()}</button></td>
       })}</tr>)}</tbody>
     </table>
+    {time && <div className="search-calendar-time">
+      <span>时间</span>
+      <input type="number" className="settings-control" aria-label="小时" min={0} max={23} step={1} value={date.getHours()} onChange={(event) => setTimePart("hour", event.target.value)} />
+      <span>:</span>
+      <input type="number" className="settings-control" aria-label="分钟" min={0} max={59} step={1} value={date.getMinutes()} onChange={(event) => setTimePart("minute", event.target.value)} />
+    </div>}
     <div className="search-calendar-actions">
       {onClear && <Button variant="ghost" size="sm" onClick={onClear}>清空</Button>}
       {onCurrent && <Button variant="ghost" size="sm" disabled={min != null && min > currentTime} onClick={onCurrent}>今天</Button>}
+      {onCancel && <Button variant="ghost" size="sm" onClick={() => { onCancel(); }}>取消</Button>}
       <Button size="sm" onClick={() => onConfirm(value)}>确定</Button>
     </div>
   </>
 }
 
-export function SearchDatePicker({ label, value, min, max, onValueChange, onClear, onCurrent }: Props) {
+export function SearchDatePicker({ label, value, min, max, onValueChange, onClear, onCurrent, time = false, onCancel }: Props) {
   const [open, setOpen] = useState(false)
   const [present, setPresent] = useState(false)
   const [reference, setReference] = useState(() => Date.now())
@@ -148,7 +171,8 @@ export function SearchDatePicker({ label, value, min, max, onValueChange, onClea
 
   function confirm(value: number) {
     const selected = new Date(value)
-    if (onCurrent) { selected.setHours(0, 0, 0, 0); selected.setDate(selected.getDate() + 1); onValueChange(selected.getTime() - 1) }
+    if (time) onValueChange(selected.getTime())
+    else if (onCurrent) { selected.setHours(0, 0, 0, 0); selected.setDate(selected.getDate() + 1); onValueChange(selected.getTime() - 1) }
     else { selected.setHours(0, 0, 0, 0); onValueChange(selected.getTime()) }
     changeOpen(false)
   }
@@ -159,13 +183,13 @@ export function SearchDatePicker({ label, value, min, max, onValueChange, onClea
     <PopoverPrimitive.Trigger asChild>
       <button type="button" className="search-date-trigger" aria-label={label} data-value={value ?? ""}>
         <IconCalendar size={18} aria-hidden="true" />
-        <span>{empty && !onCurrent ? "—" : dateFormatter.format(displayValue)}</span>
+        <span>{empty && !onCurrent ? "—" : time ? `${dateFormatter.format(displayValue)} ${timeFormatter.format(displayValue)}` : dateFormatter.format(displayValue)}</span>
       </button>
     </PopoverPrimitive.Trigger>
     {present && <PopoverPrimitive.Portal forceMount container={applicationLayerContainer()}>
       <PopoverPrimitive.Content ref={content} forceMount className="floating-surface search-date-popover" aria-label={label} aria-describedby={undefined} side={side} align={side === "left" ? "center" : onCurrent ? "end" : "start"} sideOffset={8} collisionPadding={12} collisionBoundary={applicationFrame()} data-motion={motion} inert={!open} onOpenAutoFocus={(event) => { event.preventDefault(); content.current?.querySelector<HTMLButtonElement>('[data-focused="true"]:not(:disabled)')?.focus() }} onEscapeKeyDown={(event) => event.stopPropagation()}>
         <PopoverPrimitive.Title className="sr-only">{label}</PopoverPrimitive.Title>
-        <Calendar key={revision} initialValue={reference} currentTime={currentTime} min={min} max={max ?? (onClear ? currentTime : undefined)} onConfirm={confirm} onClear={onClear ? () => { onClear(); changeOpen(false) } : undefined} onCurrent={onCurrent ? () => { onCurrent(); changeOpen(false) } : undefined} />
+        <Calendar key={revision} initialValue={reference} currentTime={currentTime} min={min} max={max ?? (onClear ? currentTime : undefined)} time={time} onConfirm={confirm} onClear={onClear ? () => { onClear(); changeOpen(false) } : undefined} onCurrent={onCurrent ? () => { onCurrent(); changeOpen(false) } : undefined} onCancel={onCancel ? () => { onCancel(); changeOpen(false) } : undefined} />
       </PopoverPrimitive.Content>
     </PopoverPrimitive.Portal>}
   </PopoverPrimitive.Root>

@@ -261,6 +261,7 @@ function MessageViewport({
     ref={list}
     scrollerRef={handleScrollerRef}
     className="chat-list-scroller"
+   
     context={{ loadingMore, hasMoreBefore: page.has_more_before }}
     style={{ height: "100%" }}
     data={page.items}

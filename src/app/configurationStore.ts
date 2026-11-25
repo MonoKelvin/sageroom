@@ -85,6 +85,10 @@ export class ConfigurationStore {
 
   agent(id: string) { return this.agents.get(id)! }
 
+  async deleteAgent(agentId: string): Promise<void> {
+    await ipc.deleteAgent({ data_generation_id: this.snapshot.data_generation_id, agent_id: agentId })
+  }
+
   async createAgent(source?: AgentConfiguration) {
     await this.global.ensureLoaded()
     const agent: AgentConfiguration = source ? { ...structuredClone(source), agent_id: crypto.randomUUID(), revision: "0", display_name: `${source.display_name} 副本`.slice(0, 80) } : { agent_id: crypto.randomUUID(), revision: "0", display_name: "新智能体", gender_description: null, language_style: "自然、清晰", skill: "", dimensions: { ...defaultDimensions }, avatar_id: null, agent_type: "social", model: null }
@@ -167,6 +171,10 @@ export class ConfigurationStore {
 
   addExperience(agentId: string, content: string, score: number): Promise<ExperienceEntry> {
     return ipc.experienceAdd({ data_generation_id: this.snapshot.data_generation_id, agent_id: agentId, content, score })
+  }
+
+  updateExperience(agentId: string, entryId: string, content: string, recordedAt: string, score: number): Promise<ExperienceEntry> {
+    return ipc.experienceUpdate({ data_generation_id: this.snapshot.data_generation_id, agent_id: agentId, entry_id: entryId, content, recorded_at: recordedAt, score })
   }
 
   deleteExperience(agentId: string, entryId: string): Promise<ExperienceEntry[]> {

@@ -308,6 +308,11 @@ impl Database {
         super::experience::add(&self.root, &request.agent_id, &request.content, request.score)
     }
 
+    pub fn update_experience(&self, request: crate::domain::contracts::ExperienceUpdateRequest) -> AppResult<ExperienceEntry> {
+        self.ensure_experience_agent(&request.data_generation_id, &request.agent_id)?;
+        super::experience::update(&self.root, &request.agent_id, &request)
+    }
+
     pub fn delete_experience(&self, request: ExperienceDeleteRequest) -> AppResult<Vec<ExperienceEntry>> {
         self.ensure_experience_agent(&request.data_generation_id, &request.agent_id)?;
         super::experience::delete(&self.root, &request.agent_id, &request.entry_id)

@@ -9,17 +9,19 @@ const first: ExperienceEntry = { id: "one", recorded_at: "2026/11/22 10:00", con
 const store = {
   listExperience: vi.fn(async () => [first]),
   addExperience: vi.fn(async () => first),
+  updateExperience: vi.fn(async () => first),
   deleteExperience: vi.fn(async () => [] as ExperienceEntry[]),
   pruneExperience: vi.fn(async () => [first]),
 }
 const failure = () => new IpcError({ code: "IO_ERROR", message: "文件暂不可写", retryability: "after_user_action", field_path: null, trace_id: "test", may_have_been_charged: false })
 function panel(active = true, agentId = "agent-one") { return <ExperiencePanel store={store} agentId={agentId} active={active} disabled={false} /> }
-async function open() { await userEvent.click(screen.getByRole("button", { name: "经历" })); await screen.findByText(first.content) }
+async function open() { await screen.findByText(first.content) }
 
 beforeEach(() => {
   vi.clearAllMocks()
   store.listExperience.mockResolvedValue([first])
   store.addExperience.mockResolvedValue(first)
+  store.updateExperience.mockResolvedValue(first)
   store.deleteExperience.mockResolvedValue([])
   store.pruneExperience.mockResolvedValue([first])
 })
@@ -27,7 +29,6 @@ beforeEach(() => {
 describe("成员经历管理", () => {
   it("按需读取，添加后回读，保留用户提供的重要度", async () => {
     render(panel())
-    expect(store.listExperience).not.toHaveBeenCalled()
     await open()
     fireEvent.change(screen.getByRole("textbox", { name: "经历内容" }), { target: { value: "已经确认的重要经历" } })
     fireEvent.change(screen.getByRole("spinbutton", { name: "经历重要度" }), { target: { value: "95" } })
@@ -93,7 +94,6 @@ describe("成员经历管理", () => {
     let resolve!: (entries: ExperienceEntry[]) => void
     store.listExperience.mockImplementationOnce(() => new Promise((done) => { resolve = done }))
     const view = render(panel())
-    await userEvent.click(screen.getByRole("button", { name: "经历" }))
     view.rerender(panel(true, "agent-two"))
     await screen.findByText(first.content)
     await act(async () => resolve([{ ...first, content: "来自上个成员的迟到经历" }]))
@@ -107,9 +107,9 @@ describe("成员经历管理", () => {
     await open()
     fireEvent.change(screen.getByRole("textbox", { name: "经历内容" }), { target: { value: "隐藏期间完成的经历" } })
     await userEvent.click(screen.getByRole("button", { name: "添加经历" }))
-    await userEvent.click(screen.getByRole("button", { name: "经历" }))
+    await userEvent.click(screen.getByRole("button", { name: /经历（\d+条经历）/ }))
     await act(async () => resolve(first))
-    await userEvent.click(screen.getByRole("button", { name: "经历" }))
+    await userEvent.click(screen.getByRole("button", { name: /经历（\d+条经历）/ }))
     expect(screen.getByRole("textbox", { name: "经历内容" })).toHaveValue("")
     expect(store.addExperience).toHaveBeenCalledTimes(1)
   })
@@ -117,7 +117,6 @@ describe("成员经历管理", () => {
     let resolve!: (entries: ExperienceEntry[]) => void
     store.listExperience.mockImplementationOnce(() => new Promise((done) => { resolve = done }))
     render(panel())
-    await userEvent.click(screen.getByRole("button", { name: "经历" }))
     const input = screen.getByRole("textbox", { name: "经历内容" })
     fireEvent.change(input, { target: { value: "等待回读" } })
     expect(screen.getByRole("button", { name: "添加经历" })).toBeDisabled()
@@ -131,8 +130,9 @@ describe("成员经历管理", () => {
     render(panel())
     await open()
     fireEvent.change(screen.getByRole("textbox", { name: "经历内容" }), { target: { value: "仍在编辑" } })
-    await userEvent.click(screen.getByRole("button", { name: "经历" }))
-    await userEvent.click(screen.getByRole("button", { name: "经历" }))
+    await userEvent.click(screen.getByRole("button", { name: /经历（\d+条经历）/ }))
+    await waitFor(() => expect(screen.getByRole("button", { name: /经历（\d+条经历）/ })).toHaveAttribute("aria-expanded", "false"))
+    await userEvent.click(screen.getByRole("button", { name: /经历（\d+条经历）/ }))
     await waitFor(() => expect(store.listExperience).toHaveBeenCalledTimes(2))
     expect(screen.getByRole("textbox", { name: "经历内容" })).toHaveValue("仍在编辑")
   })

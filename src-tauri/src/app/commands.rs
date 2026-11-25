@@ -217,6 +217,20 @@ pub async fn agent_list(
 }
 
 #[tauri::command]
+pub async fn agent_delete(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<()>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.worker()?.delete_agent(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
 pub async fn agent_save(
     window: WebviewWindow,
     state: State<'_, AppState>,
@@ -442,6 +456,20 @@ pub async fn experience_add(
     let result = async {
         trusted_window(&window)?;
         state.experience_add(decode(request)?).await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn experience_update(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<ExperienceEntry>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        state.experience_update(decode(request)?).await
     }
     .await;
     Ok(result.into())

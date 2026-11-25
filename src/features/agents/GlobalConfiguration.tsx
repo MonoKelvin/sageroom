@@ -1,12 +1,13 @@
 import { useState } from "react"
-import { IconAdjustments, IconAlertTriangle, IconCode, IconCopy, IconPlus, IconRobot, IconTrash } from "@tabler/icons-react"
+import { IconAdjustments, IconAlertTriangle, IconChevronRight, IconCode, IconCopy, IconPlus, IconRobot, IconTrash } from "@tabler/icons-react"
 import { useAppliedResource, useConfiguration, useConfigurationRuntime } from "@/app/configurationContext"
 import { errorMessage } from "@/app/ipc"
 import { AppDialog } from "@/components/ui/app-dialog"
 import { Button } from "@/components/ui/button"
+import { Disclosure } from "@/components/ui/disclosure"
 import { EditableInput } from "@/components/ui/editable-input"
 import { EditableTextarea } from "@/components/ui/editable-textarea"
-import { SettingSection } from "@/components/ui/setting-row"
+import { SegmentedControl } from "@/components/ui/segmented-control"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/components/ui/toast-context"
 import { validateText } from "@/features/settings/configurationDefaults"
@@ -15,8 +16,8 @@ import { ModelCredentials } from "@/features/settings/ModelCredentials"
 
 type Section = "models" | "personas"
 const sections = [
-  { id: "models" as const, title: "模型配置", icon: IconRobot },
-  { id: "personas" as const, title: "人格预设", icon: IconAdjustments },
+  { value: "models" as const, label: "模型配置", icon: IconRobot },
+  { value: "personas" as const, label: "人格预设", icon: IconAdjustments },
 ]
 
 function IconAction({ label, icon: Icon, onClick, disabled, danger }: {
@@ -38,6 +39,10 @@ export function GlobalConfiguration({ active }: { active: boolean }) {
   const [importing, setImporting] = useState(false)
   const [operationError, setOperationError] = useState<string | null>(null)
   const [unavailable, setUnavailable] = useState<Record<string, boolean>>({})
+  // 卡片折叠状态：默认全部展开，键为配置 id。
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const isCollapsed = (id: string) => collapsed[id] === true
+  const toggleCollapsed = (id: string) => setCollapsed((current) => ({ ...current, [id]: !current[id] }))
 
   async function run(operation: () => Promise<unknown>) {
     setOperationError(null)
@@ -59,51 +64,81 @@ export function GlobalConfiguration({ active }: { active: boolean }) {
   return <section className="surface-card">
     <header className="panel-heading"><h2 className="panel-title">全局配置</h2></header>
     <div className="panel-content panel-scroll">
-      <nav className="config-actions mb-4" aria-label="全局配置分类">{sections.map(({ id, title, icon: Icon }) => <Button key={id} variant={section === id ? "secondary" : "ghost"} size="sm" aria-pressed={section === id} onClick={() => setSection(id)}><Icon size={17} aria-hidden="true" />{title}</Button>)}</nav>
+      <div className="config-sections">
+      <SegmentedControl items={sections} value={section} onChange={setSection} label="全局配置分类" className="config-segmented" />
       {!config && <p className="form-caption">{state.loading ? "正在读取本地配置…" : "配置尚未就绪。"}</p>}
       {config && <fieldset disabled={runtime.exiting || importing}>
         <div hidden={section !== "models"} inert={section !== "models"}>
-          <SettingSection title="模型配置" actions={<>
-            <IconAction label="添加大模型" icon={IconPlus} onClick={() => void run(() => store.createModel())} />
-            {store.snapshot.development_tools_available && <IconAction label="导入开发环境大模型" icon={IconCode} onClick={() => void importDevelopmentModel()} disabled={importing || state.status === "error"} />}
-          </>}>
-            {!config.model_profiles.length && <p className="config-empty-state">还没有模型预设，请点击右上角的添加导入。</p>}
-            {config.model_profiles.map((model) => <section key={model.id} className="config-item" aria-label={`模型预设 ${model.name}`}>
-              <div className="config-item-heading">
-                <div className="config-item-title">
-                  <strong>{model.name}</strong>
-                  {unavailable[model.id] && <Tooltip disableHoverableContent><TooltipTrigger asChild>
-                    <button type="button" className="model-unavailable-mark" aria-label="模型不可用"><IconAlertTriangle size={16} aria-hidden="true" /></button>
-                  </TooltipTrigger><TooltipContent>模型不可用</TooltipContent></Tooltip>}
+          <div className="config-card-list">
+            {!config.model_profiles.length && <div className="config-empty-state"><p>还没有模型配置。</p><div className="config-actions config-empty-actions">
+              <IconAction label="添加大模型" icon={IconPlus} onClick={() => void run(() => store.createModel())} />
+              {store.snapshot.development_tools_available && <IconAction label="导入开发环境大模型" icon={IconCode} onClick={() => void importDevelopmentModel()} disabled={importing || state.status === "error"} />}
+            </div></div>}
+            {config.model_profiles.map((model) => {
+              const open = !isCollapsed(model.id)
+              return <section key={model.id} className="config-card" aria-label={`模型配置 ${model.name}`}>
+                <div className="config-card-head">
+                  <button type="button" className="config-card-toggle" aria-expanded={open} onClick={() => toggleCollapsed(model.id)}>
+                    <IconChevronRight size={16} className="config-card-chevron" data-open={open} aria-hidden="true" />
+                    <strong className="config-card-title">{model.name || "未命名配置"}</strong>
+                    {!open && <span className="config-card-model">（{model.model_name.trim() && model.credential_configured ? model.model_name : "未配置"}）</span>}
+                  </button>
+                  <div className="config-actions config-item-actions">
+                    <IconAction label="添加大模型" icon={IconPlus} onClick={() => void run(() => store.createModel())} />
+                    <IconAction label="复制大模型" icon={IconCopy} onClick={() => void run(() => store.createModel(model))} />
+                    {store.snapshot.development_tools_available && <IconAction label="导入开发环境大模型" icon={IconCode} onClick={() => void importDevelopmentModel()} disabled={importing || state.status === "error"} />}
+                    {unavailable[model.id] && <Tooltip disableHoverableContent><TooltipTrigger asChild>
+                      <button type="button" className="model-unavailable-mark" aria-label="模型不可用"><IconAlertTriangle size={16} aria-hidden="true" /></button>
+                    </TooltipTrigger><TooltipContent>模型不可用</TooltipContent></Tooltip>}
+                    <IconAction label="删除大模型" icon={IconTrash} danger onClick={() => setDeleteTarget({ kind: "model", id: model.id })} />
+                  </div>
                 </div>
-                <div className="config-actions config-item-actions">
-                  <IconAction label="复制大模型" icon={IconCopy} onClick={() => void run(() => store.createModel(model))} />
-                  <IconAction label="删除大模型" icon={IconTrash} danger onClick={() => setDeleteTarget({ kind: "model", id: model.id })} />
+                <div className="config-card-body-wrap" data-open={open} inert={!open}>
+                  <div className="config-card-body-clip">
+                    <div className="config-card-body">
+                      <ModelFields value={model} active={active && section === "models" && open} onChange={(patch) => store.updateModel(model.id, patch)} onListModels={() => store.listModelNames(model.id).then((result) => result.models)} />
+                      <ModelCredentials profile={model} active={active && section === "models" && open} disabled={runtime.exiting || importing || state.status === "error"} onTestResult={(available) => setUnavailable((current) => ({ ...current, [model.id]: !available }))} />
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <ModelFields value={model} active={active && section === "models"} onChange={(patch) => store.updateModel(model.id, patch)} onListModels={() => store.listModelNames(model.id).then((result) => result.models)} />
-              <ModelCredentials profile={model} active={active && section === "models"} disabled={runtime.exiting || importing || state.status === "error"} onTestResult={(available) => setUnavailable((current) => ({ ...current, [model.id]: !available }))} />
-            </section>)}
-          </SettingSection>
+              </section>
+            })}
+          </div>
         </div>
         <div hidden={section !== "personas"} inert={section !== "personas"}>
-          <SettingSection title="人格预设" description="常用表达风格；修改不回写成员已采用的独立配置。" actions={<IconAction label="添加人格" icon={IconPlus} onClick={() => void run(() => store.createPersona())} />}>
-            {!config.persona_presets.length && <p className="form-caption">还没有人格预设。</p>}
-            {config.persona_presets.map((persona) => <section className="config-item" key={persona.id} aria-label={`人格预设 ${persona.name}`}>
-              <div className="config-item-heading">
-                <strong>{persona.name}</strong>
-                <div className="config-actions config-item-actions">
-                  <IconAction label="复制人格预设" icon={IconCopy} onClick={() => void run(() => store.createPersona(persona))} />
-                  <IconAction label="删除人格预设" icon={IconTrash} danger onClick={() => setDeleteTarget({ kind: "persona", id: persona.id })} />
+          <div className="config-card-list">
+            {!config.persona_presets.length && <div className="config-empty-state"><p>还没有人格预设。</p><div className="config-actions config-empty-actions">
+              <IconAction label="添加人格" icon={IconPlus} onClick={() => void run(() => store.createPersona())} />
+            </div></div>}
+            {config.persona_presets.map((persona) => {
+              const open = !isCollapsed(persona.id)
+              return <section className="config-card" key={persona.id} aria-label={`人格预设 ${persona.name}`}>
+                <div className="config-card-head">
+                  <button type="button" className="config-card-toggle" aria-expanded={open} onClick={() => toggleCollapsed(persona.id)}>
+                    <IconChevronRight size={16} className="config-card-chevron" data-open={open} aria-hidden="true" />
+                    <strong className="config-card-title">{persona.name || "未命名人格"}</strong>
+                  </button>
+                  <div className="config-actions config-item-actions">
+                    <IconAction label="添加人格" icon={IconPlus} onClick={() => void run(() => store.createPersona())} />
+                    <IconAction label="复制人格预设" icon={IconCopy} onClick={() => void run(() => store.createPersona(persona))} />
+                    <IconAction label="删除人格预设" icon={IconTrash} danger onClick={() => setDeleteTarget({ kind: "persona", id: persona.id })} />
+                  </div>
                 </div>
-              </div>
-              <Field label="人格名称"><EditableInput label="人格名称" active={active && section === "personas"} value={persona.name} maxLength={80} normalize={(next) => next.trim()} validate={(next) => validateText(next, 80, true)} onApply={(name) => store.updatePersona(persona.id, { name })} /></Field>
-              <Field label="语言风格"><EditableTextarea label="语言风格" active={active && section === "personas"} value={persona.language_style} maxLength={2000} rows={2} validate={(next) => validateText(next, 2000)} onApply={(language_style) => store.updatePersona(persona.id, { language_style })} /></Field>
-              <details className="config-disclosure"><summary>八个人格维度（0–100）</summary><DimensionsFields value={persona.dimensions} onChange={(key, next) => store.global.change((current) => ({ ...current, persona_presets: current.persona_presets.map((item) => item.id === persona.id ? { ...item, dimensions: { ...item.dimensions, [key]: next } } : item) }))} /></details>
-            </section>)}
-          </SettingSection>
+                <div className="config-card-body-wrap" data-open={open} inert={!open}>
+                  <div className="config-card-body-clip">
+                    <div className="config-card-body">
+                      <Field label="人格名称"><EditableInput label="人格名称" active={active && section === "personas" && open} value={persona.name} maxLength={80} normalize={(next) => next.trim()} validate={(next) => validateText(next, 80, true)} onApply={(name) => store.updatePersona(persona.id, { name })} /></Field>
+                      <Field label="语言风格"><EditableTextarea label="语言风格" active={active && section === "personas" && open} value={persona.language_style} maxLength={2000} rows={2} validate={(next) => validateText(next, 2000)} onApply={(language_style) => store.updatePersona(persona.id, { language_style })} /></Field>
+                      <Disclosure title="八个人格维度（0–100）"><DimensionsFields value={persona.dimensions} onChange={(key, next) => store.global.change((current) => ({ ...current, persona_presets: current.persona_presets.map((item) => item.id === persona.id ? { ...item, dimensions: { ...item.dimensions, [key]: next } } : item) }))} /></Disclosure>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            })}
+          </div>
         </div>
       </fieldset>}
+      </div>
       <AppDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}

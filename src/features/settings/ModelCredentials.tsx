@@ -72,12 +72,12 @@ export function ModelCredentials({ profile, disabled = false, active = true, onT
 
   return <div className="config-stack">
     <SettingRow
-      title="API Key"
+      title="API 密钥"
       description={unavailable ? "请先完成模型地址与名称，再配置密钥或测试。" : undefined}
       htmlFor={fieldId}
     >
       <div className="credential-input-row">
-        <EditableInput id={fieldId} label="API Key" active={active} type="password" value="" resetOnApply autoComplete="new-password" spellCheck={false} placeholder={profile.credential_configured ? "已配置系统密钥" : "未配置系统密钥"} disabled={pending || unavailable} onApply={async (secret) => { await operation("set", secret) }} />
+        <EditableInput id={fieldId} label="API 密钥" active={active} type="password" value="" resetOnApply autoComplete="new-password" spellCheck={false} placeholder={profile.credential_configured ? "已配置系统密钥" : "未配置系统密钥"} disabled={pending || unavailable} onApply={async (secret) => { await operation("set", secret) }} />
         <Tooltip disableHoverableContent>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon-sm" className={result ? (result.available ? "model-test-success" : "model-test-failure") : undefined} aria-label="测试模型是否可用" disabled={pending || unavailable} onClick={() => void operation("test")}>

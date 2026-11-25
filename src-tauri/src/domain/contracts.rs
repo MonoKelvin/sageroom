@@ -660,6 +660,13 @@ pub struct AgentSaveRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(deny_unknown_fields)]
+pub struct AgentDeleteRequest {
+    pub data_generation_id: String,
+    pub agent_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
 pub struct UserProfile {
     pub participant_id: String,
     pub display_name: String,
@@ -723,6 +730,20 @@ pub struct ExperienceAddRequest {
     pub agent_id: String,
     #[schemars(length(min = 1, max = 2000))]
     pub content: String,
+    #[schemars(range(min = 0, max = 100))]
+    pub score: u8,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ExperienceUpdateRequest {
+    pub data_generation_id: String,
+    pub agent_id: String,
+    pub entry_id: String,
+    #[schemars(length(min = 1, max = 2000))]
+    pub content: String,
+    /// `YYYY/MM/DD HH:mm`，由界面编辑，后端校验格式
+    pub recorded_at: String,
     #[schemars(range(min = 0, max = 100))]
     pub score: u8,
 }

@@ -1,14 +1,14 @@
 // generated/raw-validators/validateChatRecallRequest.js
-var validateChatRecallRequest = validate144;
-function validate144(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+var validateChatRecallRequest = validate152;
+function validate152(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
-	const evaluated0 = validate144.evaluated;
+	const evaluated0 = validate152.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		let missing0;
 		if (data.data_generation_id === void 0 && (missing0 = "data_generation_id") || data.client_request_id === void 0 && (missing0 = "client_request_id") || data.message_id === void 0 && (missing0 = "message_id")) {
-			validate144.errors = [{
+			validate152.errors = [{
 				instancePath,
 				schemaPath: "#/required",
 				keyword: "required",
@@ -18,7 +18,7 @@ function validate144(data, { instancePath = "", parentData, parentDataProperty, 
 			return false;
 		} else {
 			for (const key0 in data) if (!(key0 === "client_request_id" || key0 === "data_generation_id" || key0 === "message_id")) {
-				validate144.errors = [{
+				validate152.errors = [{
 					instancePath,
 					schemaPath: "#/additionalProperties",
 					keyword: "additionalProperties",
@@ -29,7 +29,7 @@ function validate144(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 			if (data.client_request_id !== void 0) {
 				if (typeof data.client_request_id !== "string") {
-					validate144.errors = [{
+					validate152.errors = [{
 						instancePath: instancePath + "/client_request_id",
 						schemaPath: "#/properties/client_request_id/type",
 						keyword: "type",
@@ -43,7 +43,7 @@ function validate144(data, { instancePath = "", parentData, parentDataProperty, 
 			if (valid0) {
 				if (data.data_generation_id !== void 0) {
 					if (typeof data.data_generation_id !== "string") {
-						validate144.errors = [{
+						validate152.errors = [{
 							instancePath: instancePath + "/data_generation_id",
 							schemaPath: "#/properties/data_generation_id/type",
 							keyword: "type",
@@ -57,7 +57,7 @@ function validate144(data, { instancePath = "", parentData, parentDataProperty, 
 				if (valid0) {
 					if (data.message_id !== void 0) {
 						if (typeof data.message_id !== "string") {
-							validate144.errors = [{
+							validate152.errors = [{
 								instancePath: instancePath + "/message_id",
 								schemaPath: "#/properties/message_id/type",
 								keyword: "type",
@@ -72,7 +72,7 @@ function validate144(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 		}
 	} else {
-		validate144.errors = [{
+		validate152.errors = [{
 			instancePath,
 			schemaPath: "#/type",
 			keyword: "type",
@@ -81,10 +81,10 @@ function validate144(data, { instancePath = "", parentData, parentDataProperty, 
 		}];
 		return false;
 	}
-	validate144.errors = vErrors;
+	validate152.errors = vErrors;
 	return true;
 }
-validate144.evaluated = {
+validate152.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

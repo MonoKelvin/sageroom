@@ -1,0 +1,62 @@
+/* 分段切换：容器内滑动的高亮块 */
+.segmented-control {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--segmented-count), minmax(0, 1fr));
+  gap: 0;
+  padding: 3px;
+  border-radius: var(--radius);
+  background: var(--control-bg);
+}
+
+.segmented-thumb {
+  position: absolute;
+  inset: 3px auto 3px 3px;
+  width: calc((100% - 6px) / var(--segmented-count));
+  border-radius: calc(var(--radius) - 3px);
+  /* 与选中文字互反：浅色黑底白字，深色白底黑字 */
+  background: var(--text-primary);
+  transform: translateX(calc(var(--segmented-index) * 100%));
+  transition: transform var(--motion-duration-medium) var(--motion-ease);
+}
+
+/* 指针跟随块：比选中块更轻，随悬停项平滑滑动并淡入淡出 */
+.segmented-hover {
+  position: absolute;
+  inset: 3px auto 3px 3px;
+  width: calc((100% - 6px) / var(--segmented-count));
+  border-radius: calc(var(--radius) - 3px);
+  background: var(--control-bg);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(calc(var(--segmented-hover-index) * 100%));
+  transition: transform var(--motion-duration-medium) var(--motion-ease), opacity var(--motion-duration) ease;
+}
+
+.segmented-hover[data-visible="true"] { opacity: 1; }
+
+.segmented-item {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: 0;
+  height: 30px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: calc(var(--radius) - 3px);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-body);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--motion-duration) ease;
+}
+
+.segmented-item[aria-selected="true"] { color: var(--selection-foreground); }
+.segmented-item:focus-visible { outline: none; box-shadow: 0 0 0 var(--stroke-width) var(--text-primary); }
+
+html[data-reduced-motion="true"] :is(.segmented-thumb, .segmented-hover) { transition: none; }
+@media (prefers-reduced-motion: reduce) { :is(.segmented-thumb, .segmented-hover) { transition: none; } }

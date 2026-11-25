@@ -32,6 +32,7 @@ import type {
   AgentConfiguration,
   AgentListRequest,
   AgentSaveRequest,
+  AgentDeleteRequest,
   AgentRuntimeControlRequest,
   AgentRuntimeState,
   UserProfile,
@@ -46,6 +47,7 @@ import type {
   ModelListResult,
   ExperienceAgentRequest,
   ExperienceAddRequest,
+  ExperienceUpdateRequest,
   ExperienceDeleteRequest,
   ExperiencePruneRequest,
   ExperienceEntry,
@@ -87,6 +89,8 @@ import {
   validateAgentListRequest,
   validateAgentListResponse,
   validateAgentSaveRequest,
+  validateAgentDeleteRequest,
+  validateAgentDeleteResponse,
   validateAgentSaveResponse,
   validateAgentRuntimeControlRequest,
   validateAgentRuntimeControlResponse,
@@ -105,6 +109,8 @@ import {
   validateExperienceAgentRequest,
   validateExperienceListResponse,
   validateExperienceAddRequest,
+  validateExperienceUpdateRequest,
+  validateExperienceUpdateResponse,
   validateExperienceAddResponse,
   validateExperienceDeleteRequest,
   validateExperienceDeleteResponse,
@@ -200,6 +206,8 @@ export const ipc = {
     request("global_configuration_save", input, validateGlobalConfigurationSaveRequest, validateGlobalConfigurationSaveResponse),
   listAgents: (input: AgentListRequest): Promise<AgentConfiguration[]> =>
     request("agent_list", input, validateAgentListRequest, validateAgentListResponse),
+  deleteAgent: (input: AgentDeleteRequest): Promise<void> =>
+    request("agent_delete", input, validateAgentDeleteRequest, validateAgentDeleteResponse),
   saveAgent: (input: AgentSaveRequest): Promise<AgentConfiguration> =>
     request("agent_save", input, validateAgentSaveRequest, validateAgentSaveResponse),
   controlAgentRuntime: (input: AgentRuntimeControlRequest): Promise<AgentRuntimeState> =>
@@ -220,6 +228,8 @@ export const ipc = {
     request("experience_list", input, validateExperienceAgentRequest, validateExperienceListResponse),
   experienceAdd: (input: ExperienceAddRequest): Promise<ExperienceEntry> =>
     request("experience_add", input, validateExperienceAddRequest, validateExperienceAddResponse),
+  experienceUpdate: (input: ExperienceUpdateRequest): Promise<ExperienceEntry> =>
+    request("experience_update", input, validateExperienceUpdateRequest, validateExperienceUpdateResponse),
   experienceDelete: (input: ExperienceDeleteRequest): Promise<ExperienceEntry[]> =>
     request("experience_delete", input, validateExperienceDeleteRequest, validateExperienceDeleteResponse),
   experiencePrune: (input: ExperiencePruneRequest): Promise<ExperienceEntry[]> =>

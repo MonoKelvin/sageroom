@@ -26,14 +26,27 @@ async function applyInteger(value: number, apply: (value: number) => Promise<voi
   await apply(value)
 }
 
-export function DimensionsFields({ value, onChange }: { value: PersonaDimensions; onChange: (key: keyof PersonaDimensions, value: number) => Promise<void> }) {
-  const labels: Record<keyof PersonaDimensions, string> = { professional: "专业", formal: "正式", casual: "随和", humor: "幽默", direct: "直接", empathy: "共情", social_energy: "社交活力", activity: "活跃度" }
-  return <div className="config-stack">{(Object.keys(labels) as (keyof PersonaDimensions)[]).map((key) => <Field key={key} label={labels[key]} caption={key === "activity" ? "越高越愿意参与话题、主动接话；不会强制回复或突破请求上限。" : key === "social_energy" ? "影响交流时的热情与表达能量，不代表发言频率。" : undefined}>
-    <NumberInput label={labels[key]} value={value[key]} min={0} max={100} step={1} onValueChange={(next) => applyInteger(next, (value) => onChange(key, value))} />
-  </Field>)}</div>
+const dimensionMeta: Record<keyof PersonaDimensions, { label: string; caption: string }> = {
+  professional: { label: "专业", caption: "用词是否严谨准确，是否偏向方法与逻辑。" },
+  formal: { label: "正式", caption: "表达是否完整克制，少用口语和梗。" },
+  casual: { label: "随和", caption: "是否更口语化，句子更碎、更随意。" },
+  humor: { label: "幽默", caption: "是否爱开玩笑、接梗与调侃。" },
+  direct: { label: "直接", caption: "是否直说、不绕弯，敢表达不同意见。" },
+  empathy: { label: "共情", caption: "是否先回应情绪，再讲事情本身。" },
+  social_energy: { label: "社交", caption: "交流时的热情与表达能量，不代表发言频率。" },
+  activity: { label: "活跃度", caption: "越高越愿意参与话题、主动接话；不会强制回复或突破请求上限。" },
 }
 
-function ModelNameField({ value, onChange, active, readOnly, onListModels }: {
+export function DimensionsFields({ value, onChange }: { value: PersonaDimensions; onChange: (key: keyof PersonaDimensions, value: number) => Promise<void> }) {
+  return <div className="config-stack">{(Object.keys(dimensionMeta) as (keyof PersonaDimensions)[]).map((key) => {
+    const meta = dimensionMeta[key]
+    return <Field key={key} label={meta.label} caption={meta.caption}>
+      <NumberInput label={meta.label} value={value[key]} min={0} max={100} step={1} onValueChange={(next) => applyInteger(next, (value) => onChange(key, value))} />
+    </Field>
+  })}</div>
+}
+
+export function ModelNamePicker({ value, onChange, active, readOnly, onListModels }: {
   value: string
   onChange: (next: string) => Promise<void>
   active: boolean
@@ -58,6 +71,9 @@ function ModelNameField({ value, onChange, active, readOnly, onListModels }: {
       const rect = anchor.getBoundingClientRect()
       const bounds = applicationBounds()
       const margin = 8
+      // 浮层最小宽度与输入框整体（含右侧按钮）等宽，内容更长时再按 max-content 展开。
+      const minWidth = Math.min(rect.width, bounds.width - margin * 2)
+      panel.style.minWidth = `${minWidth}px`
       const width = Math.min(Math.max(rect.width, panel.offsetWidth), bounds.width - margin * 2)
       const height = panel.offsetHeight
       const spaceBelow = bounds.bottom - rect.bottom - margin
@@ -144,12 +160,12 @@ export function ModelFields({ value, onChange, sourceReadOnly = false, active = 
   onListModels?: () => Promise<string[]>
 }) {
   return <div className="config-stack">
-    <Field label="模型预设名称"><EditableInput label="模型预设名称" active={active} maxLength={80} readOnly={sourceReadOnly} value={value.name} normalize={(next) => next.trim()} validate={(next) => validateText(next, 80, true)} onApply={(name) => onChange({ name })} /></Field>
-    <Field label="协议"><SettingsSelect label="协议" value={value.protocol} disabled={sourceReadOnly} options={[
+    <Field label="配置名称"><EditableInput label="配置名称" active={active} maxLength={80} readOnly={sourceReadOnly} value={value.name} normalize={(next) => next.trim()} validate={(next) => validateText(next, 80, true)} onApply={(name) => onChange({ name })} /></Field>
+    <Field label="协议类型"><SettingsSelect label="协议类型" value={value.protocol} disabled={sourceReadOnly} options={[
       { value: "openai_chat_completions", label: "OpenAI Chat Completions" }, { value: "anthropic_messages", label: "Anthropic Messages" }, { value: "openai_responses", label: "OpenAI Responses" },
     ]} onValueChange={(protocol) => onChange({ protocol: protocol as ModelProfileInput["protocol"] })} /></Field>
-    <Field label="API 地址" caption={sourceReadOnly ? "来源地址只读；更换服务请创建独立全局预设。" : "可留空；地址中不能包含密钥。"}><EditableInput label="API 地址" active={active} maxLength={2048} readOnly={sourceReadOnly} value={value.base_url} placeholder="https://api.example.com/v1" normalize={(next) => next.trim()} validate={validateModelUrl} onApply={(base_url) => onChange({ base_url })} /></Field>
-    <Field label="模型名称" caption={sourceReadOnly ? "智能体的模型名称不能为空。" : "可留空；未配置完整的预设不能采用或测试。"}><ModelNameField value={value.model_name} active={active} readOnly={sourceReadOnly} onChange={(model_name) => onChange({ model_name })} onListModels={onListModels} /></Field>
+    <Field label="API 地址" caption={sourceReadOnly ? "来源地址只读；更换服务请创建独立全局预设。" : undefined}><EditableInput label="API 地址" active={active} maxLength={2048} readOnly={sourceReadOnly} value={value.base_url} placeholder="https://api.example.com/v1" normalize={(next) => next.trim()} validate={validateModelUrl} onApply={(base_url) => onChange({ base_url })} /></Field>
+    <Field label="模型名称" caption={sourceReadOnly ? "智能体的模型名称不能为空。" : undefined}><ModelNamePicker value={value.model_name} active={active} readOnly={sourceReadOnly} onChange={(model_name) => onChange({ model_name })} onListModels={onListModels} /></Field>
   </div>
 }
 

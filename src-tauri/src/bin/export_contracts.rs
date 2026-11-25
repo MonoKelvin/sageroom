@@ -87,6 +87,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     export::<AgentSaveRequest>("AgentSaveRequest", &config, &mut schemas)?;
     export::<AgentRuntimeControlRequest>("AgentRuntimeControlRequest", &config, &mut schemas)?;
     export::<ApiResponse<AgentRuntimeState>>("AgentRuntimeControlResponse", &config, &mut schemas)?;
+    export::<AgentDeleteRequest>("AgentDeleteRequest", &config, &mut schemas)?;
+    export::<ApiResponse<()>>("AgentDeleteResponse", &config, &mut schemas)?;
     export::<ApiResponse<AgentConfiguration>>("AgentSaveResponse", &config, &mut schemas)?;
     export::<UserProfileGetRequest>("UserProfileGetRequest", &config, &mut schemas)?;
     export::<ApiResponse<UserProfile>>("UserProfileGetResponse", &config, &mut schemas)?;
@@ -104,6 +106,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     export::<ApiResponse<Vec<ExperienceEntry>>>("ExperienceListResponse", &config, &mut schemas)?;
     export::<ExperienceAddRequest>("ExperienceAddRequest", &config, &mut schemas)?;
     export::<ApiResponse<ExperienceEntry>>("ExperienceAddResponse", &config, &mut schemas)?;
+    export::<ExperienceUpdateRequest>("ExperienceUpdateRequest", &config, &mut schemas)?;
+    export::<ApiResponse<ExperienceEntry>>("ExperienceUpdateResponse", &config, &mut schemas)?;
     export::<ExperienceDeleteRequest>("ExperienceDeleteRequest", &config, &mut schemas)?;
     export::<ApiResponse<Vec<ExperienceEntry>>>("ExperienceDeleteResponse", &config, &mut schemas)?;
     export::<ExperiencePruneRequest>("ExperiencePruneRequest", &config, &mut schemas)?;

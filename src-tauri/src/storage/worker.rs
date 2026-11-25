@@ -142,6 +142,10 @@ impl DbWorker {
         self.call(move |database| database.add_experience(request)).await
     }
 
+    pub async fn update_experience(&self, request: ExperienceUpdateRequest) -> AppResult<ExperienceEntry> {
+        self.call(move |database| database.update_experience(request)).await
+    }
+
     pub async fn delete_experience(&self, request: ExperienceDeleteRequest) -> AppResult<Vec<ExperienceEntry>> {
         self.call(move |database| database.delete_experience(request)).await
     }
@@ -265,6 +269,10 @@ impl DbWorker {
     ) -> AppResult<Vec<AgentConfiguration>> {
         self.call(move |database| database.list_agents(&request.data_generation_id))
             .await
+    }
+
+    pub async fn delete_agent(&self, request: AgentDeleteRequest) -> AppResult<()> {
+        self.call(move |database| database.delete_agent(request)).await
     }
 
     pub async fn save_agent(&self, request: AgentSaveRequest) -> AppResult<AgentConfiguration> {

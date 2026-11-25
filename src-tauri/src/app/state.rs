@@ -97,6 +97,10 @@ impl AppState {
         self.worker()?.add_experience(request).await
     }
 
+    pub async fn experience_update(&self, request: ExperienceUpdateRequest) -> AppResult<ExperienceEntry> {
+        self.worker()?.update_experience(request).await
+    }
+
     pub async fn experience_delete(&self, request: ExperienceDeleteRequest) -> AppResult<Vec<ExperienceEntry>> {
         self.worker()?.delete_experience(request).await
     }

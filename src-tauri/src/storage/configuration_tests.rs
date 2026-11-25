@@ -1024,3 +1024,41 @@ fn stale_or_invalid_credential_updates_leave_active_binding_revision_and_events_
     assert_eq!(count(&database.conn, "domain_events"), events);
     assert_eq!(count(&database.conn, "credential_bindings"), 1);
 }
+
+
+#[test]
+fn delete_agent_removes_configuration_but_keeps_chat_history() {
+    let (_directory, mut database) = database();
+    let global = install_presets(&mut database);
+    let agent = agent_with_snapshot(&database, &global);
+    let revision = agent.revision.clone();
+    let saved = save_agent(&mut database, "delete-agent-save", agent, Some(revision));
+    let id = saved.agent_id.clone();
+
+    database
+        .delete_agent(AgentDeleteRequest {
+            data_generation_id: database.generation_id.clone(),
+            agent_id: id.clone(),
+        })
+        .unwrap();
+
+    assert!(database.list_agents(&database.generation_id).unwrap().iter().all(|item| item.agent_id != id));
+    assert_eq!(
+        database.conn.query_row("SELECT COUNT(*) FROM agent_config_versions WHERE agent_id=?1", [&id], |row| row.get::<_, i64>(0)).unwrap(),
+        0
+    );
+    assert_eq!(
+        database
+            .conn
+            .query_row("SELECT COUNT(*) FROM participants WHERE id=?1", [&id], |row| row.get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    // 重复删除应报错，不产生副作用
+    assert!(database
+        .delete_agent(AgentDeleteRequest {
+            data_generation_id: database.generation_id.clone(),
+            agent_id: id,
+        })
+        .is_err());
+}

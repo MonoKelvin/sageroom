@@ -256,6 +256,44 @@ pub(crate) fn add_checked(
     Ok(entry)
 }
 
+/// 编辑一条经历：内容与时间都可改，改后 id 随内容哈希变化。
+/// 返回更新后的条目，界面据此重新定位与滚动。
+pub fn update(
+    root: &Path,
+    agent_id: &str,
+    request: &crate::domain::contracts::ExperienceUpdateRequest,
+) -> AppResult<ExperienceEntry> {
+    validate_entry(&request.content, request.score)?;
+    if request.recorded_at.len() != 16
+        || !request.recorded_at.is_ascii()
+        || request.recorded_at.as_bytes()[4] != b'/'
+        || request.recorded_at.as_bytes()[7] != b'/'
+        || request.recorded_at.as_bytes()[10] != b' '
+        || request.recorded_at.as_bytes()[13] != b':'
+        || request.recorded_at.bytes().enumerate().any(|(index, byte)| {
+            !matches!(index, 4 | 7 | 10 | 13) && !byte.is_ascii_digit()
+        })
+    {
+        return Err(AppError::invalid("recorded_at", "时间格式必须为 YYYY/MM/DD HH:mm。"));
+    }
+    let mut entries = list(root, agent_id)?;
+    let index = entries
+        .iter()
+        .position(|entry| entry.id == request.entry_id)
+        .ok_or_else(|| AppError::invalid("entry_id", "经历条目不存在。"))?;
+    let updated = ExperienceEntry {
+        id: String::new(),
+        recorded_at: request.recorded_at.clone(),
+        score: request.score,
+        content: request.content.trim().to_owned(),
+    };
+    let updated = ExperienceEntry { id: entry_id(&updated), ..updated };
+    entries[index] = updated.clone();
+    entries.sort_by(|left, right| right.recorded_at.cmp(&left.recorded_at));
+    write_entries(root, agent_id, &entries)?;
+    Ok(updated)
+}
+
 pub fn delete(root: &Path, agent_id: &str, entry_id: &str) -> AppResult<Vec<ExperienceEntry>> {
     let mut entries = list(root, agent_id)?;
     let before = entries.len();

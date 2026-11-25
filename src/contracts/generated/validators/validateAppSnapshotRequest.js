@@ -1,7 +1,7 @@
 import { t as require_ucs2length } from "./ucs2length.js";
 // generated/raw-validators/validateAppSnapshotRequest.js
-var validateAppSnapshotRequest = validate69;
-var schema92 = {
+var validateAppSnapshotRequest = validate77;
+var schema101 = {
 	"$defs": { "DecimalString": {
 		"maxLength": 19,
 		"pattern": "^(0|[1-9][0-9]*)$",
@@ -24,17 +24,17 @@ var schema92 = {
 };
 var func2 = require_ucs2length().default;
 var pattern4 = /* @__PURE__ */ new RegExp("^(0|[1-9][0-9]*)$", "u");
-function validate69(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate77(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
 	let errors = 0;
-	const evaluated0 = validate69.evaluated;
+	const evaluated0 = validate77.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (errors === 0) {
 		if (data && typeof data == "object" && !Array.isArray(data)) {
 			const _errs1 = errors;
 			for (const key0 in data) if (!(key0 === "data_generation_id" || key0 === "last_event_seq")) {
-				validate69.errors = [{
+				validate77.errors = [{
 					instancePath,
 					schemaPath: "#/additionalProperties",
 					keyword: "additionalProperties",
@@ -48,11 +48,11 @@ function validate69(data, { instancePath = "", parentData, parentDataProperty, r
 					let data0 = data.data_generation_id;
 					const _errs2 = errors;
 					if (typeof data0 !== "string" && data0 !== null) {
-						validate69.errors = [{
+						validate77.errors = [{
 							instancePath: instancePath + "/data_generation_id",
 							schemaPath: "#/properties/data_generation_id/type",
 							keyword: "type",
-							params: { type: schema92.properties.data_generation_id.type },
+							params: { type: schema101.properties.data_generation_id.type },
 							message: "must be string,null"
 						}];
 						return false;
@@ -132,7 +132,7 @@ function validate69(data, { instancePath = "", parentData, parentDataProperty, r
 							if (vErrors === null) vErrors = [err4];
 							else vErrors.push(err4);
 							errors++;
-							validate69.errors = vErrors;
+							validate77.errors = vErrors;
 							return false;
 						} else {
 							errors = _errs5;
@@ -146,7 +146,7 @@ function validate69(data, { instancePath = "", parentData, parentDataProperty, r
 				}
 			}
 		} else {
-			validate69.errors = [{
+			validate77.errors = [{
 				instancePath,
 				schemaPath: "#/type",
 				keyword: "type",
@@ -156,10 +156,10 @@ function validate69(data, { instancePath = "", parentData, parentDataProperty, r
 			return false;
 		}
 	}
-	validate69.errors = vErrors;
+	validate77.errors = vErrors;
 	return errors === 0;
 }
-validate69.evaluated = {
+validate77.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

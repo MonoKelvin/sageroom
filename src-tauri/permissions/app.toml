@@ -51,7 +51,7 @@ commands.allow = ["global_configuration_get", "agent_list", "user_profile_get"]
 [[permission]]
 identifier = "configuration-write"
 description = "保存绑定世代和版本的本地配置与资料"
-commands.allow = ["global_configuration_save", "agent_save", "agent_runtime_control", "user_profile_save"]
+commands.allow = ["global_configuration_save", "agent_save", "agent_delete", "agent_runtime_control", "user_profile_save"]
 
 [[permission]]
 identifier = "credentials-manage"
@@ -66,7 +66,7 @@ commands.allow = ["model_profile_test", "model_profile_list", "development_model
 [[permission]]
 identifier = "experience-manage"
 description = "读取与维护每个智能体独立的经历文件"
-commands.allow = ["experience_list", "experience_add", "experience_delete", "experience_prune"]
+commands.allow = ["experience_list", "experience_add", "experience_update", "experience_delete", "experience_prune"]
 
 [[permission]]
 identifier = "avatar-manage"

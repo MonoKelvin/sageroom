@@ -20,7 +20,7 @@ describe("安全即时凭据与显式连接测试", () => {
     let finish!: (status: SecretStatus) => void
     vi.mocked(ipc.setSecret).mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
     render(panel())
-    const input = await screen.findByLabelText("API Key", { selector: "input" })
+    const input = await screen.findByLabelText("API 密钥", { selector: "input" })
     fireEvent.change(input, { target: { value: "sensitive-input" } })
     expect(ipc.setSecret).not.toHaveBeenCalled()
     fireEvent.blur(input)
@@ -35,7 +35,7 @@ describe("安全即时凭据与显式连接测试", () => {
   it("失败不恢复密码，也不回显任意服务端 Error 文本", async () => {
     vi.mocked(ipc.setSecret).mockRejectedValueOnce(new Error("sensitive-input appeared in unsafe server error"))
     render(panel())
-    const input = await screen.findByLabelText("API Key", { selector: "input" })
+    const input = await screen.findByLabelText("API 密钥", { selector: "input" })
     fireEvent.change(input, { target: { value: "sensitive-input" } })
     fireEvent.blur(input)
     await screen.findByText("操作未完成，请重试。 密钥输入已清空。")
@@ -51,7 +51,7 @@ describe("安全即时凭据与显式连接测试", () => {
   ] satisfies { name: string; message: string; code: ErrorCode; charged: boolean }[])("安全业务错误：$name", async ({ message, code, charged }) => {
     vi.mocked(ipc.testModel).mockRejectedValueOnce(new IpcError({ code, message, retryability: "after_user_action", field_path: null, trace_id: "trace", may_have_been_charged: charged }))
     render(panel())
-    await screen.findByLabelText("API Key", { selector: "input" })
+    await screen.findByLabelText("API 密钥", { selector: "input" })
     expect(ipc.testModel).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole("button", { name: "测试模型是否可用" }))
     const alert = await screen.findByRole("alert")
@@ -61,7 +61,7 @@ describe("安全即时凭据与显式连接测试", () => {
   })
   it("只显示实际连接和 usage 结果，输入变化不会自动网络测试", async () => {
     render(panel())
-    const input = await screen.findByLabelText("API Key", { selector: "input" })
+    const input = await screen.findByLabelText("API 密钥", { selector: "input" })
     fireEvent.change(input, { target: { value: "draft-key" } })
     expect(ipc.testModel).not.toHaveBeenCalled()
     // Unconfirmed secret is canceled before the explicit network-test action.
@@ -75,7 +75,7 @@ describe("安全即时凭据与显式连接测试", () => {
     const data = mockConfigurationIpc()
     data.global.model_profiles[0].credential_configured = true
     render(panel())
-    const input = await screen.findByLabelText("API Key", { selector: "input" })
+    const input = await screen.findByLabelText("API 密钥", { selector: "input" })
     fireEvent.change(input, { target: { value: "  " } })
     fireEvent.blur(input)
     expect(ipc.setSecret).not.toHaveBeenCalled()
@@ -89,7 +89,7 @@ describe("安全即时凭据与显式连接测试", () => {
     data.global.model_profiles[0].model_name = ""
     data.global.model_profiles[0].credential_configured = true
     render(panel())
-    await screen.findByLabelText("API Key", { selector: "input" })
+    await screen.findByLabelText("API 密钥", { selector: "input" })
     expect(screen.getByRole("button", { name: "测试模型是否可用" })).toBeDisabled()
     expect(screen.queryByRole("button", { name: "移除密钥" })).not.toBeInTheDocument()
   })
@@ -97,7 +97,7 @@ describe("安全即时凭据与显式连接测试", () => {
     const data = mockConfigurationIpc()
     data.global.model_profiles[0].base_url = ""
     render(panel())
-    expect(await screen.findByLabelText("API Key", { selector: "input" })).toBeDisabled()
+    expect(await screen.findByLabelText("API 密钥", { selector: "input" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "测试模型是否可用" })).toBeDisabled()
     expect(ipc.testModel).not.toHaveBeenCalled()
   })

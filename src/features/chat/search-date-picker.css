@@ -32,3 +32,8 @@
 }
 @media (prefers-reduced-motion: reduce) { .search-date-popover, .search-date-trigger, .search-calendar-day { transition: none; } }
 html[data-reduced-motion="true"] .search-date-popover, html[data-reduced-motion="true"] .search-date-trigger, html[data-input-modality="keyboard"] .search-date-trigger, html[data-input-modality="keyboard"] .search-calendar-day { transition: none; }
+.search-calendar-time { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-2); color: var(--text-secondary); font-size: var(--font-caption); }
+.search-calendar-time input { width: calc(var(--size-unit) * 14); height: var(--control-height); padding-inline: var(--space-2); text-align: center; font-variant-numeric: tabular-nums; }
+/* 时间模式下弹层随内容自适应，不遮挡编辑区文字 */
+.search-date-popover:has(.search-calendar-time) { width: max-content; min-width: calc(var(--size-unit) * 60); max-width: min(calc(var(--size-unit) * 78), calc(var(--application-layer-width, 100vw) - var(--space-5))); }
+.search-calendar-time input { flex: 1 1 auto; min-width: calc(var(--size-unit) * 12); }

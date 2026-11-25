@@ -675,6 +675,44 @@ impl Database {
         Ok((config, Some(event)))
     }
 
+    /// 删除智能体：清理配置、运行时状态与头像引用，并移除参与者。
+    /// 历史消息仍保留原 sender_id，显示时按未知成员处理。
+    pub fn delete_agent(&mut self, request: crate::domain::contracts::AgentDeleteRequest) -> AppResult<()> {
+        self.check_generation(&request.data_generation_id)?;
+        validate_id(&request.agent_id, "agent_id")?;
+        let generation = self.generation_id.clone();
+        let transaction = self
+            .conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let exists: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM agent_configurations WHERE agent_id=?1)",
+            [&request.agent_id],
+            |row| row.get(0),
+        )?;
+        if !exists {
+            return Err(AppError::invalid("agent_id", "智能体不存在或已删除。"));
+        }
+        for table in [
+            "agent_runtime_states",
+            "agent_config_versions",
+            "agent_configurations",
+        ] {
+            transaction.execute(&format!("DELETE FROM {table} WHERE agent_id=?1"), [&request.agent_id])?;
+        }
+        update_avatar_refs(&transaction, "participant", &request.agent_id, &None)?;
+        transaction.execute("DELETE FROM participants WHERE id=?1 AND kind='agent'", [&request.agent_id])?;
+        record_event(
+            &transaction,
+            EventPayload::AgentConfigurationChanged {
+                agent_id: request.agent_id.clone(),
+                revision: crate::domain::contracts::DecimalString("0".to_owned()),
+            },
+            &generation,
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn get_user_profile(&self, generation: &str) -> AppResult<UserProfile> {
         self.check_generation(generation)?;
         Ok(self.conn.query_row("SELECT id,display_name,avatar_id,profile_revision FROM participants WHERE id=?1 AND kind='user'", [&self.local_user_id], |row| Ok(UserProfile { participant_id: row.get(0)?, display_name: row.get(1)?, avatar_id: row.get(2)?, revision: row.get::<_,i64>(3)?.into() }))?)
