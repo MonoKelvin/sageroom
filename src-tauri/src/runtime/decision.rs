@@ -183,6 +183,59 @@ pub(super) fn addressed_since(input: &RuntimeInput, observed: &DecimalString) ->
     })
 }
 
+/// 本地确定性检测：模型自评的话题疲劳度会低报，这里用最近消息做客观兜底。
+/// 返回 (重复文本次数, 话题词最高频, 自己刚发言的秒数)。
+pub(super) fn local_saturation(input: &RuntimeInput, now: i64) -> (u32, u32, i64) {
+    let agent_id = &input.agent.agent_id;
+    let visible: Vec<_> = input
+        .messages
+        .iter()
+        .filter(|message| message.state == MessageState::Visible)
+        .collect();
+    let recent: Vec<_> = visible.iter().rev().take(16).collect();
+
+    // 完全重复的文本（含不同成员互相复述），是复读循环最明确的信号。
+    let mut seen = std::collections::HashSet::new();
+    let mut repeated = 0_u32;
+    for message in &recent {
+        let text: String = message.parts.iter().filter_map(|part| match part {
+            MessagePart::Text { text } => Some(text.as_str()),
+            _ => None,
+        }).collect::<String>().chars().filter(|c| !c.is_whitespace()).collect();
+        if text.len() < 4 { continue }
+        if !seen.insert(text) { repeated += 1 }
+    }
+
+    // 话题词频：中文没有空格，用 2–4 字滑动窗口统计高频片段，
+    // 避免整句被当成一个词；窗口越短越容易撞上同一话题词。
+    let mut counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    for message in recent.iter().take(12) {
+        for part in &message.parts {
+            if let MessagePart::Text { text } = part {
+                let clean: String = text.chars()
+                    .filter(|c| c.is_alphanumeric() || *c >= '\u{4e00}')
+                    .collect();
+                let chars: Vec<char> = clean.chars().collect();
+                for size in 2..=4 {
+                    for window in chars.windows(size) {
+                        let token: String = window.iter().collect();
+                        *counts.entry(token).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+    }
+    let hot = counts.values().copied().max().unwrap_or(0);
+
+    let cooldown = visible
+        .iter()
+        .rev()
+        .find(|message| &message.sender_id == agent_id)
+        .map(|message| now.saturating_sub(message.created_at) / 1000)
+        .unwrap_or(i64::MAX);
+    (repeated, hot, cooldown)
+}
+
 pub(super) fn participation_chance(input: &RuntimeInput, addressed: bool, now: i64) -> u64 {
     let agent_id = &input.agent.agent_id;
     let latest = input.messages.iter().rfind(|message| message.state == MessageState::Visible);
@@ -213,6 +266,11 @@ pub(super) fn participation_chance(input: &RuntimeInput, addressed: bool, now: i
             chance = chance * 3 / 4;
         }
     }
+    let (repeated, hot, cooldown) = local_saturation(input, now);
+    // 代码层门控：重复与话题饱和时压低非点名参与概率；冷却期内不主动接话。
+    if repeated >= 2 { chance /= 4 }
+    else if hot >= 5 { chance /= 3 }
+    if cooldown < 45 { chance = chance * 2 / 5 }
     chance.min(95)
 }
 
@@ -539,16 +597,42 @@ mod tests {
             parts: vec![MessagePart::Text { text: "知道了。".into() }],
             quote_message_id: None, mention_ids: vec![], mention_all: false,
         });
-        assert_eq!(participation_chance(&input, false, now), 17);
+        // 刚发言触发代码层冷却门控，比原先的 17 更低。
+        assert_eq!(participation_chance(&input, false, now), 6);
         assert_eq!(participation_chance(&input, true, now), 100);
         input.messages[1].mention_ids = vec!["someone-else".into()];
-        assert_eq!(participation_chance(&input, false, now), 5);
+        // 冷却门控同样作用于提及他人的场景，5 再乘 2/5 得 2。
+        assert_eq!(participation_chance(&input, false, now), 2);
         input.messages[1].mention_ids.clear();
         input.messages[1].quote_message_id = Some("own".into());
         assert_eq!(participation_chance(&input, false, now), 100);
         input.messages[1].quote_message_id = None;
         input.snapshot.participants.retain(|participant| participant.kind == ParticipantKind::User || participant.id == input.agent.agent_id);
         assert_eq!(participation_chance(&input, false, now), 100);
+    }
+
+    #[test]
+    fn local_saturation_detects_repeats_hot_topic_and_cooldown() {
+        let (_dir, mut input) = input();
+        let now = now_ms();
+        let own_id = input.agent.agent_id.clone();
+        let push = |input: &mut RuntimeInput, seq: i64, sender: &str, text: &str, age: i64| {
+            input.messages.push(ChatMessage {
+                id: format!("m{seq}"), seq: seq.into(), sender_id: sender.into(),
+                created_at: now - age, state: MessageState::Visible,
+                parts: vec![MessagePart::Text { text: text.into() }],
+                quote_message_id: None, mention_ids: vec![], mention_all: false,
+            });
+        };
+        // 两个成员互相复述同一句，话题词高度集中，且自己刚发言。
+        for index in 0..4 {
+            push(&mut input, index, if index % 2 == 0 { "a" } else { "b" }, "瓜子管够瓜子管够", (4 - index) as i64 * 60_000);
+        }
+        push(&mut input, 9, &own_id, "我先记着", 1_000);
+        let (repeated, hot, cooldown) = local_saturation(&input, now);
+        assert!(repeated >= 2, "互相复述应计为重复");
+        assert!(hot >= 5, "高频话题词应被识别");
+        assert!(cooldown < 45, "刚发言应处于冷却期");
     }
 
     #[test]

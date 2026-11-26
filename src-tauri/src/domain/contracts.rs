@@ -12,6 +12,9 @@ pub const MODEL_INPUT_BUDGET: u32 = 16_000;
 pub const MODEL_MAX_OUTPUT_TOKENS: u32 = 4_096;
 pub const MODEL_TEMPERATURE: f64 = 0.8;
 pub const MODEL_TOP_P: f64 = 1.0;
+/// 温和的采样惩罚：压制口头禅复读与同一话题反复开启，不破坏角色语气。
+pub const MODEL_FREQUENCY_PENALTY: f64 = 0.4;
+pub const MODEL_PRESENCE_PENALTY: f64 = 0.3;
 /// 每日请求配额固定为 500（全局上限），不再按智能体配置。
 pub const DAILY_REQUEST_LIMIT: u32 = 500;
 

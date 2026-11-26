@@ -4,7 +4,7 @@ use genai::{
 };
 
 use crate::domain::{
-    contracts::{AppError, ErrorCode, MODEL_INPUT_BUDGET, MODEL_MAX_OUTPUT_TOKENS, MODEL_TEMPERATURE, MODEL_TOP_P, ModelProfile, ModelProtocol},
+    contracts::{AppError, ErrorCode, MODEL_FREQUENCY_PENALTY, MODEL_INPUT_BUDGET, MODEL_MAX_OUTPUT_TOKENS, MODEL_PRESENCE_PENALTY, MODEL_TEMPERATURE, MODEL_TOP_P, ModelProfile, ModelProtocol},
     error::{AppResult, parse_counter, validate_id},
 };
 
@@ -94,6 +94,8 @@ fn options(max_output_tokens: u32, reasoning: ReasoningEffort) -> ChatOptions {
         .with_extra_body(serde_json::json!({
             "temperature": MODEL_TEMPERATURE,
             "top_p": MODEL_TOP_P,
+            "frequency_penalty": MODEL_FREQUENCY_PENALTY,
+            "presence_penalty": MODEL_PRESENCE_PENALTY,
         }))
 }
 

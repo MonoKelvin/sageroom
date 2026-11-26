@@ -802,6 +802,22 @@ fn apply_topic_fatigue(decision: &mut decision::Decision, addressed: bool) {
     }
 }
 
+/// 本地门控：模型自评的疲劳度不可靠，用最近消息客观判断是否该沉默。
+/// 被明确 @ 时只压条数，不剥夺回应义务。
+fn apply_local_gate(decision: &mut decision::Decision, input: &crate::storage::runtime::RuntimeInput, addressed: bool) {
+    let (repeated, hot, cooldown) = decision::local_saturation(input, now_ms());
+    if addressed {
+        if repeated >= 2 || hot >= 7 { decision.messages.truncate(1) }
+        return;
+    }
+    if repeated >= 2 || hot >= 8 {
+        decision.participation = Participation::Observe;
+        decision.messages.clear();
+    } else if hot >= 5 || cooldown < 30 {
+        decision.messages.truncate(1);
+    }
+}
+
 async fn make_decision(
     agent: &AgentConfiguration,
     worker: &Arc<DbWorker>,
@@ -973,6 +989,7 @@ async fn make_decision(
     }
     let mut decision = decision.or(fallback).ok_or_else(|| AppError::new(ErrorCode::ModelOutputInvalid, "模型未在本轮预算内完成决策。"))?;
     apply_topic_fatigue(&mut decision, addressed);
+    apply_local_gate(&mut decision, &input, addressed);
     // 改写两轮后仍不合规时，只保留明确合规的短消息；全部不合规就改为观察。
     policy.enforce(&mut decision);
     if cancellation.is_cancelled() {
