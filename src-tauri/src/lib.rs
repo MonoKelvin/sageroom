@@ -11,18 +11,21 @@ use tauri::Manager;
 
 pub fn run() {
     let app = tauri::Builder::default()
+        // 单实例必须第一个注册：重复启动的进程要在其它插件初始化之前就退出，
+        // 否则会白跑一遍自启/对话框插件的初始化。插件在 config 窗口创建之前就完成检测并退出，
+        // 所以第二次启动不会闪出任何窗口。
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                app::lifecycle::activate_main(&app);
+            });
+        }))
         .plugin(tauri_plugin_dialog::init())
         // 开机自启默认关闭：插件只提供系统级开关，不在启动时主动 enable。
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            let app = app.clone();
-            tauri::async_runtime::spawn(async move {
-                app::lifecycle::show_main(&app);
-            });
-        }))
         .setup(|app| {
             let handle = app.handle().clone();
             let config_dir = app.path().app_config_dir().unwrap_or_default();

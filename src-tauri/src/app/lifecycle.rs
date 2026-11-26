@@ -242,6 +242,31 @@ pub fn show_main(app: &AppHandle) -> bool {
     true
 }
 
+/// 把已经运行的实例拉到前台。
+///
+/// 只调 `set_focus` 在 Windows 上经常不生效：系统不允许后台进程抢前台，
+/// 结果只是任务栏闪一下。这里先短促地把窗口切到置顶再取消，把它提到普通窗口的最前面，
+/// 再申请焦点——不依赖 `AttachThreadInput`，也不需要额外的 unsafe。
+/// 置顶状态随即撤销，不改变应用本身的窗口层级。
+pub fn activate_main(app: &AppHandle) -> bool {
+    if !show_main(app) {
+        return false;
+    }
+    let Some(window) = app.get_webview_window("main") else {
+        return false;
+    };
+    if let Err(error) = window.set_always_on_top(true) {
+        eprintln!("主窗口置顶失败：{error}");
+    }
+    if let Err(error) = window.set_always_on_top(false) {
+        eprintln!("主窗口取消置顶失败：{error}");
+    }
+    if let Err(error) = window.set_focus() {
+        eprintln!("主窗口聚焦失败：{error}");
+    }
+    true
+}
+
 pub fn install_tray(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "打开聊天室", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出 Sageroom", true, None::<&str>)?;
@@ -541,5 +566,35 @@ mod tests {
         .unwrap();
         assert_eq!(value["kind"], "exit_cancelled");
         assert_eq!(value["error"]["code"], "SHUTTING_DOWN");
+    }
+}
+
+/// 单实例是「重复启动只激活已有窗口」的唯一保障，注册顺序有硬性要求：
+/// `tauri-plugin-single-instance` 必须排在其它插件之前，否则第二个进程会先把
+/// 自启、对话框等插件的初始化白跑一遍才退出。这里用源码断言把它钉住。
+#[cfg(test)]
+mod single_instance_tests {
+    const LIB: &str = include_str!("../lib.rs");
+
+    #[test]
+    fn single_instance_plugin_is_registered_before_any_other_plugin() {
+        let single = LIB
+            .find("tauri_plugin_single_instance::init")
+            .expect("lib.rs 必须注册 single-instance 插件");
+        for other in ["tauri_plugin_dialog::init", "tauri_plugin_autostart::init"] {
+            let position = LIB
+                .find(other)
+                .unwrap_or_else(|| panic!("lib.rs 找不到 {other}"));
+            assert!(
+                single < position,
+                "single-instance 必须排在 {other} 之前，否则重复启动会白跑一遍初始化"
+            );
+        }
+    }
+
+    #[test]
+    fn second_instance_activates_existing_window_instead_of_showing_a_new_one() {
+        assert!(LIB.contains("lifecycle::activate_main"));
+        assert!(!LIB.contains("lifecycle::show_main"));
     }
 }
