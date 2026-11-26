@@ -120,6 +120,48 @@ fn bounded(value: &str, field: &str, limit: usize, required: bool) -> AppResult<
     Ok(())
 }
 
+/// 昵称宽度：一个中文（或全角/emoji）算 2，英文/数字算 1，总上限 16。
+const DISPLAY_NAME_WIDTH_LIMIT: usize = 16;
+
+fn char_display_width(character: char) -> usize {
+    let code = character as u32;
+    if matches!(
+        code,
+        0x1100..=0x115F
+            | 0x2E80..=0xA4CF
+            | 0xAC00..=0xD7A3
+            | 0xF900..=0xFAFF
+            | 0xFE10..=0xFE19
+            | 0xFE30..=0xFE6F
+            | 0xFF00..=0xFF60
+            | 0xFFE0..=0xFFE6
+            | 0x1F300..=0x1FAFF
+            | 0x20000..=0x3FFFD
+    ) {
+        2
+    } else {
+        1
+    }
+}
+
+fn display_width(value: &str) -> usize {
+    value.chars().map(char_display_width).sum()
+}
+
+fn bounded_display_name(value: &str, field: &str) -> AppResult<()> {
+    if value.len() > DISPLAY_NAME_WIDTH_LIMIT * 4
+        || display_width(value) > DISPLAY_NAME_WIDTH_LIMIT
+        || value.trim().is_empty()
+        || value.contains('\0')
+    {
+        return Err(AppError::invalid(
+            field,
+            "昵称不能为空或含无效字符，且最多 8 个中文或 16 个英文字符。",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_profile(value: &ModelProfileInput) -> AppResult<()> {
     validate_id(&value.id, "profile_id")?;
     bounded(&value.name, "name", 80, true)?;
@@ -619,7 +661,7 @@ impl Database {
         validate_id(&request.client_request_id, "client_request_id")?;
         let mut config = request.configuration;
         validate_id(&config.agent_id, "agent_id")?;
-        bounded(&config.display_name, "display_name", 80, true)?;
+        bounded_display_name(&config.display_name, "display_name")?;
         bounded(&config.language_style, "language_style", 2000, false)?;
         if let Some(gender) = &config.gender_description {
             bounded(gender, "gender_description", 80, false)?;
@@ -787,7 +829,8 @@ impl Database {
 
     pub fn get_user_profile(&self, generation: &str) -> AppResult<UserProfile> {
         self.check_generation(generation)?;
-        Ok(self.conn.query_row("SELECT id,display_name,avatar_id,profile_revision FROM participants WHERE id=?1 AND kind='user'", [&self.local_user_id], |row| Ok(UserProfile { participant_id: row.get(0)?, display_name: row.get(1)?, avatar_id: row.get(2)?, revision: row.get::<_,i64>(3)?.into() }))?)
+        let bio = read_user_bio(&self.conn)?;
+        Ok(self.conn.query_row("SELECT id,display_name,avatar_id,profile_revision FROM participants WHERE id=?1 AND kind='user'", [&self.local_user_id], |row| Ok(UserProfile { participant_id: row.get(0)?, display_name: row.get(1)?, avatar_id: row.get(2)?, bio: bio.clone(), revision: row.get::<_,i64>(3)?.into() }))?)
     }
 
     pub fn save_user_profile(
@@ -796,11 +839,13 @@ impl Database {
     ) -> AppResult<(UserProfile, Option<DomainEvent>)> {
         self.check_generation(&request.data_generation_id)?;
         validate_id(&request.client_request_id, "client_request_id")?;
-        bounded(&request.display_name, "display_name", 80, true)?;
+        bounded_display_name(&request.display_name, "display_name")?;
+        bounded(&request.bio, "bio", 200, false)?;
         let hash = fingerprint(&serde_json::to_vec(&(
             &request.expected_revision,
             &request.display_name,
             &request.avatar_id,
+            &request.bio,
         ))?);
         let generation = self.generation_id.clone();
         let user_id = self.local_user_id.clone();
@@ -816,6 +861,7 @@ impl Database {
             return Ok((serde_json::from_str(&json)?, None));
         }
         validate_avatar(&transaction, &request.avatar_id)?;
+        write_user_bio(&transaction, &request.bio)?;
         let expected = parse_counter(&request.expected_revision, "expected_revision")?;
         let next_revision = expected
             .checked_add(1)
@@ -837,6 +883,7 @@ impl Database {
             participant_id: user_id.clone(),
             display_name: request.display_name,
             avatar_id: request.avatar_id,
+            bio: request.bio,
             revision: result.into(),
         };
         let participant = Participant {
@@ -908,6 +955,37 @@ fn write_inbox_preferences(conn: &Connection, preferences: &InboxPreferences) ->
     )?;
     let mut value: serde_json::Value = serde_json::from_str(&json)?;
     value[INBOX_PREFERENCES_KEY] = serde_json::to_value(preferences)?;
+    conn.execute(
+        "UPDATE global_configuration SET preferences_json = ?1 WHERE singleton = 1",
+        [serde_json::to_string(&value)?],
+    )?;
+    Ok(())
+}
+
+/// 个人简介与 inbox/ui 一样放在 preferences_json，避免仅为展示字段升级数据库结构。
+const USER_BIO_PREFERENCES_KEY: &str = "user_bio";
+
+fn read_user_bio(conn: &Connection) -> AppResult<String> {
+    let json: String = conn.query_row(
+        "SELECT preferences_json FROM global_configuration WHERE singleton = 1",
+        [],
+        |row| row.get(0),
+    )?;
+    let value: serde_json::Value = serde_json::from_str(&json)?;
+    Ok(match value.get(USER_BIO_PREFERENCES_KEY) {
+        Some(serde_json::Value::String(bio)) => bio.clone(),
+        _ => String::new(),
+    })
+}
+
+fn write_user_bio(conn: &Connection, bio: &str) -> AppResult<()> {
+    let json: String = conn.query_row(
+        "SELECT preferences_json FROM global_configuration WHERE singleton = 1",
+        [],
+        |row| row.get(0),
+    )?;
+    let mut value: serde_json::Value = serde_json::from_str(&json)?;
+    value[USER_BIO_PREFERENCES_KEY] = serde_json::to_value(bio)?;
     conn.execute(
         "UPDATE global_configuration SET preferences_json = ?1 WHERE singleton = 1",
         [serde_json::to_string(&value)?],
@@ -1185,5 +1263,25 @@ impl Database {
             write_inbox_preferences(&self.conn, &preferences)?;
         }
         self.get_inbox(&request.data_generation_id)
+    }
+}
+
+#[cfg(test)]
+mod display_name_tests {
+    use super::{bounded_display_name, display_width};
+
+    #[test]
+    fn display_width_counts_cjk_as_two_and_ascii_as_one() {
+        assert_eq!(display_width("中文"), 4);
+        assert_eq!(display_width("abcdefghijklmnop"), 16);
+        assert_eq!(display_width("八个中文😀"), 10);
+    }
+
+    #[test]
+    fn bounded_display_name_enforces_eight_cjk_or_sixteen_ascii() {
+        assert!(bounded_display_name("八个中文昵称啊哈", "display_name").is_ok());
+        assert!(bounded_display_name("abcdefghijklmnop", "display_name").is_ok());
+        assert!(bounded_display_name("八个中文昵称啊哈哈", "display_name").is_err());
+        assert!(bounded_display_name("abcdefghijklmnopq", "display_name").is_err());
     }
 }

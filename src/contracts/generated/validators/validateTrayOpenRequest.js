@@ -1,19 +1,19 @@
 import { t as require_ucs2length } from "./ucs2length.js";
 // generated/raw-validators/validateTrayOpenRequest.js
-var validateTrayOpenRequest = validate497;
+var validateTrayOpenRequest = validate505;
 var func2 = require_ucs2length().default;
 var pattern4 = /* @__PURE__ */ new RegExp("^(0|[1-9][0-9]*)$", "u");
-function validate497(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate505(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
 	let errors = 0;
-	const evaluated0 = validate497.evaluated;
+	const evaluated0 = validate505.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (errors === 0) {
 		if (data && typeof data == "object" && !Array.isArray(data)) {
 			let missing0;
 			if (data.data_generation_id === void 0 && (missing0 = "data_generation_id") || data.conversation_id === void 0 && (missing0 = "conversation_id")) {
-				validate497.errors = [{
+				validate505.errors = [{
 					instancePath,
 					schemaPath: "#/required",
 					keyword: "required",
@@ -24,7 +24,7 @@ function validate497(data, { instancePath = "", parentData, parentDataProperty, 
 			} else {
 				const _errs1 = errors;
 				for (const key0 in data) if (!(key0 === "conversation_id" || key0 === "data_generation_id" || key0 === "through_seq")) {
-					validate497.errors = [{
+					validate505.errors = [{
 						instancePath,
 						schemaPath: "#/additionalProperties",
 						keyword: "additionalProperties",
@@ -37,7 +37,7 @@ function validate497(data, { instancePath = "", parentData, parentDataProperty, 
 					if (data.conversation_id !== void 0) {
 						const _errs2 = errors;
 						if (typeof data.conversation_id !== "string") {
-							validate497.errors = [{
+							validate505.errors = [{
 								instancePath: instancePath + "/conversation_id",
 								schemaPath: "#/properties/conversation_id/type",
 								keyword: "type",
@@ -52,7 +52,7 @@ function validate497(data, { instancePath = "", parentData, parentDataProperty, 
 						if (data.data_generation_id !== void 0) {
 							const _errs4 = errors;
 							if (typeof data.data_generation_id !== "string") {
-								validate497.errors = [{
+								validate505.errors = [{
 									instancePath: instancePath + "/data_generation_id",
 									schemaPath: "#/properties/data_generation_id/type",
 									keyword: "type",
@@ -136,7 +136,7 @@ function validate497(data, { instancePath = "", parentData, parentDataProperty, 
 									if (vErrors === null) vErrors = [err4];
 									else vErrors.push(err4);
 									errors++;
-									validate497.errors = vErrors;
+									validate505.errors = vErrors;
 									return false;
 								} else {
 									errors = _errs7;
@@ -152,7 +152,7 @@ function validate497(data, { instancePath = "", parentData, parentDataProperty, 
 				}
 			}
 		} else {
-			validate497.errors = [{
+			validate505.errors = [{
 				instancePath,
 				schemaPath: "#/type",
 				keyword: "type",
@@ -162,10 +162,10 @@ function validate497(data, { instancePath = "", parentData, parentDataProperty, 
 			return false;
 		}
 	}
-	validate497.errors = vErrors;
+	validate505.errors = vErrors;
 	return errors === 0;
 }
-validate497.evaluated = {
+validate505.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

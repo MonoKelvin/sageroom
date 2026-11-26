@@ -9,7 +9,7 @@ vi.mock("@/app/ipc", () => ({
   isDesktopEnvironment: () => true,
 }))
 vi.mock("@/app/useAppearance", () => ({ useAppearance: () => {} }))
-vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }))
+vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}), emit: vi.fn(async () => {}), emitTo: vi.fn(async () => {}) }))
 
 describe("托盘面板数据加载", () => {
   beforeEach(() => {

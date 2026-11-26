@@ -35,6 +35,8 @@ import type {
   InboxSummary,
   TrayOpenRequest,
   TrayOpenResult,
+  ChatOpenRequest,
+  ChatOpenState,
   AutostartRequest,
   AutostartSetRequest,
   AutostartState,
@@ -128,6 +130,8 @@ import {
   validateTraySyncResponse,
   validateTrayOpenRequest,
   validateTrayOpenResponse,
+  validateChatOpenRequest,
+  validateChatOpenResponse,
   validateAutostartRequest,
   validateAutostartStatusResponse,
   validateAutostartSetRequest,
@@ -281,6 +285,8 @@ export const ipc = {
     request("tray_sync", input, validateTraySyncRequest, validateTraySyncResponse),
   trayOpenMain: (input: TrayOpenRequest): Promise<TrayOpenResult> =>
     request("tray_open_main", input, validateTrayOpenRequest, validateTrayOpenResponse),
+  consumeChatOpen: (input: ChatOpenRequest): Promise<ChatOpenState> =>
+    request("consume_chat_open", input, validateChatOpenRequest, validateChatOpenResponse),
   autostartStatus: (input: AutostartRequest): Promise<AutostartState> =>
     request("autostart_status", input, validateAutostartRequest, validateAutostartStatusResponse),
   autostartSet: (input: AutostartSetRequest): Promise<AutostartState> =>

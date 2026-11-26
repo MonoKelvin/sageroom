@@ -12,11 +12,11 @@ vi.mock("./ipc", async (original) => {
   return { ...actual, isDesktopEnvironment: () => true, ipc: { ...actual.ipc, getUserProfile: vi.fn(), saveUserProfile: vi.fn(), subscribeLifecycle: vi.fn(), completeExit: vi.fn(), exit: vi.fn() } }
 })
 let receive: (event: AppLifecycleEvent) => void
-const initial: UserProfile = { participant_id: "user-test", display_name: "我", avatar_id: null, revision: "1" }
+const initial: UserProfile = { participant_id: "user-test", display_name: "我", avatar_id: null, bio: "", revision: "1" }
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(ipc.getUserProfile).mockResolvedValue(initial)
-  vi.mocked(ipc.saveUserProfile).mockImplementation(async (request) => ({ ...initial, display_name: request.display_name, revision: String(BigInt(request.expected_revision) + 1n) }))
+  vi.mocked(ipc.saveUserProfile).mockImplementation(async (request) => ({ ...initial, display_name: request.display_name, bio: request.bio, revision: String(BigInt(request.expected_revision) + 1n) }))
   vi.mocked(ipc.subscribeLifecycle).mockImplementation(async (callback) => { receive = callback; return vi.fn<() => void>() })
   vi.mocked(ipc.completeExit).mockResolvedValue({ shutting_down: true })
 })

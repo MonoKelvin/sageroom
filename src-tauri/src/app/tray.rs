@@ -1,4 +1,7 @@
-use std::{sync::Mutex, time::Duration};
+use std::{
+    sync::{Mutex, OnceLock},
+    time::Duration,
+};
 
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, Rect, WebviewUrl, WebviewWindow,
@@ -22,7 +25,8 @@ const MAX_VISIBLE_ITEMS: u32 = 3;
 const MIN_POPUP_HEIGHT: f64 = PANEL_INSET * 2.0 + ITEM_HEIGHT;
 /// 面板下沿与任务栏上沿的留白；面板固定在工作区底部，不跟随鼠标。
 const TASKBAR_GAP: f64 = 8.0;
-const FLASH_INTERVAL: Duration = Duration::from_millis(700);
+/// 单帧停留时长：一亮一灭为 1.2s。再快会显得焦躁，再慢就注意不到了。
+const FLASH_INTERVAL: Duration = Duration::from_millis(600);
 const ANCHOR_RADIUS: f64 = 90.0;
 
 #[derive(Default)]
@@ -80,59 +84,62 @@ impl TrayState {
     }
 }
 
-/// 托盘图标两态：普通态与品牌色提醒点，提醒点用于闪烁时交替显示。
-fn tray_icon(alert: bool) -> Option<Image<'static>> {
+/// 图标位图边长：任务栏在 200% 缩放下取 32px，这里留一倍余量，闪烁时不发虚。
+const ICON_SIZE: u32 = 64;
+
+/// 常态图标：托盘创建与闪烁恢复时共用同一份，避免清晰度跳变。
+pub fn normal_icon() -> Option<Image<'static>> {
+    // 解码 + Lanczos 缩放不便宜，闪烁每 700ms 取一次，缓存住只做克隆。
+    static CACHE: OnceLock<Option<Image<'static>>> = OnceLock::new();
+    CACHE.get_or_init(decode_normal_icon).clone()
+}
+
+fn decode_normal_icon() -> Option<Image<'static>> {
     let source = image::load_from_memory(include_bytes!("../../icons/icon.png")).ok()?;
-    let mut canvas = image::imageops::resize(
+    let canvas = image::imageops::resize(
         &source.to_rgba8(),
-        32,
-        32,
+        ICON_SIZE,
+        ICON_SIZE,
         image::imageops::FilterType::Lanczos3,
     );
-    if alert {
-        let (width, _) = canvas.dimensions();
-        let radius = width as f32 * 0.19;
-        let center_x = width as f32 - radius - 1.0;
-        let center_y = radius + 1.0;
-        for y in 0..canvas.height() {
-            for x in 0..canvas.width() {
-                let dx = x as f32 + 0.5 - center_x;
-                let dy = y as f32 + 0.5 - center_y;
-                if (dx * dx + dy * dy).sqrt() <= radius {
-                    // 品牌色 #c94a4a，与浅色主题的 --semantic-accent 保持一致。
-                    canvas.put_pixel(x, y, image::Rgba([201, 74, 74, 255]));
-                }
-            }
-        }
-    }
-    Some(Image::new_owned(canvas.into_raw(), 32, 32))
+    Some(Image::new_owned(canvas.into_raw(), ICON_SIZE, ICON_SIZE))
+}
+
+/// 闪烁的第 `phase` 帧是否让托盘图标消失；不闪烁时永远是可见帧。
+fn hides_on_phase(flashing: bool, phase: u32) -> bool {
+    flashing && phase % 2 == 1
 }
 
 pub fn start_flasher(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        let normal = tray_icon(false);
-        let alert = tray_icon(true);
         let mut phase = 0_u32;
-        let mut last: Option<bool> = None;
+        let mut was_flashing = false;
+        let mut hidden = false;
         loop {
             tokio::time::sleep(FLASH_INTERVAL).await;
             let flashing = app.state::<TrayState>().flashing();
-            let alert_now = flashing && phase % 2 == 1;
-            phase = phase.wrapping_add(1);
-            if last == Some(alert_now) {
+            // 进入提醒状态时先把图标亮回来，再开始消失/出现，避免上一轮停在隐藏帧。
+            if flashing && !was_flashing {
+                phase = 0;
+            }
+            was_flashing = flashing;
+            let hide_now = hides_on_phase(flashing, phase);
+            if flashing {
+                phase = phase.wrapping_add(1);
+            }
+            if hidden == hide_now {
                 continue;
             }
-            last = Some(alert_now);
             let Some(tray) = app.tray_by_id(TRAY_ID) else {
                 continue;
             };
-            let chosen = if alert_now {
-                alert.as_ref().or(normal.as_ref())
-            } else {
-                normal.as_ref()
-            };
-            if let Some(chosen) = chosen {
-                let _ = tray.set_icon(Some(chosen.clone()));
+            if hide_now {
+                // 透明帧：通知留在原位，只是画不出来，相邻图标不会挤进来。
+                if super::tray_icon::hide(ICON_SIZE) {
+                    hidden = true;
+                }
+            } else if super::tray_icon::show(&tray, normal_icon()) {
+                hidden = false;
             }
         }
     });
@@ -361,5 +368,25 @@ mod tests {
         assert!(synced.flashing);
         assert!(state.flashing());
         assert!(!state.has_conversations());
+    }
+
+    #[test]
+    fn blink_alternates_between_hidden_and_visible() {
+        // 不闪烁时永远可见，避免退出提醒后图标停在隐藏态上。
+        assert!(!super::hides_on_phase(false, 0));
+        assert!(!super::hides_on_phase(false, 1));
+        // 闪烁时逐帧交替：0 可见、1 隐藏、2 可见……
+        assert!(!super::hides_on_phase(true, 0));
+        assert!(super::hides_on_phase(true, 1));
+        assert!(!super::hides_on_phase(true, 2));
+        assert!(super::hides_on_phase(true, 3));
+    }
+
+    #[test]
+    fn normal_icon_is_opaque_and_has_expected_size() {
+        let icon = super::normal_icon().expect("常态图标可解码");
+        assert_eq!(icon.width(), super::ICON_SIZE);
+        assert_eq!(icon.height(), super::ICON_SIZE);
+        assert!(icon.rgba().chunks_exact(4).any(|pixel| pixel[3] > 0));
     }
 }

@@ -5,6 +5,7 @@
   "windows": ["tray_popup"],
   "local": true,
   "permissions": [
+    "core:event:allow-emit",
     "app-snapshot",
     "inbox-read",
     "tray-open"

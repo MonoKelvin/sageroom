@@ -1,6 +1,6 @@
 // generated/raw-validators/validateChatSendRequest.js
-var validateChatSendRequest = validate202;
-var schema264 = {
+var validateChatSendRequest = validate210;
+var schema274 = {
 	"$defs": { "MessagePart": { "oneOf": [
 		{
 			"additionalProperties": false,
@@ -68,17 +68,17 @@ var schema264 = {
 	"title": "ChatSendRequest",
 	"type": "object"
 };
-function validate202(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate210(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
 	let errors = 0;
-	const evaluated0 = validate202.evaluated;
+	const evaluated0 = validate210.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (errors === 0) {
 		if (data && typeof data == "object" && !Array.isArray(data)) {
 			let missing0;
 			if (data.data_generation_id === void 0 && (missing0 = "data_generation_id") || data.client_request_id === void 0 && (missing0 = "client_request_id") || data.parts === void 0 && (missing0 = "parts") || data.mention_ids === void 0 && (missing0 = "mention_ids") || data.mention_all === void 0 && (missing0 = "mention_all")) {
-				validate202.errors = [{
+				validate210.errors = [{
 					instancePath,
 					schemaPath: "#/required",
 					keyword: "required",
@@ -89,7 +89,7 @@ function validate202(data, { instancePath = "", parentData, parentDataProperty, 
 			} else {
 				const _errs1 = errors;
 				for (const key0 in data) if (!(key0 === "client_request_id" || key0 === "data_generation_id" || key0 === "mention_all" || key0 === "mention_ids" || key0 === "parts" || key0 === "quote_message_id")) {
-					validate202.errors = [{
+					validate210.errors = [{
 						instancePath,
 						schemaPath: "#/additionalProperties",
 						keyword: "additionalProperties",
@@ -102,7 +102,7 @@ function validate202(data, { instancePath = "", parentData, parentDataProperty, 
 					if (data.client_request_id !== void 0) {
 						const _errs2 = errors;
 						if (typeof data.client_request_id !== "string") {
-							validate202.errors = [{
+							validate210.errors = [{
 								instancePath: instancePath + "/client_request_id",
 								schemaPath: "#/properties/client_request_id/type",
 								keyword: "type",
@@ -117,7 +117,7 @@ function validate202(data, { instancePath = "", parentData, parentDataProperty, 
 						if (data.data_generation_id !== void 0) {
 							const _errs4 = errors;
 							if (typeof data.data_generation_id !== "string") {
-								validate202.errors = [{
+								validate210.errors = [{
 									instancePath: instancePath + "/data_generation_id",
 									schemaPath: "#/properties/data_generation_id/type",
 									keyword: "type",
@@ -132,7 +132,7 @@ function validate202(data, { instancePath = "", parentData, parentDataProperty, 
 							if (data.mention_all !== void 0) {
 								const _errs6 = errors;
 								if (typeof data.mention_all !== "boolean") {
-									validate202.errors = [{
+									validate210.errors = [{
 										instancePath: instancePath + "/mention_all",
 										schemaPath: "#/properties/mention_all/type",
 										keyword: "type",
@@ -153,7 +153,7 @@ function validate202(data, { instancePath = "", parentData, parentDataProperty, 
 											for (let i0 = 0; i0 < len0; i0++) {
 												const _errs10 = errors;
 												if (typeof data3[i0] !== "string") {
-													validate202.errors = [{
+													validate210.errors = [{
 														instancePath: instancePath + "/mention_ids/" + i0,
 														schemaPath: "#/properties/mention_ids/items/type",
 														keyword: "type",
@@ -165,7 +165,7 @@ function validate202(data, { instancePath = "", parentData, parentDataProperty, 
 												if (!(_errs10 === errors)) break;
 											}
 										} else {
-											validate202.errors = [{
+											validate210.errors = [{
 												instancePath: instancePath + "/mention_ids",
 												schemaPath: "#/properties/mention_ids/type",
 												keyword: "type",
@@ -506,7 +506,7 @@ function validate202(data, { instancePath = "", parentData, parentDataProperty, 
 														if (vErrors === null) vErrors = [err18];
 														else vErrors.push(err18);
 														errors++;
-														validate202.errors = vErrors;
+														validate210.errors = vErrors;
 														return false;
 													} else {
 														errors = _errs16;
@@ -518,7 +518,7 @@ function validate202(data, { instancePath = "", parentData, parentDataProperty, 
 													if (!(_errs14 === errors)) break;
 												}
 											} else {
-												validate202.errors = [{
+												validate210.errors = [{
 													instancePath: instancePath + "/parts",
 													schemaPath: "#/properties/parts/type",
 													keyword: "type",
@@ -535,11 +535,11 @@ function validate202(data, { instancePath = "", parentData, parentDataProperty, 
 											let data13 = data.quote_message_id;
 											const _errs38 = errors;
 											if (typeof data13 !== "string" && data13 !== null) {
-												validate202.errors = [{
+												validate210.errors = [{
 													instancePath: instancePath + "/quote_message_id",
 													schemaPath: "#/properties/quote_message_id/type",
 													keyword: "type",
-													params: { type: schema264.properties.quote_message_id.type },
+													params: { type: schema274.properties.quote_message_id.type },
 													message: "must be string,null"
 												}];
 												return false;
@@ -554,7 +554,7 @@ function validate202(data, { instancePath = "", parentData, parentDataProperty, 
 				}
 			}
 		} else {
-			validate202.errors = [{
+			validate210.errors = [{
 				instancePath,
 				schemaPath: "#/type",
 				keyword: "type",
@@ -564,10 +564,10 @@ function validate202(data, { instancePath = "", parentData, parentDataProperty, 
 			return false;
 		}
 	}
-	validate202.errors = vErrors;
+	validate210.errors = vErrors;
 	return errors === 0;
 }
-validate202.evaluated = {
+validate210.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

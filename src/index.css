@@ -385,6 +385,8 @@
 .icon-button:disabled { opacity: .4; cursor: not-allowed; }
 .list-entry { position: relative; z-index: 1; display: flex; align-items: center; gap: var(--space-3); min-width: 0; width: 100%; border: 0; border-radius: var(--radius); padding: var(--space-3); background: transparent; color: var(--text-primary); text-align: left; cursor: pointer; transition: background-color var(--motion-duration) ease, color var(--motion-duration) ease; }
 .list-entry[aria-selected="true"], .list-entry[data-active="true"] { background: var(--accent); color: var(--text-primary); }
+/* 用户默认头像用应用 logo；logo 原图四周留白较多，放大让主体在圆形头像里可读。 */
+.avatar-default-logo { width: 100%; height: 100%; object-fit: contain; transform: scale(1.28); }
 .inline-panel { min-width: 0; min-height: 0; border-radius: var(--radius-card); background: var(--surface-canvas); animation: panel-reveal var(--motion-duration) var(--motion-ease); }
 @keyframes panel-reveal { from { opacity: 0; transform: translateY(calc(var(--size-unit) * .75)); } to { opacity: 1; transform: translateY(0); } }
 

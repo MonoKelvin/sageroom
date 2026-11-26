@@ -1,14 +1,14 @@
 // generated/raw-validators/validateInboxGetRequest.js
-var validateInboxGetRequest = validate348;
-function validate348(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+var validateInboxGetRequest = validate356;
+function validate356(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
-	const evaluated0 = validate348.evaluated;
+	const evaluated0 = validate356.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		let missing0;
 		if (data.data_generation_id === void 0 && (missing0 = "data_generation_id")) {
-			validate348.errors = [{
+			validate356.errors = [{
 				instancePath,
 				schemaPath: "#/required",
 				keyword: "required",
@@ -18,7 +18,7 @@ function validate348(data, { instancePath = "", parentData, parentDataProperty, 
 			return false;
 		} else {
 			for (const key0 in data) if (!(key0 === "data_generation_id")) {
-				validate348.errors = [{
+				validate356.errors = [{
 					instancePath,
 					schemaPath: "#/additionalProperties",
 					keyword: "additionalProperties",
@@ -29,7 +29,7 @@ function validate348(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 			if (data.data_generation_id !== void 0) {
 				if (typeof data.data_generation_id !== "string") {
-					validate348.errors = [{
+					validate356.errors = [{
 						instancePath: instancePath + "/data_generation_id",
 						schemaPath: "#/properties/data_generation_id/type",
 						keyword: "type",
@@ -41,7 +41,7 @@ function validate348(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 		}
 	} else {
-		validate348.errors = [{
+		validate356.errors = [{
 			instancePath,
 			schemaPath: "#/type",
 			keyword: "type",
@@ -50,10 +50,10 @@ function validate348(data, { instancePath = "", parentData, parentDataProperty, 
 		}];
 		return false;
 	}
-	validate348.errors = vErrors;
+	validate356.errors = vErrors;
 	return true;
 }
-validate348.evaluated = {
+validate356.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

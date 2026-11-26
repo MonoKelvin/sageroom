@@ -119,6 +119,11 @@ description = "登录托盘面板的点击唤回主窗口并定位到指定会�
 commands.allow = ["tray_open_main"]
 
 [[permission]]
+identifier = "chat-open"
+description = "主窗口领取托盘点击后的打开聊天页意图"
+commands.allow = ["consume_chat_open"]
+
+[[permission]]
 identifier = "autostart"
 description = "读取与切换系统开机自启状态"
 commands.allow = ["autostart_status", "autostart_set"]

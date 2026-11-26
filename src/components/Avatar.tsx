@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import appLogo from "../../src-tauri/icons/appicon-logo.png"
 import { ipc } from "@/app/ipc"
 import { avatarSource } from "@/features/user/avatarSource"
 
@@ -64,8 +65,8 @@ function defaultColors(id?: string) {
   return { background: `rgb(${rgb.join(" ")})`, color: blackContrast >= whiteContrast ? "var(--avatar-ink-dark)" : "var(--avatar-ink-light)" }
 }
 
-export function Avatar({ name, avatarId, colorId, generation, size = 40, radius, retryable = false }: {
-  name: string; avatarId?: string | null; colorId?: string; generation?: string; size?: number; radius?: number; retryable?: boolean
+export function Avatar({ name, avatarId, colorId, generation, size = 40, radius, retryable = false, fallbackSrc }: {
+  name: string; avatarId?: string | null; colorId?: string; generation?: string; size?: number; radius?: number; retryable?: boolean; fallbackSrc?: string
 }) {
   const [image, setImage] = useState<{ id: string; generation: string; src: string } | null>(null)
   const [retry, setRetry] = useState(0)
@@ -83,5 +84,8 @@ export function Avatar({ name, avatarId, colorId, generation, size = 40, radius,
   const style = { width: size, height: size, borderRadius: radius ?? Math.round(size * 0.3), ...colors, flexShrink: 0, display: "inline-grid", placeItems: "center", overflow: "hidden", fontSize: Math.round(size * 0.4), fontWeight: 500 } as const
   if (src) return <span style={style}><img src={src} alt={`${name}的头像`} width={size} height={size} style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={() => { if (generation && avatarId) avatarCache.delete(`${generation}:${avatarId}`); setImage(null); setFailed(true) }} /></span>
   if (retryable && failed && avatarId && generation) return <button type="button" style={{ ...style, border: 0, cursor: "pointer" }} title="头像读取失败，点击重试" aria-label={`${name}的头像读取失败，重试`} onClick={() => { setFailed(false); setRetry((value) => value + 1) }}>{Array.from(name.trim())[0] || "?"}</button>
+  // 没有 colorId 的头像属于本机用户，默认用软件 logo；智能体仍用首字+派生色。
+  const defaultLogo = fallbackSrc ?? (colorId ? null : appLogo)
+  if (defaultLogo) return <span style={style} role="img" aria-label={`${name}的默认头像`}><img src={defaultLogo} alt="" width={size} height={size} className="avatar-default-logo" /></span>
   return <span style={style} role="img" aria-label={`${name}的默认头像`}>{Array.from(name.trim())[0] || "?"}</span>
 }

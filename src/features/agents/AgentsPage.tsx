@@ -15,7 +15,7 @@ import { EditableTextarea } from "@/components/ui/editable-textarea"
 import { Disclosure } from "@/components/ui/disclosure"
 import { SegmentedControl } from "@/components/ui/segmented-control"
 import { SettingsSelect } from "@/components/ui/settings-select"
-import { validateText } from "@/features/settings/configurationDefaults"
+import { validateDisplayName, validateText } from "@/features/settings/configurationDefaults"
 import { DimensionsFields, Field, ModelNamePicker, ResourceFeedback } from "@/features/settings/ConfigurationFields"
 import { usePageActivation } from "@/features/settings/useLocalEditor"
 import { GLOBAL_CONFIG_ICON, GlobalConfiguration as GlobalConfigurationPanel } from "./GlobalConfiguration"
@@ -136,7 +136,7 @@ function AgentEditor({ resource, global, active, session, onCopy, onDelete }: {
           { value: "model", label: "模型配置", icon: IconRobot },
         ]} />
         <div hidden={section !== "basic"} inert={section !== "basic"}>
-          <Field label="名称"><EditableInput label="名称" active={active} maxLength={80} value={agent.display_name} normalize={(next) => next.trim()} validate={(next) => validateText(next, 80, true)} onApply={(display_name) => update({ display_name })} /></Field>
+          <Field label="名称"><EditableInput label="名称" active={active} maxLength={16} value={agent.display_name} normalize={(next) => next.trim()} validate={validateDisplayName} onApply={(display_name) => update({ display_name })} /></Field>
           <Field label="智能体类型"><SettingsSelect label="智能体类型" value={agent.agent_type} options={[{ value: "social", label: "社交成员" }, { value: "tool", label: "工具助手" }]} onValueChange={(agent_type) => update({ agent_type: agent_type as AgentConfiguration["agent_type"] })} /></Field>
           <ExperiencePanel store={store} agentId={agent.agent_id} active={active && section === "basic"} disabled={runtime.exiting || agent.revision === "0"} />
         </div>

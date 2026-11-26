@@ -42,7 +42,7 @@ export class ConfigurationStore {
     })
     this.user = new AppliedResource({
       load: () => ipc.getUserProfile({ data_generation_id: generation }),
-      write: (value, revision, requestId) => ipc.saveUserProfile({ data_generation_id: generation, client_request_id: requestId, expected_revision: revision, display_name: value.display_name.trim(), avatar_id: value.avatar_id }),
+      write: (value, revision, requestId) => ipc.saveUserProfile({ data_generation_id: generation, client_request_id: requestId, expected_revision: revision, display_name: value.display_name.trim(), avatar_id: value.avatar_id, bio: value.bio }),
     })
     this.appearance = new AppliedResource({
       initial: snapshot.appearance,

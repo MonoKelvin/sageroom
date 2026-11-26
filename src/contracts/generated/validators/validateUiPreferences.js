@@ -1,21 +1,21 @@
 // generated/raw-validators/validateUiPreferences.js
-var validateUiPreferences = validate513;
-var schema661 = {
+var validateUiPreferences = validate521;
+var schema671 = {
 	"enum": ["hide", "exit"],
 	"type": "string"
 };
-var schema662 = {
+var schema672 = {
 	"enum": ["enter", "ctrl_enter"],
 	"type": "string"
 };
-function validate513(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate521(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
-	const evaluated0 = validate513.evaluated;
+	const evaluated0 = validate521.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		for (const key0 in data) if (!(key0 === "close_action" || key0 === "send_key")) {
-			validate513.errors = [{
+			validate521.errors = [{
 				instancePath,
 				schemaPath: "#/additionalProperties",
 				keyword: "additionalProperties",
@@ -27,7 +27,7 @@ function validate513(data, { instancePath = "", parentData, parentDataProperty, 
 		if (data.close_action !== void 0) {
 			let data0 = data.close_action;
 			if (typeof data0 !== "string") {
-				validate513.errors = [{
+				validate521.errors = [{
 					instancePath: instancePath + "/close_action",
 					schemaPath: "#/$defs/CloseAction/type",
 					keyword: "type",
@@ -37,11 +37,11 @@ function validate513(data, { instancePath = "", parentData, parentDataProperty, 
 				return false;
 			}
 			if (!(data0 === "hide" || data0 === "exit")) {
-				validate513.errors = [{
+				validate521.errors = [{
 					instancePath: instancePath + "/close_action",
 					schemaPath: "#/$defs/CloseAction/enum",
 					keyword: "enum",
-					params: { allowedValues: schema661.enum },
+					params: { allowedValues: schema671.enum },
 					message: "must be equal to one of the allowed values"
 				}];
 				return false;
@@ -52,7 +52,7 @@ function validate513(data, { instancePath = "", parentData, parentDataProperty, 
 			if (data.send_key !== void 0) {
 				let data1 = data.send_key;
 				if (typeof data1 !== "string") {
-					validate513.errors = [{
+					validate521.errors = [{
 						instancePath: instancePath + "/send_key",
 						schemaPath: "#/$defs/SendKey/type",
 						keyword: "type",
@@ -62,11 +62,11 @@ function validate513(data, { instancePath = "", parentData, parentDataProperty, 
 					return false;
 				}
 				if (!(data1 === "enter" || data1 === "ctrl_enter")) {
-					validate513.errors = [{
+					validate521.errors = [{
 						instancePath: instancePath + "/send_key",
 						schemaPath: "#/$defs/SendKey/enum",
 						keyword: "enum",
-						params: { allowedValues: schema662.enum },
+						params: { allowedValues: schema672.enum },
 						message: "must be equal to one of the allowed values"
 					}];
 					return false;
@@ -75,7 +75,7 @@ function validate513(data, { instancePath = "", parentData, parentDataProperty, 
 			} else var valid0 = true;
 		}
 	} else {
-		validate513.errors = [{
+		validate521.errors = [{
 			instancePath,
 			schemaPath: "#/type",
 			keyword: "type",
@@ -84,10 +84,10 @@ function validate513(data, { instancePath = "", parentData, parentDataProperty, 
 		}];
 		return false;
 	}
-	validate513.errors = vErrors;
+	validate521.errors = vErrors;
 	return true;
 }
-validate513.evaluated = {
+validate521.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

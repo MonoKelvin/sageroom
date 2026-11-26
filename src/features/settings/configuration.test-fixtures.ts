@@ -18,7 +18,7 @@ export function agentConfiguration(id = "sage-test", name = "Sage"): AgentConfig
   return { agent_id: id, revision: "1", display_name: name, gender_description: null,language_style: "自然", skill: "", dimensions: { ...defaultDimensions }, avatar_id: null, agent_type: "social", model: null, }
 }
 export function userProfile(): UserProfile {
-  return { participant_id: "user-test", display_name: "我", avatar_id: null, revision: "1" }
+  return { participant_id: "user-test", display_name: "我", avatar_id: null, bio: "", revision: "1" }
 }
 export function pageProps(active = true): ApplicationPageProps {
   const base = snapshot()
@@ -91,7 +91,7 @@ export function mockConfigurationIpc() {
     requests_today: 0,
   }))
   vi.spyOn(ipc, "saveUserProfile").mockImplementation(async (request) => {
-    data.user = { participant_id: data.user.participant_id, display_name: request.display_name, avatar_id: request.avatar_id, revision: nextRevision(request.expected_revision) }
+    data.user = { participant_id: data.user.participant_id, display_name: request.display_name, avatar_id: request.avatar_id, bio: request.bio, revision: nextRevision(request.expected_revision) }
     return structuredClone(data.user)
   })
   vi.spyOn(ipc, "saveAppearance").mockImplementation(async (request) => {

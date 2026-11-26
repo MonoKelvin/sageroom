@@ -284,6 +284,7 @@ mod tests {
                 expected_revision: 1.into(),
                 display_name: "原昵称".into(),
                 avatar_id: Some(avatar.id.clone()),
+                bio: String::new(),
             })
             .unwrap();
         database
@@ -305,6 +306,7 @@ mod tests {
                 expected_revision: 2.into(),
                 display_name: "新昵称".into(),
                 avatar_id: None,
+                bio: String::new(),
             })
             .unwrap();
         let page = database

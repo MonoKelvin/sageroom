@@ -134,6 +134,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     export::<ApiResponse<TraySyncState>>("TraySyncResponse", &config, &mut schemas)?;
     export::<TrayOpenRequest>("TrayOpenRequest", &config, &mut schemas)?;
     export::<ApiResponse<TrayOpenResult>>("TrayOpenResponse", &config, &mut schemas)?;
+    export::<ChatOpenRequest>("ChatOpenRequest", &config, &mut schemas)?;
+    export::<ApiResponse<ChatOpenState>>("ChatOpenResponse", &config, &mut schemas)?;
     export::<AutostartRequest>("AutostartRequest", &config, &mut schemas)?;
     export::<ApiResponse<AutostartState>>("AutostartStatusResponse", &config, &mut schemas)?;
     export::<AutostartSetRequest>("AutostartSetRequest", &config, &mut schemas)?;

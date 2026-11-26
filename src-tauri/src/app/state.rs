@@ -33,6 +33,8 @@ pub struct AppState {
     exit_completed: AtomicBool,
     pub avatar_gate: Semaphore,
     shutting_down: AtomicBool,
+    /// 托盘点击后待主窗口领取的「打开聊天页」意图，避免事件早于 React 挂载而丢失。
+    chat_open_requested: AtomicBool,
 }
 
 impl AppState {
@@ -76,7 +78,16 @@ impl AppState {
             exit_completed: AtomicBool::new(false),
             avatar_gate: Semaphore::new(1),
             shutting_down: AtomicBool::new(false),
+            chat_open_requested: AtomicBool::new(false),
         }
+    }
+
+    pub fn request_chat_open(&self) {
+        self.chat_open_requested.store(true, Ordering::Release);
+    }
+
+    pub fn consume_chat_open(&self) -> bool {
+        self.chat_open_requested.swap(false, Ordering::AcqRel)
     }
 
     pub fn worker(&self) -> AppResult<Arc<DbWorker>> {
@@ -546,6 +557,7 @@ mod tests {
             exit_completed: AtomicBool::new(false),
             avatar_gate: Semaphore::new(1),
             shutting_down: AtomicBool::new(false),
+            chat_open_requested: AtomicBool::new(false),
         }
     }
 

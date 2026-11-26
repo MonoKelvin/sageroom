@@ -12,7 +12,11 @@ var schema43 = {
 		"agent_type": { "$ref": "#/$defs/AgentType" },
 		"avatar_id": { "type": ["string", "null"] },
 		"dimensions": { "$ref": "#/$defs/PersonaDimensions" },
-		"display_name": { "type": "string" },
+		"display_name": {
+			"description": "显示名上限按宽度计算：中文 2、英文 1，总量 16（即 8 个中文或 16 个英文）。\n响应契约保留旧数据的宽松上限，写入时由后端按宽度严格校验。",
+			"maxLength": 80,
+			"type": "string"
+		},
 		"gender_description": { "type": ["string", "null"] },
 		"language_style": { "type": "string" },
 		"model": { "anyOf": [{ "$ref": "#/$defs/AgentModelSnapshot" }, { "type": "null" }] },
@@ -843,16 +847,30 @@ function validate31(data, { instancePath = "", parentData, parentDataProperty, r
 								} else var valid0 = true;
 								if (valid0) {
 									if (data.display_name !== void 0) {
+										let data12 = data.display_name;
 										const _errs29 = errors;
-										if (typeof data.display_name !== "string") {
-											validate31.errors = [{
-												instancePath: instancePath + "/display_name",
-												schemaPath: "#/properties/display_name/type",
-												keyword: "type",
-												params: { type: "string" },
-												message: "must be string"
-											}];
-											return false;
+										if (errors === _errs29) {
+											if (typeof data12 === "string") {
+												if (func2(data12) > 80) {
+													validate31.errors = [{
+														instancePath: instancePath + "/display_name",
+														schemaPath: "#/properties/display_name/maxLength",
+														keyword: "maxLength",
+														params: { limit: 80 },
+														message: "must NOT have more than 80 characters"
+													}];
+													return false;
+												}
+											} else {
+												validate31.errors = [{
+													instancePath: instancePath + "/display_name",
+													schemaPath: "#/properties/display_name/type",
+													keyword: "type",
+													params: { type: "string" },
+													message: "must be string"
+												}];
+												return false;
+											}
 										}
 										var valid0 = _errs29 === errors;
 									} else var valid0 = true;

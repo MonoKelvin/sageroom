@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-consume-chat-open"
+description = "Enables the consume_chat_open command without any pre-configured scope."
+commands.allow = ["consume_chat_open"]
+
+[[permission]]
+identifier = "deny-consume-chat-open"
+description = "Denies the consume_chat_open command without any pre-configured scope."
+commands.deny = ["consume_chat_open"]

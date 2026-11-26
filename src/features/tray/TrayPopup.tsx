@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { IconUsers } from "@tabler/icons-react"
 import type { AppSnapshot, InboxSummary } from "@/contracts/generated"
-import { listen } from "@tauri-apps/api/event"
+import { emit, emitTo, listen } from "@tauri-apps/api/event"
 import { ipc, isDesktopEnvironment } from "@/app/ipc"
 import { useAppearance } from "@/app/useAppearance"
 import { formatConversationTime } from "@/features/chat/message-time"
@@ -25,6 +25,9 @@ export function TrayPopup() {
   const [summary, setSummary] = useState<InboxSummary | null>(() => window.__TRAY_SUMMARY__ ?? null)
   const [error, setError] = useState<string | null>(null)
   const generation = useRef<string | null>(null)
+  // 面板是透明浮窗，指针按下后窗口可能立即失焦/隐藏，click 不一定能完成；
+  // 用 pointerdown 立即发起，click 只兜底键盘激活，避免一次点击触发两次。
+  const opening = useRef(false)
   useAppearance(snapshot?.appearance)
 
   const refresh = useCallback(async () => {
@@ -63,12 +66,24 @@ export function TrayPopup() {
   }, [refresh])
 
   async function open(conversationId: string, throughSeq: string) {
+    if (opening.current) return
+    opening.current = true
+    // 成功后面板会隐藏、组件不卸载；定时解除去抖，下一次悬停点击仍能打开。
+    setTimeout(() => { opening.current = false }, 1000)
     // 不因 generation 缺失而放弃打开：Rust 侧会把标已读失败与唤回主窗口解耦。
     const current = generation.current ?? window.__TRAY_GENERATION__ ?? ""
+    // 先直接向主窗口发导航信号：即便托盘窗口的 IPC 命令被 ACL 拒绝或响应丢失，
+    // 主窗口仍能立刻切到聊天页；IPC 只负责唤回窗口与标已读。
+    const detail = { conversation_id: conversationId, through_seq: throughSeq }
+    void emitTo("main", "sageroom-open-chat", detail).catch(() => {})
+    void emit("sageroom-open-chat", detail).catch(() => {})
     try {
       await ipc.trayOpenMain({ data_generation_id: current, conversation_id: conversationId, through_seq: throughSeq })
-    } catch {
-      // 主窗口会展示自己的错误；面板不额外弹出提示。
+    } catch (cause) {
+      // 打开失败时切到错误态并显示原因，避免点击后毫无反馈。
+      opening.current = false
+      setSummary(null)
+      setError(cause instanceof Error ? cause.message : String(cause))
     }
   }
 
@@ -86,7 +101,12 @@ export function TrayPopup() {
       ? <p className="tray-panel-empty">暂无会话</p>
       : <ul className="tray-conversation-list">
         {conversations.map((item) => <li key={item.id}>
-          <button type="button" className="tray-conversation" onClick={() => void open(item.id, item.latest_seq)}>
+          <button
+            type="button"
+            className="tray-conversation"
+            onPointerDown={(event) => { if (event.button === 0) { event.preventDefault(); void open(item.id, item.latest_seq) } }}
+            onClick={(event) => { if (event.detail === 0) void open(item.id, item.latest_seq) }}
+          >
             <span className="tray-avatar">
               <IconUsers size={18} stroke={1.5} aria-hidden="true" />
               {item.unread_count > 0 && <span className="unread-badge tray-unread-tag" data-muted={item.muted || undefined} aria-hidden="true">{item.muted ? null : item.unread_count > 99 ? "99+" : item.unread_count}</span>}

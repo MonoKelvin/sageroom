@@ -1,6 +1,6 @@
 use serde::de::DeserializeOwned;
 use serde_json::Value;
-use tauri::{Manager, State, WebviewWindow};
+use tauri::{Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_dialog::DialogExt;
 
@@ -385,29 +385,42 @@ pub async fn tray_open_main(
     let result = async {
         trusted_window(&window)?;
         let request: TrayOpenRequest = decode(request)?;
-        // 标已读失败不能挡住“打开主界面”这个明确意图：generation 可能已过期，
-        // 未读状态随后由主窗口自己的 inbox 同步收敛。
-        if let Some(through_seq) = request.through_seq.clone() {
+        let app = window.app_handle();
+        // 先完成“打开主界面”这个用户明确意图，再做标已读：
+        // 标已读依赖数据库 worker，若它排队或失败，不能拖住窗口唤回。
+        crate::app::tray::hide_popup(app);
+        let opened = crate::app::lifecycle::show_main(app);
+        // 面板只为会话而存在，唤回后落在聊天页，避免停在用户上次浏览的其他页面。
+        // 不靠 eval 注入 DOM 事件：事件可能早于主窗口 React 挂载而丢失，
+        // 因此在 Rust 侧留下待领取意图，主窗口挂载或重新聚焦时主动读取。
+        state.request_chat_open();
+        let _ = app.emit("sageroom-open-chat", ());
+        if let Some(through_seq) = request.through_seq {
             let _ = state
                 .mark_inbox_read(InboxMarkReadRequest {
-                    data_generation_id: request.data_generation_id.clone(),
+                    data_generation_id: request.data_generation_id,
                     client_request_id: uuid::Uuid::now_v7().to_string(),
-                    conversation_id: request.conversation_id.clone(),
+                    conversation_id: request.conversation_id,
                     through_seq,
                 })
                 .await;
         }
-        let app = window.app_handle();
-        crate::app::tray::hide_popup(app);
-        crate::app::lifecycle::show_main(app);
-        // 面板只为会话而存在，唤回后落在聊天页，避免停在用户上次浏览的其他页面。
-        // 事件可能在主窗口 React 挂载前发出而丢失，先写持久标记：挂载后读标记即可补上导航。
-        if let Some(main) = app.get_webview_window("main") {
-            let _ = main.eval(
-                "window.__SAGEROOM_OPEN_CHAT__ = (window.__SAGEROOM_OPEN_CHAT__ || 0) + 1; window.dispatchEvent(new CustomEvent('sageroom-open-chat'))",
-            );
-        }
-        Ok(TrayOpenResult { opened: true })
+        Ok(TrayOpenResult { opened })
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn consume_chat_open(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<ChatOpenState>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let _: ChatOpenRequest = decode(request)?;
+        Ok(ChatOpenState { requested: state.consume_chat_open() })
     }
     .await;
     Ok(result.into())

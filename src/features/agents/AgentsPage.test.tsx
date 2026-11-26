@@ -113,6 +113,15 @@ describe("持久资源智能体页面", () => {
     await waitFor(() => expect(ipc.saveAgent).toHaveBeenCalledTimes(2))
     expect(sidebar().getByRole("button", { name: /已应用名称.*待配置/ })).toBeInTheDocument()
   })
+  it("智能体昵称按中文 2、英文 1 计宽，九个中文不写入", async () => {
+    render(page())
+    await openSage()
+    const name = detail("Sage").getByLabelText("名称", { selector: "input" })
+    fireEvent.change(name, { target: { value: "九个中文昵称啊哈哈" } })
+    fireEvent.blur(name)
+    expect(await detail("Sage").findByRole("alert")).toHaveTextContent("最多 8 个中文")
+    expect(ipc.saveAgent).not.toHaveBeenCalled()
+  })
   it("采用模型直接应用普通参数和 confirmed 版本，覆盖需确认且没有密钥", async () => {
     render(page())
     await openSage()

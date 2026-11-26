@@ -887,6 +887,20 @@ pub struct TrayOpenRequest {
     pub through_seq: Option<DecimalString>,
 }
 
+/// 主窗口领取「打开聊天页」意图；不依赖 eval 注入，事件丢失也能靠挂载/聚焦补取。
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ChatOpenRequest {
+    #[serde(default)]
+    pub data_generation_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ChatOpenState {
+    pub requested: bool,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct TrayOpenResult {
@@ -937,6 +951,9 @@ pub enum AgentType {
 pub struct AgentConfiguration {
     pub agent_id: String,
     pub revision: DecimalString,
+    /// 显示名上限按宽度计算：中文 2、英文 1，总量 16（即 8 个中文或 16 个英文）。
+    /// 响应契约保留旧数据的宽松上限，写入时由后端按宽度严格校验。
+    #[schemars(length(max = 80))]
     pub display_name: String,
     pub gender_description: Option<String>,
     pub language_style: String,
@@ -973,8 +990,15 @@ pub struct AgentDeleteRequest {
 #[serde(deny_unknown_fields)]
 pub struct UserProfile {
     pub participant_id: String,
+    /// 显示名上限按宽度计算：中文 2、英文 1，总量 16（即 8 个中文或 16 个英文）。
+    /// 响应契约保留旧数据的宽松上限，写入时由后端按宽度严格校验。
+    #[schemars(length(max = 80))]
     pub display_name: String,
     pub avatar_id: Option<String>,
+    /// 个人简介，默认为空字符串；存 preferences_json 的 user_bio 键，避免改表结构。
+    #[serde(default)]
+    #[schemars(length(max = 200))]
+    pub bio: String,
     pub revision: DecimalString,
 }
 
@@ -990,8 +1014,12 @@ pub struct UserProfileSaveRequest {
     pub data_generation_id: String,
     pub client_request_id: String,
     pub expected_revision: DecimalString,
+    #[schemars(length(max = 16))]
     pub display_name: String,
     pub avatar_id: Option<String>,
+    #[serde(default)]
+    #[schemars(length(max = 200))]
+    pub bio: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]

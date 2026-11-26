@@ -33,6 +33,7 @@ fn main() {
             "inbox_set_muted",
             "tray_sync",
             "tray_open_main",
+            "consume_chat_open",
             "autostart_status",
             "autostart_set",
             "app_request_exit",

@@ -6,6 +6,34 @@ export function validateText(value: string, limit: number, required = false): st
   return value.includes("\0") || Array.from(value).length > limit || (required && !value.trim()) ? "内容为空、超过长度上限或含无效字符。" : null
 }
 
+/** 昵称宽度上限：中文/全角/emoji 算 2，英文与数字算 1；与后端 char_display_width 保持一致。 */
+export const DISPLAY_NAME_WIDTH_LIMIT = 16
+
+export function charDisplayWidth(character: string): number {
+  const code = character.codePointAt(0) ?? 0
+  const wide = (code >= 0x1100 && code <= 0x115f)
+    || (code >= 0x2e80 && code <= 0xa4cf)
+    || (code >= 0xac00 && code <= 0xd7a3)
+    || (code >= 0xf900 && code <= 0xfaff)
+    || (code >= 0xfe10 && code <= 0xfe19)
+    || (code >= 0xfe30 && code <= 0xfe6f)
+    || (code >= 0xff00 && code <= 0xff60)
+    || (code >= 0xffe0 && code <= 0xffe6)
+    || (code >= 0x1f300 && code <= 0x1faff)
+    || (code >= 0x20000 && code <= 0x3fffd)
+  return wide ? 2 : 1
+}
+
+export function displayWidth(value: string): number {
+  return Array.from(value).reduce((total, character) => total + charDisplayWidth(character), 0)
+}
+
+export function validateDisplayName(value: string): string | null {
+  return value.includes("\0") || !value.trim() || displayWidth(value) > DISPLAY_NAME_WIDTH_LIMIT
+    ? "昵称不能为空或含无效字符，且最多 8 个中文或 16 个英文字符。"
+    : null
+}
+
 export function validateModelUrl(value: string): string | null {
   if (!value) return null
   if (validateText(value, 2048) || Array.from(value).some((char) => char.charCodeAt(0) < 32 || (char.charCodeAt(0) >= 127 && char.charCodeAt(0) <= 159))) return "模型地址含无效字符或超过长度上限。"

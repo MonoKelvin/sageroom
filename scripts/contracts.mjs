@@ -43,6 +43,7 @@ const responseTypes = {
   InboxMute: "InboxSummary",
   TraySync: "TraySyncState",
   TrayOpen: "TrayOpenResult",
+  ChatOpen: "ChatOpenState",
   AutostartStatus: "AutostartState",
   AutostartSet: "AutostartState",
   AgentList: "AgentConfiguration[]",

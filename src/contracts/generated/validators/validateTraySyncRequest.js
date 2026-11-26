@@ -1,14 +1,14 @@
 // generated/raw-validators/validateTraySyncRequest.js
-var validateTraySyncRequest = validate505;
-function validate505(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+var validateTraySyncRequest = validate513;
+function validate513(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
-	const evaluated0 = validate505.evaluated;
+	const evaluated0 = validate513.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		let missing0;
 		if (data.data_generation_id === void 0 && (missing0 = "data_generation_id") || data.flashing === void 0 && (missing0 = "flashing") || data.conversation_count === void 0 && (missing0 = "conversation_count")) {
-			validate505.errors = [{
+			validate513.errors = [{
 				instancePath,
 				schemaPath: "#/required",
 				keyword: "required",
@@ -18,7 +18,7 @@ function validate505(data, { instancePath = "", parentData, parentDataProperty, 
 			return false;
 		} else {
 			for (const key0 in data) if (!(key0 === "conversation_count" || key0 === "data_generation_id" || key0 === "flashing")) {
-				validate505.errors = [{
+				validate513.errors = [{
 					instancePath,
 					schemaPath: "#/additionalProperties",
 					keyword: "additionalProperties",
@@ -30,7 +30,7 @@ function validate505(data, { instancePath = "", parentData, parentDataProperty, 
 			if (data.conversation_count !== void 0) {
 				let data0 = data.conversation_count;
 				if (!(typeof data0 == "number" && !(data0 % 1) && !isNaN(data0) && isFinite(data0))) {
-					validate505.errors = [{
+					validate513.errors = [{
 						instancePath: instancePath + "/conversation_count",
 						schemaPath: "#/properties/conversation_count/type",
 						keyword: "type",
@@ -41,7 +41,7 @@ function validate505(data, { instancePath = "", parentData, parentDataProperty, 
 				}
 				if (typeof data0 == "number" && isFinite(data0)) {
 					if (data0 < 0 || isNaN(data0)) {
-						validate505.errors = [{
+						validate513.errors = [{
 							instancePath: instancePath + "/conversation_count",
 							schemaPath: "#/properties/conversation_count/minimum",
 							keyword: "minimum",
@@ -59,7 +59,7 @@ function validate505(data, { instancePath = "", parentData, parentDataProperty, 
 			if (valid0) {
 				if (data.data_generation_id !== void 0) {
 					if (typeof data.data_generation_id !== "string") {
-						validate505.errors = [{
+						validate513.errors = [{
 							instancePath: instancePath + "/data_generation_id",
 							schemaPath: "#/properties/data_generation_id/type",
 							keyword: "type",
@@ -73,7 +73,7 @@ function validate505(data, { instancePath = "", parentData, parentDataProperty, 
 				if (valid0) {
 					if (data.flashing !== void 0) {
 						if (typeof data.flashing !== "boolean") {
-							validate505.errors = [{
+							validate513.errors = [{
 								instancePath: instancePath + "/flashing",
 								schemaPath: "#/properties/flashing/type",
 								keyword: "type",
@@ -88,7 +88,7 @@ function validate505(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 		}
 	} else {
-		validate505.errors = [{
+		validate513.errors = [{
 			instancePath,
 			schemaPath: "#/type",
 			keyword: "type",
@@ -97,10 +97,10 @@ function validate505(data, { instancePath = "", parentData, parentDataProperty, 
 		}];
 		return false;
 	}
-	validate505.errors = vErrors;
+	validate513.errors = vErrors;
 	return true;
 }
-validate505.evaluated = {
+validate513.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

@@ -67,6 +67,7 @@ pub fn run() {
             app::commands::ui_preferences_save,
             app::commands::tray_sync,
             app::commands::tray_open_main,
+            app::commands::consume_chat_open,
             app::commands::autostart_status,
             app::commands::autostart_set,
             app::commands::agent_list,

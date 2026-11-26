@@ -823,6 +823,7 @@ fn user_profile_rename_updates_historical_sender_and_survives_restart() {
         expected_revision: before_profile.revision.clone(),
         display_name: "改名后的用户".into(),
         avatar_id: None,
+        bio: "喜欢安静的地方。".into(),
     };
     let (saved, event) = database.save_user_profile(request.clone()).unwrap();
     assert!(
@@ -831,6 +832,8 @@ fn user_profile_rename_updates_historical_sender_and_survives_restart() {
     let (replayed, duplicate) = database.save_user_profile(request).unwrap();
     assert_eq!(value(&replayed), value(&saved));
     assert!(duplicate.is_none());
+    assert_eq!(saved.bio, "喜欢安静的地方。");
+    assert_eq!(database.get_user_profile(GENERATION).unwrap().bio, saved.bio);
     let after_message = send(&mut database, "message-after-rename", "改名后的消息");
     let page = messages(&mut database);
     assert_eq!(page.items.len(), 2);

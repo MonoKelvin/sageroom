@@ -179,6 +179,8 @@
             "$ref": "#/$defs/PersonaDimensions"
           },
           "display_name": {
+            "description": "显示名上限按宽度计算：中文 2、英文 1，总量 16（即 8 个中文或 16 个英文）。\n响应契约保留旧数据的宽松上限，写入时由后端按宽度严格校验。",
+            "maxLength": 80,
             "type": "string"
           },
           "gender_description": {
@@ -714,6 +716,8 @@
             "$ref": "#/$defs/PersonaDimensions"
           },
           "display_name": {
+            "description": "显示名上限按宽度计算：中文 2、英文 1，总量 16（即 8 个中文或 16 个英文）。\n响应契约保留旧数据的宽松上限，写入时由后端按宽度严格校验。",
+            "maxLength": 80,
             "type": "string"
           },
           "gender_description": {
@@ -942,6 +946,8 @@
             "$ref": "#/$defs/PersonaDimensions"
           },
           "display_name": {
+            "description": "显示名上限按宽度计算：中文 2、英文 1，总量 16（即 8 个中文或 16 个英文）。\n响应契约保留旧数据的宽松上限，写入时由后端按宽度严格校验。",
+            "maxLength": 80,
             "type": "string"
           },
           "gender_description": {
@@ -3365,6 +3371,161 @@
           "deleted"
         ],
         "type": "string"
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "ChatOpenRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "主窗口领取「打开聊天页」意图；不依赖 eval 注入，事件丢失也能靠挂载/聚焦补取。",
+    "properties": {
+      "data_generation_id": {
+        "default": null,
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "title": "ChatOpenRequest",
+    "type": "object"
+  },
+  "ChatOpenResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/ChatOpenState"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ChatOpenState": {
+        "additionalProperties": false,
+        "properties": {
+          "requested": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "requested"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
       },
       "Retryability": {
         "enum": [
@@ -11568,7 +11729,15 @@
               "null"
             ]
           },
+          "bio": {
+            "default": "",
+            "description": "个人简介，默认为空字符串；存 preferences_json 的 user_bio 键，避免改表结构。",
+            "maxLength": 200,
+            "type": "string"
+          },
           "display_name": {
+            "description": "显示名上限按宽度计算：中文 2、英文 1，总量 16（即 8 个中文或 16 个英文）。\n响应契约保留旧数据的宽松上限，写入时由后端按宽度严格校验。",
+            "maxLength": 80,
             "type": "string"
           },
           "participant_id": {
@@ -11582,6 +11751,7 @@
           "participant_id",
           "display_name",
           "avatar_id",
+          "bio",
           "revision"
         ],
         "type": "object"
@@ -11615,6 +11785,11 @@
           "null"
         ]
       },
+      "bio": {
+        "default": "",
+        "maxLength": 200,
+        "type": "string"
+      },
       "client_request_id": {
         "type": "string"
       },
@@ -11622,6 +11797,7 @@
         "type": "string"
       },
       "display_name": {
+        "maxLength": 16,
         "type": "string"
       },
       "expected_revision": {
@@ -11766,7 +11942,15 @@
               "null"
             ]
           },
+          "bio": {
+            "default": "",
+            "description": "个人简介，默认为空字符串；存 preferences_json 的 user_bio 键，避免改表结构。",
+            "maxLength": 200,
+            "type": "string"
+          },
           "display_name": {
+            "description": "显示名上限按宽度计算：中文 2、英文 1，总量 16（即 8 个中文或 16 个英文）。\n响应契约保留旧数据的宽松上限，写入时由后端按宽度严格校验。",
+            "maxLength": 80,
             "type": "string"
           },
           "participant_id": {
@@ -11780,6 +11964,7 @@
           "participant_id",
           "display_name",
           "avatar_id",
+          "bio",
           "revision"
         ],
         "type": "object"

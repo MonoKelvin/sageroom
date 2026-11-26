@@ -200,7 +200,7 @@ describe("聊天搜索", () => {
     expect(hit.querySelectorAll("mark")).toHaveLength(2)
     expect(hit.querySelector("time")).toHaveAttribute("dateTime", new Date(result.items[0].created_at).toISOString())
     expect(hit).toHaveTextContent("我")
-    expect(hit.querySelector("img")).toBeNull()
+    expect(hit.querySelector("img.avatar-default-logo")).toHaveAttribute("src", expect.stringContaining("appicon-logo"))
   })
 
   it("正则特殊字符按字面匹配", async () => {

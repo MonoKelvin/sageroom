@@ -223,26 +223,36 @@ pub fn handle_close_request(app: &AppHandle) {
     });
 }
 
-pub fn show_main(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let result = window
-            .unminimize()
-            .and_then(|_| window.show())
-            .and_then(|_| window.set_focus());
-        if let Err(error) = result {
-            eprintln!("无法还原主窗口：{error}");
-        }
-    } else {
+pub fn show_main(app: &AppHandle) -> bool {
+    let Some(window) = app.get_webview_window("main") else {
         eprintln!("无法还原主窗口：main 窗口不存在。");
+        return false;
+    };
+    // 三步独立执行：隐藏窗口上 unminimize 可能返回错误，
+    // 不能因为前一步失败就跳过 show/focus，否则托盘唤回会完全失效。
+    if let Err(error) = window.unminimize() {
+        eprintln!("主窗口还原失败：{error}");
     }
+    if let Err(error) = window.show() {
+        eprintln!("主窗口显示失败：{error}");
+    }
+    if let Err(error) = window.set_focus() {
+        eprintln!("主窗口聚焦失败：{error}");
+    }
+    true
 }
 
 pub fn install_tray(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "打开聊天室", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出 Sageroom", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &quit])?;
+    // 与闪烁阶段共用同一份常态图标，避免启动时是原始大图、闪烁时换成缩放图造成清晰度跳变。
+    let icon = match super::tray::normal_icon() {
+        Some(icon) => icon,
+        None => Image::from_bytes(include_bytes!("../../icons/icon.png"))?,
+    };
     TrayIconBuilder::with_id("sageroom")
-        .icon(Image::from_bytes(include_bytes!("../../icons/icon.png"))?)
+        .icon(icon)
         .tooltip(format!(
             "{} 本地聊天室",
             app.config().product_name.as_deref().unwrap_or("Sageroom")
@@ -250,7 +260,7 @@ pub fn install_tray(app: &AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "open" => show_main(app),
+            "open" => { show_main(app); }
             "quit" => request_exit(app.clone()),
             _ => {}
         })

@@ -23,6 +23,8 @@ export { validateCancelSearchRequest } from "./validators/validateCancelSearchRe
 export { validateCancelSearchResponse } from "./validators/validateCancelSearchResponse.js"
 export { validateChatListRequest } from "./validators/validateChatListRequest.js"
 export { validateChatListResponse } from "./validators/validateChatListResponse.js"
+export { validateChatOpenRequest } from "./validators/validateChatOpenRequest.js"
+export { validateChatOpenResponse } from "./validators/validateChatOpenResponse.js"
 export { validateChatRecallRequest } from "./validators/validateChatRecallRequest.js"
 export { validateChatRecallResponse } from "./validators/validateChatRecallResponse.js"
 export { validateChatResolveQuotesRequest } from "./validators/validateChatResolveQuotesRequest.js"
