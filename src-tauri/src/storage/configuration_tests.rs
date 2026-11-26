@@ -1129,7 +1129,7 @@ fn append_agent_message(database: &Database, room_id: &str, sender_id: &str, tex
     database
         .conn
         .execute(
-            "INSERT INTO message_parts VALUES (?1, 0, 'text', ?2)",
+            "INSERT INTO message_parts(message_id,ordinal,kind,text) VALUES (?1, 0, 'text', ?2)",
             params![id, text],
         )
         .unwrap();

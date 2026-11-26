@@ -17,7 +17,32 @@ use crate::domain::{
 };
 
 pub const SCHEMA: &str = include_str!("schema.sql");
-pub const CURRENT_SCHEMA: u32 = 6;
+pub const CURRENT_SCHEMA: u32 = 7;
+
+/// 从 `schema.sql` 里取出一条 DDL。
+/// 迁移时必须用与建库完全一致的语句文本，`verify_database` 会逐字比较 sqlite_schema。
+pub(crate) fn ddl(prefix: &str) -> AppResult<String> {
+    let cleaned = SCHEMA
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("--"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    cleaned
+        .split(';')
+        .map(str::trim)
+        .find(|statement| {
+            statement
+                .to_ascii_uppercase()
+                .starts_with(&prefix.to_ascii_uppercase())
+        })
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            AppError::new(
+                ErrorCode::InternalError,
+                format!("schema.sql 缺少语句：{prefix}"),
+            )
+        })
+}
 
 pub struct Database {
     pub(crate) conn: Connection,
@@ -171,6 +196,78 @@ fn write_manifest(root: &Path, root_id: &str) -> AppResult<()> {
     )
 }
 
+/// v6 → v7：消息从「纯文本」升级为「文本 + 附件」。
+/// 只重建 `message_parts` 并新增附件表，其余表原地不动，用户历史消息不受影响。
+fn migrate_schema(root: &Path, path: &Path) -> AppResult<()> {
+    let root_id = {
+        let conn = Connection::open(path)?;
+        // 重建表期间不需要外键约束，收尾再用 quick_check 兜一次。
+        conn.pragma_update(None, "foreign_keys", false)?;
+        let version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+        if version == 0 || version >= CURRENT_SCHEMA {
+            // 0 表示这不是一个 Sageroom 库，交给 verify_database 报错。
+            return Ok(());
+        }
+        if version != 6 {
+            return Err(AppError::new(
+                ErrorCode::SchemaUnsupported,
+                "该数据目录的版本过旧，无法就地升级。请备份后删除旧数据目录并重启应用；原文件未改动。",
+            ));
+        }
+        let root_id: String = conn.query_row(
+            "SELECT root_id FROM app_meta WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )?;
+        let transaction = conn.unchecked_transaction()?;
+        transaction.execute_batch(&format!(
+            "ALTER TABLE message_parts RENAME TO message_parts_v6;{};{}",
+            ddl("CREATE TABLE attachment_objects")?,
+            ddl("CREATE INDEX attachment_objects_message")?
+        ))?;
+        transaction.execute_batch(&format!("{};", ddl("CREATE TABLE message_parts")?))?;
+        transaction.execute_batch(
+            "INSERT INTO message_parts(message_id,ordinal,kind,text)
+             SELECT message_id,ordinal,'text',text FROM message_parts_v6;
+             DROP TABLE message_parts_v6;",
+        )?;
+        // app_meta 自带 `schema_version = 6` 的 CHECK，只能整表重建再灌新版本号。
+        transaction.execute_batch(&format!(
+            "ALTER TABLE app_meta RENAME TO app_meta_v6;{};",
+            ddl("CREATE TABLE app_meta")?
+        ))?;
+        transaction.execute(
+            "INSERT INTO app_meta(singleton,root_id,schema_version,schema_hash)
+             SELECT singleton,root_id,?1,?2 FROM app_meta_v6",
+            params![CURRENT_SCHEMA, fingerprint(SCHEMA.as_bytes())],
+        )?;
+        transaction.execute("DROP TABLE app_meta_v6", [])?;
+        transaction.commit()?;
+        conn.pragma_update(None, "user_version", CURRENT_SCHEMA)?;
+        let ok: String = conn.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+        if ok != "ok" {
+            return Err(AppError::new(
+                ErrorCode::DbCorrupt,
+                "数据升级后完整性检查失败。",
+            ));
+        }
+        root_id
+    };
+    // 清单里的版本号也要跟着走，否则 open 会判定清单与库不匹配。
+    let manifest_path = root.join("data-manifest.json");
+    if manifest_path.exists() {
+        write_metadata(
+            &manifest_path,
+            &DataManifest {
+                format_version: 1,
+                root_id,
+                schema_version: CURRENT_SCHEMA,
+            },
+        )?;
+    }
+    Ok(())
+}
+
 fn initialize_new_database(root: &Path, destination: &Path) -> AppResult<()> {
     let staging = root.join("staging");
     fs::create_dir_all(&staging)?;
@@ -271,6 +368,8 @@ impl Database {
         }
         if !path.exists() {
             initialize_new_database(root, &path)?;
+        } else {
+            migrate_schema(root, &path)?;
         }
         let candidate = open_reader(&path)?;
         verify_database(&candidate)?;
@@ -317,7 +416,7 @@ impl Database {
         let room_id = conn.query_row("SELECT id FROM room WHERE singleton = 1", [], |row| {
             row.get(0)
         })?;
-        Ok(Self {
+        let mut database = Self {
             conn,
             root: root.to_owned(),
             generation_id,
@@ -325,6 +424,9 @@ impl Database {
             room_id,
             recall_anchors: HashMap::new(),
             _writer_lock: writer_lock,
-        })
+        };
+        // 上次退出前没发出去的附件，超过保留期就丢掉；失败不影响启动。
+        let _ = database.prune_staged_attachments();
+        Ok(database)
     }
 }

@@ -2213,6 +2213,903 @@
     ],
     "title": "ApiResponse"
   },
+  "AttachmentDiscardRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "attachment_ids": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "data_generation_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "attachment_ids"
+    ],
+    "title": "AttachmentDiscardRequest",
+    "type": "object"
+  },
+  "AttachmentDiscardResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/AttachmentDiscardResult"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "AttachmentDiscardResult": {
+        "additionalProperties": false,
+        "properties": {
+          "discarded": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "discarded"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "AttachmentImportRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "data_generation_id": {
+        "type": "string"
+      },
+      "images_only": {
+        "default": false,
+        "description": "只挑选图片：图片按钮用，文件按钮不传。",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "data_generation_id"
+    ],
+    "title": "AttachmentImportRequest",
+    "type": "object"
+  },
+  "AttachmentOpenRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "attachment_id": {
+        "type": "string"
+      },
+      "data_generation_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "attachment_id"
+    ],
+    "title": "AttachmentOpenRequest",
+    "type": "object"
+  },
+  "AttachmentOpenResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "boolean"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "AttachmentPasteRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "粘贴板图片：前端把剪贴板里的 Blob 转成 base64 直接送进来，\n避免为了一个内存中的图片先落临时文件。",
+    "properties": {
+      "data_base64": {
+        "maxLength": 36000000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "data_generation_id": {
+        "type": "string"
+      },
+      "file_name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "file_name",
+      "data_base64"
+    ],
+    "title": "AttachmentPasteRequest",
+    "type": "object"
+  },
+  "AttachmentPasteResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/AttachmentObject"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "AttachmentKind": {
+        "enum": [
+          "image",
+          "file"
+        ],
+        "type": "string"
+      },
+      "AttachmentObject": {
+        "additionalProperties": false,
+        "description": "消息附件。图片会带上原始宽高，界面据此预留占位，避免加载后跳动。",
+        "properties": {
+          "byte_size": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "height": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/$defs/AttachmentKind"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "width": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "file_name",
+          "mime_type",
+          "byte_size",
+          "kind",
+          "width",
+          "height"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "AttachmentPickResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/AttachmentImportResult"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "AttachmentImportResult": {
+        "additionalProperties": false,
+        "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/$defs/AttachmentObject"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "attachments"
+        ],
+        "type": "object"
+      },
+      "AttachmentKind": {
+        "enum": [
+          "image",
+          "file"
+        ],
+        "type": "string"
+      },
+      "AttachmentObject": {
+        "additionalProperties": false,
+        "description": "消息附件。图片会带上原始宽高，界面据此预留占位，避免加载后跳动。",
+        "properties": {
+          "byte_size": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "height": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/$defs/AttachmentKind"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "width": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "file_name",
+          "mime_type",
+          "byte_size",
+          "kind",
+          "width",
+          "height"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
+  "AttachmentReadRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "attachment_id": {
+        "type": "string"
+      },
+      "data_generation_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "data_generation_id",
+      "attachment_id"
+    ],
+    "title": "AttachmentReadRequest",
+    "type": "object"
+  },
+  "AttachmentReadResponse": {
+    "$defs": {
+      "ApiFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/$defs/AppError"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ApiSuccess": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/$defs/AttachmentData"
+          },
+          "schema_version": {
+            "$ref": "#/$defs/SchemaVersion"
+          }
+        },
+        "required": [
+          "schema_version",
+          "data"
+        ],
+        "type": "object"
+      },
+      "AppError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/$defs/ErrorCode"
+          },
+          "field_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "may_have_been_charged": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryability": {
+            "$ref": "#/$defs/Retryability"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryability",
+          "field_path",
+          "trace_id",
+          "may_have_been_charged"
+        ],
+        "type": "object"
+      },
+      "AttachmentData": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment_id": {
+            "type": "string"
+          },
+          "data_base64": {
+            "type": "string"
+          },
+          "mime_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attachment_id",
+          "mime_type",
+          "data_base64"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "oneOf": [
+          {
+            "enum": [
+              "INVALID_INPUT",
+              "PERMISSION_DENIED",
+              "DATA_GENERATION_CHANGED",
+              "IDEMPOTENCY_CONFLICT",
+              "CONFIG_CONFLICT",
+              "BACKPRESSURE",
+              "SHUTTING_DOWN",
+              "DB_BUSY",
+              "DB_CORRUPT",
+              "DISK_FULL",
+              "IO_ERROR",
+              "SCHEMA_UNSUPPORTED",
+              "DATA_ROOT_INVALID",
+              "MESSAGE_NOT_FOUND",
+              "SEARCH_CANCELLED",
+              "SEARCH_TIMEOUT",
+              "CAPABILITY_UNSUPPORTED",
+              "INTERNAL_ERROR"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "MODEL_OUTPUT_INVALID",
+            "description": "模型本轮输出不符合决策协议。属于可恢复的单轮失败，不应停用智能体。",
+            "type": "string"
+          }
+        ]
+      },
+      "Retryability": {
+        "enum": [
+          "never",
+          "retry",
+          "after_user_action"
+        ],
+        "type": "string"
+      },
+      "SchemaVersion": {
+        "enum": [
+          "0.3"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "anyOf": [
+      {
+        "$ref": "#/$defs/ApiSuccess"
+      },
+      {
+        "$ref": "#/$defs/ApiFailure"
+      }
+    ],
+    "title": "ApiResponse"
+  },
   "AutostartRequest": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
@@ -3159,6 +4056,62 @@
         ],
         "type": "object"
       },
+      "AttachmentKind": {
+        "enum": [
+          "image",
+          "file"
+        ],
+        "type": "string"
+      },
+      "AttachmentObject": {
+        "additionalProperties": false,
+        "description": "消息附件。图片会带上原始宽高，界面据此预留占位，避免加载后跳动。",
+        "properties": {
+          "byte_size": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "height": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/$defs/AttachmentKind"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "width": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "file_name",
+          "mime_type",
+          "byte_size",
+          "kind",
+          "width",
+          "height"
+        ],
+        "type": "object"
+      },
       "ChatMessage": {
         "additionalProperties": false,
         "properties": {
@@ -3331,8 +4284,8 @@
           {
             "additionalProperties": false,
             "properties": {
-              "attachment_id": {
-                "type": "string"
+              "attachment": {
+                "$ref": "#/$defs/AttachmentObject"
               },
               "kind": {
                 "const": "attachment",
@@ -3341,7 +4294,7 @@
             },
             "required": [
               "kind",
-              "attachment_id"
+              "attachment"
             ],
             "type": "object"
           },
@@ -3853,6 +4806,62 @@
         ],
         "type": "object"
       },
+      "AttachmentKind": {
+        "enum": [
+          "image",
+          "file"
+        ],
+        "type": "string"
+      },
+      "AttachmentObject": {
+        "additionalProperties": false,
+        "description": "消息附件。图片会带上原始宽高，界面据此预留占位，避免加载后跳动。",
+        "properties": {
+          "byte_size": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "height": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/$defs/AttachmentKind"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "width": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "file_name",
+          "mime_type",
+          "byte_size",
+          "kind",
+          "width",
+          "height"
+        ],
+        "type": "object"
+      },
       "ChatMessage": {
         "additionalProperties": false,
         "properties": {
@@ -3968,8 +4977,8 @@
           {
             "additionalProperties": false,
             "properties": {
-              "attachment_id": {
-                "type": "string"
+              "attachment": {
+                "$ref": "#/$defs/AttachmentObject"
               },
               "kind": {
                 "const": "attachment",
@@ -3978,7 +4987,7 @@
             },
             "required": [
               "kind",
-              "attachment_id"
+              "attachment"
             ],
             "type": "object"
           },
@@ -4313,6 +5322,60 @@
   },
   "ChatSendRequest": {
     "$defs": {
+      "AttachmentKind": {
+        "enum": [
+          "image",
+          "file"
+        ],
+        "type": "string"
+      },
+      "AttachmentObject": {
+        "additionalProperties": false,
+        "description": "消息附件。图片会带上原始宽高，界面据此预留占位，避免加载后跳动。",
+        "properties": {
+          "byte_size": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "height": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/$defs/AttachmentKind"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "width": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "file_name",
+          "mime_type",
+          "byte_size",
+          "kind"
+        ],
+        "type": "object"
+      },
       "MessagePart": {
         "oneOf": [
           {
@@ -4335,8 +5398,8 @@
           {
             "additionalProperties": false,
             "properties": {
-              "attachment_id": {
-                "type": "string"
+              "attachment": {
+                "$ref": "#/$defs/AttachmentObject"
               },
               "kind": {
                 "const": "attachment",
@@ -4345,7 +5408,7 @@
             },
             "required": [
               "kind",
-              "attachment_id"
+              "attachment"
             ],
             "type": "object"
           },

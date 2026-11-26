@@ -1,7 +1,7 @@
 import { t as require_ucs2length } from "./ucs2length.js";
 // generated/raw-validators/validateChatSearchRequest.js
-var validateChatSearchRequest = validate198;
-var schema261 = {
+var validateChatSearchRequest = validate252;
+var schema317 = {
 	"$schema": "https://json-schema.org/draft/2020-12/schema",
 	"additionalProperties": false,
 	"properties": {
@@ -51,15 +51,15 @@ var schema261 = {
 	"type": "object"
 };
 var func2 = require_ucs2length().default;
-function validate198(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate252(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
-	const evaluated0 = validate198.evaluated;
+	const evaluated0 = validate252.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		let missing0;
 		if (data.data_generation_id === void 0 && (missing0 = "data_generation_id") || data.search_id === void 0 && (missing0 = "search_id") || data.query === void 0 && (missing0 = "query") || data.limit === void 0 && (missing0 = "limit")) {
-			validate198.errors = [{
+			validate252.errors = [{
 				instancePath,
 				schemaPath: "#/required",
 				keyword: "required",
@@ -69,7 +69,7 @@ function validate198(data, { instancePath = "", parentData, parentDataProperty, 
 			return false;
 		} else {
 			for (const key0 in data) if (!(key0 === "created_after" || key0 === "created_before" || key0 === "cursor" || key0 === "data_generation_id" || key0 === "limit" || key0 === "query" || key0 === "search_id" || key0 === "sender_id")) {
-				validate198.errors = [{
+				validate252.errors = [{
 					instancePath,
 					schemaPath: "#/additionalProperties",
 					keyword: "additionalProperties",
@@ -81,18 +81,18 @@ function validate198(data, { instancePath = "", parentData, parentDataProperty, 
 			if (data.created_after !== void 0) {
 				let data0 = data.created_after;
 				if (!(typeof data0 == "number" && !(data0 % 1) && !isNaN(data0) && isFinite(data0)) && data0 !== null) {
-					validate198.errors = [{
+					validate252.errors = [{
 						instancePath: instancePath + "/created_after",
 						schemaPath: "#/properties/created_after/type",
 						keyword: "type",
-						params: { type: schema261.properties.created_after.type },
+						params: { type: schema317.properties.created_after.type },
 						message: "must be integer,null"
 					}];
 					return false;
 				}
 				if (typeof data0 == "number" && isFinite(data0)) {
 					if (data0 > 9007199254740991 || isNaN(data0)) {
-						validate198.errors = [{
+						validate252.errors = [{
 							instancePath: instancePath + "/created_after",
 							schemaPath: "#/properties/created_after/maximum",
 							keyword: "maximum",
@@ -104,7 +104,7 @@ function validate198(data, { instancePath = "", parentData, parentDataProperty, 
 						}];
 						return false;
 					} else if (data0 < -9007199254740991 || isNaN(data0)) {
-						validate198.errors = [{
+						validate252.errors = [{
 							instancePath: instancePath + "/created_after",
 							schemaPath: "#/properties/created_after/minimum",
 							keyword: "minimum",
@@ -123,18 +123,18 @@ function validate198(data, { instancePath = "", parentData, parentDataProperty, 
 				if (data.created_before !== void 0) {
 					let data1 = data.created_before;
 					if (!(typeof data1 == "number" && !(data1 % 1) && !isNaN(data1) && isFinite(data1)) && data1 !== null) {
-						validate198.errors = [{
+						validate252.errors = [{
 							instancePath: instancePath + "/created_before",
 							schemaPath: "#/properties/created_before/type",
 							keyword: "type",
-							params: { type: schema261.properties.created_before.type },
+							params: { type: schema317.properties.created_before.type },
 							message: "must be integer,null"
 						}];
 						return false;
 					}
 					if (typeof data1 == "number" && isFinite(data1)) {
 						if (data1 > 9007199254740991 || isNaN(data1)) {
-							validate198.errors = [{
+							validate252.errors = [{
 								instancePath: instancePath + "/created_before",
 								schemaPath: "#/properties/created_before/maximum",
 								keyword: "maximum",
@@ -146,7 +146,7 @@ function validate198(data, { instancePath = "", parentData, parentDataProperty, 
 							}];
 							return false;
 						} else if (data1 < -9007199254740991 || isNaN(data1)) {
-							validate198.errors = [{
+							validate252.errors = [{
 								instancePath: instancePath + "/created_before",
 								schemaPath: "#/properties/created_before/minimum",
 								keyword: "minimum",
@@ -165,11 +165,11 @@ function validate198(data, { instancePath = "", parentData, parentDataProperty, 
 					if (data.cursor !== void 0) {
 						let data2 = data.cursor;
 						if (typeof data2 !== "string" && data2 !== null) {
-							validate198.errors = [{
+							validate252.errors = [{
 								instancePath: instancePath + "/cursor",
 								schemaPath: "#/properties/cursor/type",
 								keyword: "type",
-								params: { type: schema261.properties.cursor.type },
+								params: { type: schema317.properties.cursor.type },
 								message: "must be string,null"
 							}];
 							return false;
@@ -179,7 +179,7 @@ function validate198(data, { instancePath = "", parentData, parentDataProperty, 
 					if (valid0) {
 						if (data.data_generation_id !== void 0) {
 							if (typeof data.data_generation_id !== "string") {
-								validate198.errors = [{
+								validate252.errors = [{
 									instancePath: instancePath + "/data_generation_id",
 									schemaPath: "#/properties/data_generation_id/type",
 									keyword: "type",
@@ -194,7 +194,7 @@ function validate198(data, { instancePath = "", parentData, parentDataProperty, 
 							if (data.limit !== void 0) {
 								let data4 = data.limit;
 								if (!(typeof data4 == "number" && !(data4 % 1) && !isNaN(data4) && isFinite(data4))) {
-									validate198.errors = [{
+									validate252.errors = [{
 										instancePath: instancePath + "/limit",
 										schemaPath: "#/properties/limit/type",
 										keyword: "type",
@@ -205,7 +205,7 @@ function validate198(data, { instancePath = "", parentData, parentDataProperty, 
 								}
 								if (typeof data4 == "number" && isFinite(data4)) {
 									if (data4 > 200 || isNaN(data4)) {
-										validate198.errors = [{
+										validate252.errors = [{
 											instancePath: instancePath + "/limit",
 											schemaPath: "#/properties/limit/maximum",
 											keyword: "maximum",
@@ -217,7 +217,7 @@ function validate198(data, { instancePath = "", parentData, parentDataProperty, 
 										}];
 										return false;
 									} else if (data4 < 1 || isNaN(data4)) {
-										validate198.errors = [{
+										validate252.errors = [{
 											instancePath: instancePath + "/limit",
 											schemaPath: "#/properties/limit/minimum",
 											keyword: "minimum",
@@ -237,7 +237,7 @@ function validate198(data, { instancePath = "", parentData, parentDataProperty, 
 									let data5 = data.query;
 									if (typeof data5 === "string") {
 										if (func2(data5) > 256) {
-											validate198.errors = [{
+											validate252.errors = [{
 												instancePath: instancePath + "/query",
 												schemaPath: "#/properties/query/maxLength",
 												keyword: "maxLength",
@@ -246,7 +246,7 @@ function validate198(data, { instancePath = "", parentData, parentDataProperty, 
 											}];
 											return false;
 										} else if (func2(data5) < 1) {
-											validate198.errors = [{
+											validate252.errors = [{
 												instancePath: instancePath + "/query",
 												schemaPath: "#/properties/query/minLength",
 												keyword: "minLength",
@@ -256,7 +256,7 @@ function validate198(data, { instancePath = "", parentData, parentDataProperty, 
 											return false;
 										}
 									} else {
-										validate198.errors = [{
+										validate252.errors = [{
 											instancePath: instancePath + "/query",
 											schemaPath: "#/properties/query/type",
 											keyword: "type",
@@ -270,7 +270,7 @@ function validate198(data, { instancePath = "", parentData, parentDataProperty, 
 								if (valid0) {
 									if (data.search_id !== void 0) {
 										if (typeof data.search_id !== "string") {
-											validate198.errors = [{
+											validate252.errors = [{
 												instancePath: instancePath + "/search_id",
 												schemaPath: "#/properties/search_id/type",
 												keyword: "type",
@@ -285,11 +285,11 @@ function validate198(data, { instancePath = "", parentData, parentDataProperty, 
 										if (data.sender_id !== void 0) {
 											let data7 = data.sender_id;
 											if (typeof data7 !== "string" && data7 !== null) {
-												validate198.errors = [{
+												validate252.errors = [{
 													instancePath: instancePath + "/sender_id",
 													schemaPath: "#/properties/sender_id/type",
 													keyword: "type",
-													params: { type: schema261.properties.sender_id.type },
+													params: { type: schema317.properties.sender_id.type },
 													message: "must be string,null"
 												}];
 												return false;
@@ -305,7 +305,7 @@ function validate198(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 		}
 	} else {
-		validate198.errors = [{
+		validate252.errors = [{
 			instancePath,
 			schemaPath: "#/type",
 			keyword: "type",
@@ -314,10 +314,10 @@ function validate198(data, { instancePath = "", parentData, parentDataProperty, 
 		}];
 		return false;
 	}
-	validate198.errors = vErrors;
+	validate252.errors = vErrors;
 	return true;
 }
-validate198.evaluated = {
+validate252.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

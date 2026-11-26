@@ -753,6 +753,162 @@ pub async fn avatar_read(
 }
 
 #[tauri::command]
+pub async fn attachment_pick(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<AttachmentImportResult>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let request: AttachmentImportRequest = decode(request)?;
+        let worker = state.worker()?;
+        let generation = request.data_generation_id.clone();
+        let images_only = request.images_only;
+        worker
+            .call(move |database| database.check_generation(&generation))
+            .await?;
+        let selected = tauri::async_runtime::spawn_blocking(move || {
+            let mut builder = window
+                .dialog()
+                .file()
+                .set_parent(&window)
+                .set_title(if images_only { "选择图片" } else { "选择要发送的文件" });
+            if images_only {
+                builder = builder.add_filter(
+                    "图片",
+                    &["png", "jpg", "jpeg", "gif", "webp", "bmp", "avif"],
+                );
+            }
+            builder.blocking_pick_files()
+        })
+        .await
+        .map_err(|_| AppError::new(ErrorCode::InternalError, "文件读取未完成。"))?;
+        let Some(paths) = selected else {
+            return Ok(AttachmentImportResult {
+                attachments: Vec::new(),
+            });
+        };
+        let mut incoming = Vec::new();
+        for file in paths.into_iter().take(9) {
+            let path = file
+                .into_path()
+                .map_err(|_| AppError::invalid("attachment", "只能选择本地文件。"))?;
+            incoming.push(crate::attachments::file::read_selection(&path)?);
+        }
+        if incoming.is_empty() {
+            return Ok(AttachmentImportResult {
+                attachments: Vec::new(),
+            });
+        }
+        worker
+            .call(move |database| {
+                let mut attachments = Vec::with_capacity(incoming.len());
+                for item in incoming {
+                    attachments.push(database.import_attachment(&request.data_generation_id, item)?);
+                }
+                Ok(AttachmentImportResult { attachments })
+            })
+            .await
+    }
+    .await;
+    Ok(result.into())
+}
+
+/// 粘贴板里的图片走这里：前端把 Blob 转成 base64，省掉临时文件中转。
+#[tauri::command]
+pub async fn attachment_paste(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<AttachmentObject>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let request: AttachmentPasteRequest = decode(request)?;
+        let bytes = base64::Engine::decode(
+            &base64::engine::general_purpose::STANDARD,
+            request.data_base64.as_bytes(),
+        )
+        .map_err(|_| AppError::invalid("attachment", "图片数据损坏，请重新粘贴。"))?;
+        let incoming = crate::attachments::file::prepare(&request.file_name, bytes)?;
+        let generation = request.data_generation_id.clone();
+        state
+            .worker()?
+            .call(move |database| database.import_attachment(&generation, incoming))
+            .await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn attachment_read(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<AttachmentData>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let request: AttachmentReadRequest = decode(request)?;
+        state
+            .worker()?
+            .call(move |database| {
+                database.read_attachment(&request.data_generation_id, &request.attachment_id)
+            })
+            .await
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn attachment_open(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<bool>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let request: AttachmentOpenRequest = decode(request)?;
+        let path = state
+            .worker()?
+            .call(move |database| {
+                database.attachment_path(&request.data_generation_id, &request.attachment_id)
+            })
+            .await?;
+        if !crate::app::external_links::open_path(&path) {
+            return Err(AppError::new(
+                ErrorCode::CapabilityUnsupported,
+                "没有找到能打开这个文件的程序。",
+            ));
+        }
+        Ok(true)
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn attachment_discard(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<AttachmentDiscardResult>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let request: AttachmentDiscardRequest = decode(request)?;
+        let discarded = state
+            .worker()?
+            .call(move |database| {
+                database.discard_attachments(&request.data_generation_id, &request.attachment_ids)
+            })
+            .await?;
+        Ok(AttachmentDiscardResult { discarded })
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
 pub fn app_request_exit(
     window: WebviewWindow,
     state: State<'_, AppState>,

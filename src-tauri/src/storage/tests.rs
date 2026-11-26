@@ -24,7 +24,7 @@ use crate::domain::{
 use super::{
     backup::backup_database,
     chat::allocated_seq,
-    database::{CURRENT_SCHEMA, Database, configure_connection, open_reader, verify_database},
+    database::{CURRENT_SCHEMA, Database, SCHEMA, configure_connection, ddl, open_reader, verify_database},
     search::search_database,
     worker::DbWorker,
 };
@@ -137,7 +137,7 @@ fn populate_corpus(database: &mut Database, size: i64) {
             .prepare("INSERT INTO messages(seq, id, room_id, sender_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5)")
             .unwrap();
         let mut parts = transaction
-            .prepare("INSERT INTO message_parts VALUES (?1, 0, 'text', ?2)")
+            .prepare("INSERT INTO message_parts(message_id,ordinal,kind,text) VALUES (?1, 0, 'text', ?2)")
             .unwrap();
         let mut text = transaction
             .prepare("INSERT INTO search_text(seq, text) VALUES (?1, ?2)")
@@ -611,21 +611,31 @@ fn text_limits_count_unicode_scalars_and_utf8_bytes_independently() {
 #[test]
 fn unsupported_parts_empty_arrays_and_excess_parts_never_commit() {
     let (_directory, mut database) = database();
-    for part in [
-        MessagePart::Attachment {
-            attachment_id: "test-object".into(),
+    let mut request = send_request(&database.generation_id, "unsupported", "");
+    request.parts = vec![MessagePart::Emote {
+        emote_id: "test-emote".into(),
+    }];
+    assert_code(
+        database.send_message(request),
+        ErrorCode::CapabilityUnsupported,
+    );
+    // 未经上传认领的附件 ID 一律拒绝，避免伪造引用。
+    let mut request = send_request(&database.generation_id, "forged", "");
+    request.parts = vec![MessagePart::Attachment {
+        attachment: AttachmentObject {
+            id: "01920000-0000-7000-8000-000000000000".into(),
+            file_name: "a.png".into(),
+            mime_type: "image/png".into(),
+            byte_size: 8,
+            kind: AttachmentKind::Image,
+            width: Some(1),
+            height: Some(1),
         },
-        MessagePart::Emote {
-            emote_id: "test-emote".into(),
-        },
-    ] {
-        let mut request = send_request(&database.generation_id, "unsupported", "");
-        request.parts = vec![part];
-        assert_code(
-            database.send_message(request),
-            ErrorCode::CapabilityUnsupported,
-        );
-    }
+    }];
+    assert_code(
+        database.send_message(request),
+        ErrorCode::InvalidInput,
+    );
     let mut request = send_request(&database.generation_id, "empty-parts", "");
     request.parts.clear();
     assert_code(database.send_message(request), ErrorCode::InvalidInput);
@@ -1262,7 +1272,8 @@ fn corrupt_database_is_preserved_instead_of_replaced_with_empty_database() {
 
 #[test]
 fn obsolete_schema_versions_are_rejected_with_reset_instructions_without_modifying_data() {
-    for version in 1..CURRENT_SCHEMA {
+    // v6 会被就地升级成 v7，见 version_six_upgrades_in_place_and_keeps_history。
+    for version in 1..6 {
         let (directory, mut database) = database();
         send(&mut database, "before-version-rejection", "首版测试数据");
         database
@@ -1898,4 +1909,104 @@ fn shared_wire_fixtures_match_serde_and_canonical_counter_contracts() {
             fixture.name
         );
     }
+}
+
+
+/// v6 只支持纯文本消息。这里按 v6 形态直接造一个库，再交给 Database::open，
+/// 验证 v6 → v7 的就地升级既不丢历史消息，也能立刻收发附件。
+#[test]
+fn version_six_upgrades_in_place_and_keeps_history() {
+    const V6_PARTS: &str = "CREATE TABLE message_parts (
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    kind TEXT NOT NULL CHECK (kind = 'text'),
+    text TEXT NOT NULL,
+    PRIMARY KEY (message_id, ordinal)
+)";
+    let mut legacy = SCHEMA.to_string();
+    for removed in [
+        ddl("CREATE INDEX attachment_objects_message").unwrap(),
+        ddl("CREATE TABLE attachment_objects").unwrap(),
+    ] {
+        legacy = legacy.replace(&format!("{removed};"), "");
+    }
+    legacy = legacy.replace(
+        &format!("{};", ddl("CREATE TABLE message_parts").unwrap()),
+        &format!("{V6_PARTS};"),
+    );
+    legacy = legacy
+        .replace("schema_version = 7", "schema_version = 6")
+        .replace("PRAGMA user_version = 7", "PRAGMA user_version = 6");
+
+    let directory = TempDir::new().unwrap();
+    let path = directory.path().join("chat.sqlite3");
+    {
+        let conn = Connection::open(&path).unwrap();
+        conn.pragma_update(None, "journal_mode", "DELETE").unwrap();
+        conn.execute_batch(&legacy).unwrap();
+        conn.execute(
+            "INSERT INTO app_meta VALUES (1,'legacy-root',6,'legacy-hash')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO participants(id,kind,display_name,status,builtin_key,created_at) VALUES ('legacy-user','user','我','present',NULL,1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO room VALUES (1,'legacy-room','Sageroom','legacy-user',1,0)",
+            [],
+        )
+        .unwrap();
+        conn.execute("INSERT INTO app_settings VALUES (1,'system',0,1)", []).unwrap();
+        conn.execute(
+            "INSERT INTO messages(seq,id,room_id,sender_id,created_at) VALUES (1,'legacy-message','legacy-room','legacy-user',1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO message_parts(message_id,ordinal,kind,text) VALUES ('legacy-message',0,'text','升级前的消息')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO search_text(seq,text) VALUES (1,'升级前的消息')",
+            [],
+        )
+        .unwrap();
+    }
+
+    let mut database = Database::open(directory.path(), "upgraded".into()).unwrap();
+    let page = database
+        .list_messages(ChatListRequest {
+            data_generation_id: "upgraded".into(),
+            before_seq: None,
+            after_seq: None,
+            around_seq: None,
+            limit: 20,
+        })
+        .unwrap();
+    let message = page
+        .items
+        .iter()
+        .find(|item| item.id == "legacy-message")
+        .expect("升级后历史消息应原样保留");
+    assert!(matches!(&message.parts[..], [MessagePart::Text { text }] if text == "升级前的消息"));
+
+    // 升级后必须能立刻用附件，说明新表与约束都到位了。
+    let mut bytes = Vec::new();
+    image::DynamicImage::new_rgb8(4, 4)
+        .write_to(
+            &mut std::io::Cursor::new(&mut bytes),
+            image::ImageFormat::Png,
+        )
+        .unwrap();
+    let object = database
+        .import_attachment(
+            "upgraded",
+            crate::attachments::file::prepare("升级后.png", bytes).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(object.kind, AttachmentKind::Image);
 }

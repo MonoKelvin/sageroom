@@ -1,7 +1,7 @@
 import { t as require_ucs2length } from "./ucs2length.js";
 // generated/raw-validators/validateNewsSecretSetRequest.js
-var validateNewsSecretSetRequest = validate451;
-var schema580 = {
+var validateNewsSecretSetRequest = validate509;
+var schema638 = {
 	"$defs": { "NewsProvider": {
 		"description": "联网新闻来源。API Key 独立存放在系统凭据库，配置中不包含密钥。",
 		"enum": [
@@ -32,7 +32,7 @@ var schema580 = {
 	"title": "NewsSecretSetRequest",
 	"type": "object"
 };
-var schema581 = {
+var schema639 = {
 	"description": "联网新闻来源。API Key 独立存放在系统凭据库，配置中不包含密钥。",
 	"enum": [
 		"auto",
@@ -48,15 +48,15 @@ var schema581 = {
 	"type": "string"
 };
 var func2 = require_ucs2length().default;
-function validate451(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate509(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
-	const evaluated0 = validate451.evaluated;
+	const evaluated0 = validate509.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		let missing0;
 		if (data.data_generation_id === void 0 && (missing0 = "data_generation_id") || data.provider === void 0 && (missing0 = "provider")) {
-			validate451.errors = [{
+			validate509.errors = [{
 				instancePath,
 				schemaPath: "#/required",
 				keyword: "required",
@@ -66,7 +66,7 @@ function validate451(data, { instancePath = "", parentData, parentDataProperty, 
 			return false;
 		} else {
 			for (const key0 in data) if (!(key0 === "api_key" || key0 === "data_generation_id" || key0 === "provider")) {
-				validate451.errors = [{
+				validate509.errors = [{
 					instancePath,
 					schemaPath: "#/additionalProperties",
 					keyword: "additionalProperties",
@@ -78,18 +78,18 @@ function validate451(data, { instancePath = "", parentData, parentDataProperty, 
 			if (data.api_key !== void 0) {
 				let data0 = data.api_key;
 				if (typeof data0 !== "string" && data0 !== null) {
-					validate451.errors = [{
+					validate509.errors = [{
 						instancePath: instancePath + "/api_key",
 						schemaPath: "#/properties/api_key/type",
 						keyword: "type",
-						params: { type: schema580.properties.api_key.type },
+						params: { type: schema638.properties.api_key.type },
 						message: "must be string,null"
 					}];
 					return false;
 				}
 				if (typeof data0 === "string") {
 					if (func2(data0) > 2048) {
-						validate451.errors = [{
+						validate509.errors = [{
 							instancePath: instancePath + "/api_key",
 							schemaPath: "#/properties/api_key/maxLength",
 							keyword: "maxLength",
@@ -104,7 +104,7 @@ function validate451(data, { instancePath = "", parentData, parentDataProperty, 
 			if (valid0) {
 				if (data.data_generation_id !== void 0) {
 					if (typeof data.data_generation_id !== "string") {
-						validate451.errors = [{
+						validate509.errors = [{
 							instancePath: instancePath + "/data_generation_id",
 							schemaPath: "#/properties/data_generation_id/type",
 							keyword: "type",
@@ -119,7 +119,7 @@ function validate451(data, { instancePath = "", parentData, parentDataProperty, 
 					if (data.provider !== void 0) {
 						let data2 = data.provider;
 						if (typeof data2 !== "string") {
-							validate451.errors = [{
+							validate509.errors = [{
 								instancePath: instancePath + "/provider",
 								schemaPath: "#/$defs/NewsProvider/type",
 								keyword: "type",
@@ -129,11 +129,11 @@ function validate451(data, { instancePath = "", parentData, parentDataProperty, 
 							return false;
 						}
 						if (!(data2 === "auto" || data2 === "google_news_rss" || data2 === "ai_hot" || data2 === "free_news_trending" || data2 === "gdelt" || data2 === "bbc_technology" || data2 === "any_search" || data2 === "tavily" || data2 === "serper")) {
-							validate451.errors = [{
+							validate509.errors = [{
 								instancePath: instancePath + "/provider",
 								schemaPath: "#/$defs/NewsProvider/enum",
 								keyword: "enum",
-								params: { allowedValues: schema581.enum },
+								params: { allowedValues: schema639.enum },
 								message: "must be equal to one of the allowed values"
 							}];
 							return false;
@@ -144,7 +144,7 @@ function validate451(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 		}
 	} else {
-		validate451.errors = [{
+		validate509.errors = [{
 			instancePath,
 			schemaPath: "#/type",
 			keyword: "type",
@@ -153,10 +153,10 @@ function validate451(data, { instancePath = "", parentData, parentDataProperty, 
 		}];
 		return false;
 	}
-	validate451.errors = vErrors;
+	validate509.errors = vErrors;
 	return true;
 }
-validate451.evaluated = {
+validate509.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

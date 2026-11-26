@@ -1,19 +1,26 @@
 import { sendOnEnter } from "@/app/uiPreferences"
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
-import { IconAt, IconClipboard, IconCopy, IconCut, IconSelectAll, IconSendFilled, IconTrash, IconX } from "@tabler/icons-react"
-import type { ChatMessage, Participant } from "@/contracts/generated"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
+import { createPortal } from "react-dom"
+import { IconClipboard, IconCopy, IconCut, IconMoodSmile, IconPaperclip, IconPhoto, IconSelectAll, IconSendFilled, IconTrash, IconX } from "@tabler/icons-react"
+import type { AttachmentObject, ChatMessage, Participant } from "@/contracts/generated"
 import { Button } from "@/components/ui/button"
 import { ContextMenu, type ContextMenuItem } from "@/components/ui/context-menu"
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { errorMessage, ipc } from "@/app/ipc"
+import { cn } from "@/lib/utils"
 import type { SendOptions } from "./useChatSession"
 import { textValidationError } from "./textValidation"
+import { activeMentionQuery, applyMention, collectMentionIds, splitMentions, type MentionTarget } from "./mentions"
+import { caretPoint } from "./caret"
+import { EMOJI_GROUPS } from "./emoji"
+import { formatAttachmentSize, useAttachmentSource } from "./attachment-sources"
 
 const MIN_COMPOSER_HEIGHT = 76
 // 折叠/展开的过渡：与全局 motion token 一致，先快后慢
 const HEIGHT_TRANSITION = "height var(--motion-duration-long) var(--motion-ease), min-height var(--motion-duration-long) var(--motion-ease)"
 const NO_PARTICIPANTS: readonly Participant[] = []
+const MENTION_ALL_NAME = "所有人"
+const MAX_ATTACHMENTS = 9
 
 type Props = {
   active?: boolean
@@ -27,12 +34,63 @@ type Props = {
   onSend: (text: string, requestId: string, options: SendOptions) => Promise<unknown>
 }
 
+type FloatingAnchor = { top: number; left: number; width: number }
+
+function AttachmentPreview({ generation, attachment, onRemove }: { generation: string | null; attachment: AttachmentObject; onRemove: () => void }) {
+  const source = useAttachmentSource(generation, attachment.id, attachment.kind === "image")
+  return <div className="composer-attachment" data-kind={attachment.kind}>
+    {attachment.kind === "image"
+      ? (source ? <img src={source} alt={attachment.file_name} draggable={false} /> : <span className="composer-attachment-placeholder" />)
+      : <span className="composer-attachment-file"><IconPaperclip size={15} stroke={1.6} aria-hidden="true" />{formatAttachmentSize(attachment.byte_size)}</span>}
+    <span className="composer-attachment-name" title={attachment.file_name}>{attachment.file_name}</span>
+    <button type="button" className="composer-attachment-remove" aria-label={`移除 ${attachment.file_name}`} onClick={onRemove}><IconX size={12} aria-hidden="true" /></button>
+  </div>
+}
+
+function EmojiPanel({ anchor, onPick, onClose }: { anchor: FloatingAnchor; onPick: (emoji: string) => void; onClose: () => void }) {
+  const [group, setGroup] = useState(0)
+  const panel = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      if (panel.current?.contains(event.target as Node)) return
+      onClose()
+    }
+    const onKeyDown = (event: globalThis.KeyboardEvent) => { if (event.key === "Escape") onClose() }
+    document.addEventListener("pointerdown", onPointerDown)
+    document.addEventListener("keydown", onKeyDown)
+    return () => { document.removeEventListener("pointerdown", onPointerDown); document.removeEventListener("keydown", onKeyDown) }
+  }, [onClose])
+  const style = { position: "fixed" as const, left: Math.min(anchor.left, window.innerWidth - 356), bottom: window.innerHeight - anchor.top + 8 }
+  return createPortal(<div ref={panel} className="composer-emoji-panel" style={style} role="dialog" aria-label="选择表情">
+    <div className="composer-emoji-tabs" role="tablist">
+      {EMOJI_GROUPS.map((item, index) => <button key={item.name} type="button" role="tab" aria-selected={index === group} className="composer-emoji-tab" onClick={() => setGroup(index)}>{item.name}</button>)}
+    </div>
+    <div className="composer-emoji-grid">
+      {EMOJI_GROUPS[group].emojis.map((emoji, index) => <button key={`${emoji}-${index}`} type="button" className="composer-emoji" onClick={() => onPick(emoji)}>{emoji}</button>)}
+    </div>
+  </div>, document.body)
+}
+
+function MentionPanel({ anchor, items, active, onPick }: { anchor: FloatingAnchor; items: readonly MentionTarget[]; active: number; onPick: (item: MentionTarget) => void }) {
+  return createPortal(<div className="composer-mention-panel" role="listbox" aria-label="选择提及成员" style={{ position: "fixed", left: Math.min(anchor.left, window.innerWidth - 232), bottom: window.innerHeight - anchor.top + 6, width: Math.max(160, Math.min(anchor.width, 232)) }}>
+    {items.map((item, index) => <button key={item.id} type="button" role="option" aria-selected={index === active} className="composer-mention-option" data-active={index === active} onMouseDown={(event) => { event.preventDefault(); onPick(item) }}>{item.name}</button>)}
+  </div>, document.body)
+}
+
 export function MessageComposer({ active = true, dataGenerationId, disabled, participants = NO_PARTICIPANTS, canMentionAll = false, quoteMessageId = null, quote = null, onRemoveQuote, onSend }: Props) {
   const [draft, setDraft] = useState("")
   const [sending, setSending] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [attachments, setAttachments] = useState<AttachmentObject[]>([])
   const [error, setError] = useState<string | null>(null)
   const [retry, setRetry] = useState<{ generation: string | null; quoteId: string | null } | null>(null)
   const [intentSource, setIntentSource] = useState({ generation: dataGenerationId, quoteId: quoteMessageId })
+  const [attachmentsSource, setAttachmentsSource] = useState(dataGenerationId)
+  if (attachmentsSource !== dataGenerationId) {
+    // 数据根换了：旧附件已经不属于当前数据，直接丢弃。
+    setAttachmentsSource(dataGenerationId)
+    setAttachments([])
+  }
   if (intentSource.generation !== dataGenerationId || intentSource.quoteId !== quoteMessageId) {
     setIntentSource({ generation: dataGenerationId, quoteId: quoteMessageId })
     setRetry(null)
@@ -43,23 +101,44 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
   const [maxHeight, setMaxHeight] = useState(190)
   // 高度变化是否走过渡：拖拽时即时跟手，双击/键盘调整时启用缓动。
   const [animateHeight, setAnimateHeight] = useState(false)
-  const [mentions, setMentions] = useState<{ generation: string | null; ids: string[]; all: boolean }>({ generation: dataGenerationId, ids: [], all: false })
   // 右键菜单用：打开前记录选区快照，菜单项启用状态据此决定，避免打开后选区被菜单夺焦清掉。
   const [selection, setSelection] = useState<{ start: number; end: number } | null>(null)
-  const composing = useRef(false)
+  const [caret, setCaret] = useState(0)
+  const [composing, setComposing] = useState(false)
+  const [emojiAnchor, setEmojiAnchor] = useState<FloatingAnchor | null>(null)
+  const [mentionAnchor, setMentionAnchor] = useState<FloatingAnchor | null>(null)
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const composingRef = useRef(false)
   const input = useRef<HTMLTextAreaElement>(null)
+  const highlight = useRef<HTMLDivElement>(null)
   const draftRevision = useRef(0)
   const inFlight = useRef(false)
   const currentGeneration = useRef(dataGenerationId)
   const alive = useRef(false)
   const resizeOrigin = useRef<{ y: number; height: number } | null>(null)
   const failedRequest = useRef<{ requestId: string; revision: number; generation: string | null } | null>(null)
-  const selectedIds = mentions.generation === dataGenerationId ? mentions.ids : []
-  const mentionAll = mentions.generation === dataGenerationId && mentions.all && canMentionAll
+
+  const mentionTargets = useMemo<MentionTarget[]>(() => {
+    const targets = participants.map((participant) => ({ id: participant.id, name: participant.display_name }))
+    if (canMentionAll) targets.push({ id: "__all__", name: MENTION_ALL_NAME })
+    return targets
+  }, [canMentionAll, participants])
+  const segments = useMemo(() => splitMentions(draft, mentionTargets), [draft, mentionTargets])
+  const rich = segments.some((segment) => segment.kind === "mention")
   const limitError = draft.trim().length > 0 ? textValidationError(draft) : null
   const visibleError = error ?? limitError
-  const canSend = !disabled && !sending && draft.trim().length > 0 && !limitError
+  const canSend = !disabled && !sending && !uploading && (draft.trim().length > 0 || attachments.length > 0) && !limitError
   const isRetry = retry !== null && retry.generation === dataGenerationId && retry.quoteId === quoteMessageId
+
+  const query = useMemo(() => activeMentionQuery(draft, caret), [draft, caret])
+  const mentionMatches = useMemo(() => {
+    if (!query) return []
+    const keyword = query.query.trim().toLowerCase()
+    return mentionTargets
+      .filter((target) => !keyword || target.name.toLowerCase().includes(keyword))
+      .slice(0, 8)
+  }, [mentionTargets, query])
+  const mentionOpen = mentionMatches.length > 0 && !emojiAnchor
 
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
 
@@ -73,11 +152,9 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
       if (size <= 0) return
       const next = Math.max(MIN_COMPOSER_HEIGHT, Math.round(size / 2))
       setMaxHeight(next)
-      // 上限变小时收回已展开的高度，避免超出聊天区一半。
       setManualHeight((current) => (current !== null && current > next ? next : current))
     }
     measure()
-    // 环境不支持时只做首帧测量，不影响功能（如部分测试环境）
     if (typeof ResizeObserver === "undefined") return
     const observer = new ResizeObserver(measure)
     observer.observe(host)
@@ -98,10 +175,13 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
     textarea.style.transition = animateHeight ? HEIGHT_TRANSITION : "none"
     if (manualHeight !== null) {
       textarea.style.height = `${manualHeight}px`
+      if (highlight.current) highlight.current.style.minHeight = `${manualHeight}px`
       return
     }
     textarea.style.height = "auto"
-    textarea.style.height = `${Math.min(maxHeight, Math.max(MIN_COMPOSER_HEIGHT, textarea.scrollHeight))}px`
+    const next = `${Math.min(maxHeight, Math.max(MIN_COMPOSER_HEIGHT, textarea.scrollHeight))}px`
+    textarea.style.height = next
+    if (highlight.current) highlight.current.style.minHeight = next
   }, [active, draft, manualHeight, maxHeight, animateHeight])
 
   // 过渡结束后关闭动画标记，避免影响后续拖拽。
@@ -114,6 +194,16 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
     return () => textarea.removeEventListener("transitionend", clear)
   }, [animateHeight])
 
+  // 提及面板跟着光标走：只在打开时量一次，滚动或输入变化会重新量。
+  useLayoutEffect(() => {
+    const textarea = input.current
+    if (!textarea || !mentionOpen || !query) { setMentionAnchor(null); return }
+    const point = caretPoint(textarea, query.start)
+    const box = textarea.getBoundingClientRect()
+    setMentionAnchor({ top: box.top + point.top, left: box.left + Math.min(point.left, box.width - 24), width: box.width - point.left })
+    setMentionIndex(0)
+  }, [mentionOpen, query, draft])
+
   function editIntent() {
     draftRevision.current += 1
     failedRequest.current = null
@@ -121,9 +211,11 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
     setError(null)
   }
 
-  function selectMention(id: string, checked: boolean) {
-    editIntent()
-    setMentions({ generation: dataGenerationId, ids: checked ? [...selectedIds, id] : selectedIds.filter((selected) => selected !== id), all: false })
+  function syncCaret() {
+    const textarea = input.current
+    if (!textarea) return
+    setCaret(textarea.selectionStart)
+    setSelection({ start: textarea.selectionStart, end: textarea.selectionEnd })
   }
 
   /** 双击/Home：最小态展开到上限，其余折叠回最小，带动画。 */
@@ -135,7 +227,6 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
 
   function startResize(event: ReactPointerEvent<HTMLDivElement>) {
     event.preventDefault()
-    // 开始拖拽即关闭过渡，保证跟手。
     setAnimateHeight(false)
     const height = input.current?.getBoundingClientRect().height ?? MIN_COMPOSER_HEIGHT
     resizeOrigin.current = { y: event.clientY, height }
@@ -145,8 +236,7 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
   function resize(event: ReactPointerEvent<HTMLDivElement>) {
     const origin = resizeOrigin.current
     if (!origin) return
-    const next = Math.min(maxHeight, Math.max(MIN_COMPOSER_HEIGHT, origin.height - (event.clientY - origin.y)))
-    setManualHeight(next)
+    setManualHeight(Math.min(maxHeight, Math.max(MIN_COMPOSER_HEIGHT, origin.height - (event.clientY - origin.y))))
   }
 
   function endResize(event: ReactPointerEvent<HTMLDivElement>) {
@@ -158,6 +248,90 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
 
+  /** 在光标处插入文本，并把光标推到插入内容之后。 */
+  const insertText = useCallback((value: string) => {
+    const textarea = input.current
+    const start = selection?.start ?? draft.length
+    const end = selection?.end ?? draft.length
+    const next = draft.slice(0, start) + value + draft.slice(end)
+    const caretAfter = start + value.length
+    editIntent()
+    setDraft(next)
+    setCaret(caretAfter)
+    setSelection({ start: caretAfter, end: caretAfter })
+    requestAnimationFrame(() => {
+      textarea?.focus({ preventScroll: true })
+      textarea?.setSelectionRange(caretAfter, caretAfter)
+    })
+  }, [draft, selection])
+
+  function pickMention(target: MentionTarget) {
+    if (!query) return
+    const applied = applyMention(draft, query.start, caret, target.name)
+    editIntent()
+    setDraft(applied.text)
+    setCaret(applied.caret)
+    setSelection({ start: applied.caret, end: applied.caret })
+    requestAnimationFrame(() => {
+      input.current?.focus({ preventScroll: true })
+      input.current?.setSelectionRange(applied.caret, applied.caret)
+    })
+  }
+
+  /** 图片与文件都走同一条上传链路；粘贴板里的 Blob 直接转 base64 过 IPC。 */
+  const uploadBlobs = useCallback(async (blobs: { name: string; data: string }[]) => {
+    if (!dataGenerationId || !blobs.length) return
+    setUploading(true)
+    setError(null)
+    try {
+      const uploaded: AttachmentObject[] = []
+      for (const blob of blobs.slice(0, MAX_ATTACHMENTS)) {
+        uploaded.push(await ipc.pasteAttachment({ data_generation_id: dataGenerationId, file_name: blob.name, data_base64: blob.data }))
+      }
+      if (!alive.current) return
+      setAttachments((current) => [...current, ...uploaded].slice(0, MAX_ATTACHMENTS))
+    } catch (cause) {
+      if (alive.current) setError(errorMessage(cause))
+    } finally {
+      if (alive.current) setUploading(false)
+    }
+  }, [dataGenerationId])
+
+  const uploadFiles = useCallback(async (files: readonly File[]) => {
+    const blobs = await Promise.all(files.map(async (file) => ({
+      name: file.name || "粘贴的图片.png",
+      data: await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "")
+        reader.onerror = () => reject(reader.error)
+        reader.readAsDataURL(file)
+      }),
+    })))
+    await uploadBlobs(blobs)
+  }, [uploadBlobs])
+
+  const pickAttachments = useCallback(async (imagesOnly: boolean) => {
+    if (!dataGenerationId) return
+    setUploading(true)
+    setError(null)
+    try {
+      const result = await ipc.pickAttachments({ data_generation_id: dataGenerationId, images_only: imagesOnly })
+      if (!alive.current) return
+      if (result.attachments.length) setAttachments((current) => [...current, ...result.attachments].slice(0, MAX_ATTACHMENTS))
+    } catch (cause) {
+      if (alive.current) setError(errorMessage(cause))
+    } finally {
+      if (alive.current) setUploading(false)
+    }
+  }, [dataGenerationId])
+
+  /** 移除附件要顺手把暂存对象删掉，否则磁盘上会留下永远没人认领的文件。 */
+  function removeAttachment(attachment: AttachmentObject) {
+    setAttachments((current) => current.filter((item) => item.id !== attachment.id))
+    if (!dataGenerationId) return
+    void ipc.discardAttachments({ data_generation_id: dataGenerationId, attachment_ids: [attachment.id] }).catch(() => {})
+  }
+
   async function submit(event?: FormEvent) {
     event?.preventDefault()
     if (!active || !canSend || inFlight.current) return
@@ -165,7 +339,14 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
     const requestId = failedRequest.current?.revision === revision && failedRequest.current.generation === dataGenerationId
       ? failedRequest.current.requestId : crypto.randomUUID()
     const sentText = draft
-    const options: SendOptions = { quote_message_id: quoteMessageId, mention_ids: [...selectedIds], mention_all: mentionAll }
+    const sentAttachments = attachments
+    const mentionAll = canMentionAll && sentText.includes(`@${MENTION_ALL_NAME}`)
+    const mentionIds = collectMentionIds(sentText, mentionTargets.filter((target) => target.id !== "__all__"))
+    const parts: SendOptions["parts"] = [
+      ...sentAttachments.map((attachment) => ({ kind: "attachment" as const, attachment })),
+      ...(sentText.trim() ? [{ kind: "text" as const, text: sentText }] : []),
+    ]
+    const options: SendOptions = { quote_message_id: quoteMessageId, mention_ids: mentionAll ? [] : mentionIds, mention_all: mentionAll, parts }
     inFlight.current = true
     setSending(true)
     setRetry(null)
@@ -177,7 +358,8 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
       if (draftRevision.current === revision && currentGeneration.current === dataGenerationId) {
         draftRevision.current += 1
         setDraft("")
-        setMentions({ generation: dataGenerationId, ids: [], all: false })
+        setCaret(0)
+        setAttachments([])
         onRemoveQuote?.()
       }
     } catch (cause) {
@@ -194,13 +376,41 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (mentionOpen) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault()
+        const delta = event.key === "ArrowDown" ? 1 : -1
+        setMentionIndex((current) => (current + delta + mentionMatches.length) % mentionMatches.length)
+        return
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault()
+        pickMention(mentionMatches[mentionIndex] ?? mentionMatches[0])
+        return
+      }
+      if (event.key === "Escape") {
+        event.preventDefault()
+        setCaret(-1)
+        return
+      }
+    }
     if (event.key !== "Enter") return
     const enterSends = sendOnEnter()
     // Enter 发送模式下 Shift+Enter 换行；Ctrl+Enter 发送模式下 Enter 换行。
     if (enterSends ? event.shiftKey : !(event.ctrlKey || event.metaKey)) return
-    if (composing.current || event.nativeEvent.isComposing || event.keyCode === 229) return
+    if (composingRef.current || event.nativeEvent.isComposing || event.keyCode === 229) return
     event.preventDefault()
     void submit()
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const files = Array.from(event.clipboardData?.items ?? [])
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file))
+    if (!files.length) return
+    event.preventDefault()
+    void uploadFiles(files)
   }
 
   const quotedText = quote?.parts.flatMap((part) => part.kind === "text" ? [part.text] : []).join("")
@@ -252,17 +462,17 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
     if (!text) return
     editIntent()
     const next = draft.slice(0, target.start) + text + draft.slice(target.end)
-    const caret = target.start + text.length
+    const after = target.start + text.length
     setDraft(next)
-    setSelection({ start: caret, end: caret })
-    requestAnimationFrame(() => focusInput({ start: caret, end: caret }))
+    setSelection({ start: after, end: after })
+    setCaret(after)
+    requestAnimationFrame(() => focusInput({ start: after, end: after }))
   }
 
   function selectAll() {
     const textarea = input.current
     if (!textarea) return
     textarea.focus({ preventScroll: true })
-    // 显式设置范围，不依赖 select()（菜单项刚点击过，焦点与选区状态可能尚未同步）
     textarea.setSelectionRange(0, textarea.value.length)
     setSelection({ start: 0, end: textarea.value.length })
   }
@@ -328,38 +538,60 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
             setAnimateHeight(true)
             setManualHeight(Math.min(maxHeight, Math.max(MIN_COMPOSER_HEIGHT, current + (event.key === "ArrowUp" ? 12 : -12))))
           }} />
-        {(quoteMessageId || selectedIds.length > 0 || mentionAll) && <div className="composer-context">
-          {quoteMessageId && <div className="composer-quote" aria-label="引用预览">
+        {quoteMessageId && <div className="composer-context">
+          <div className="composer-quote" aria-label="引用预览">
             <span><strong>{quoteName ?? "引用"}</strong><span>{quote?.state === "visible" ? quotedText?.slice(0, 120) : "原消息不可用"}</span></span>
             <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-sm" aria-label="取消引用" onClick={() => { editIntent(); onRemoveQuote?.(); input.current?.focus() }}><IconX size={16} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>取消引用</TooltipContent></Tooltip>
-          </div>}
-          <div className="composer-mentions">
-            {mentionAll ? <button type="button" className="composer-mention-chip" aria-label="移除提及所有人" onClick={() => { editIntent(); setMentions({ generation: dataGenerationId, ids: [], all: false }) }}>@所有人<IconX size={13} aria-hidden="true" /></button> : selectedIds.map((id) => <button type="button" key={id} className="composer-mention-chip" aria-label={`移除提及 ${participants.find((participant) => participant.id === id)?.display_name ?? "已离开成员"}`} onClick={() => selectMention(id, false)}>@{participants.find((participant) => participant.id === id)?.display_name ?? "已离开成员"}<IconX size={13} aria-hidden="true" /></button>)}
           </div>
+        </div>}
+        {attachments.length > 0 && <div className="composer-attachments" aria-label="待发送附件">
+          {attachments.map((attachment) => <AttachmentPreview key={attachment.id} generation={dataGenerationId} attachment={attachment} onRemove={() => removeAttachment(attachment)} />)}
         </div>}
         <ContextMenu items={editorMenuItems} label="输入框编辑" preserveTriggerFocus
           // 只把焦点还给输入框，不重设范围：菜单操作已自行设好光标，用旧 state 会覆盖它
           onCloseAutoFocus={(event) => { event.preventDefault(); focusInput() }}>
-          <textarea ref={input} aria-label="消息输入" placeholder="说点什么……" value={draft} rows={3} className="composer-input"
-            onChange={(event) => { editIntent(); setDraft(event.target.value); setSelection({ start: event.target.selectionStart, end: event.target.selectionEnd }) }}
-            onSelect={(event) => { const target = event.currentTarget; setSelection({ start: target.selectionStart, end: target.selectionEnd }) }}
-            onContextMenu={rememberSelection}
-            onMouseDown={keepSelectionOnRightDown}
-            onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }} onKeyDown={handleKeyDown}
-            aria-invalid={Boolean(visibleError)} aria-describedby={visibleError ? "composer-error" : undefined} disabled={disabled} />
+          <div className={cn("composer-input-wrap", rich && "composer-input-rich", composing && "composer-input-composing")}>
+            <div ref={highlight} className="composer-highlight" aria-hidden="true">
+              {segments.map((segment, index) => segment.kind === "mention"
+                ? <span key={index} className="composer-mention-capsule">{segment.text}</span>
+                : <span key={index}>{segment.text}</span>)}
+              {"\u200b"}
+            </div>
+            <textarea ref={input} aria-label="消息输入" placeholder={attachments.length ? "给这些附件加句话…" : "说点什么……"} value={draft} rows={3} className="composer-input"
+              onChange={(event) => { editIntent(); setDraft(event.target.value); setCaret(event.target.selectionStart); setSelection({ start: event.target.selectionStart, end: event.target.selectionEnd }) }}
+              onSelect={syncCaret}
+              onScroll={(event) => { if (highlight.current) highlight.current.scrollTop = event.currentTarget.scrollTop }}
+              onContextMenu={rememberSelection}
+              onMouseDown={keepSelectionOnRightDown}
+              onPaste={handlePaste}
+              onCompositionStart={() => { composingRef.current = true; setComposing(true) }}
+              onCompositionEnd={() => { composingRef.current = false; setComposing(false) }}
+              onKeyDown={handleKeyDown}
+              aria-invalid={Boolean(visibleError)} aria-describedby={visibleError ? "composer-error" : undefined} disabled={disabled} />
+          </div>
         </ContextMenu>
         <div className="composer-actions">
-          {participants.length > 0 && <DropdownMenu modal={false}>
-            <Tooltip><TooltipTrigger asChild><DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="composer-mention-toggle" aria-label="提及成员" disabled={disabled}><IconAt size={18} aria-hidden="true" /></Button></DropdownMenuTrigger></TooltipTrigger><TooltipContent>提及成员</TooltipContent></Tooltip>
-            <DropdownMenuContent align="start" onCloseAutoFocus={(event) => { event.preventDefault(); input.current?.focus() }} aria-label="选择提及成员">
-              {canMentionAll && <><DropdownMenuCheckboxItem checked={mentionAll} onSelect={(event) => event.preventDefault()} onCheckedChange={(checked) => { editIntent(); setMentions({ generation: dataGenerationId, ids: [], all: checked === true }) }}>所有人</DropdownMenuCheckboxItem><DropdownMenuSeparator /></>}
-              {participants.map((participant) => <DropdownMenuCheckboxItem key={participant.id} checked={mentionAll || selectedIds.includes(participant.id)} disabled={!mentionAll && selectedIds.length >= 32 && !selectedIds.includes(participant.id)} onSelect={(event) => event.preventDefault()} onCheckedChange={(checked) => selectMention(participant.id, checked === true)}>{participant.display_name}</DropdownMenuCheckboxItem>)}
-            </DropdownMenuContent>
-          </DropdownMenu>}
+          <div className="composer-tools">
+            <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label="表情" aria-expanded={Boolean(emojiAnchor)} disabled={disabled}
+              onClick={(event) => {
+                if (emojiAnchor) { setEmojiAnchor(null); return }
+                const box = event.currentTarget.getBoundingClientRect()
+                setEmojiAnchor({ top: box.top, left: box.left, width: box.width })
+              }}><IconMoodSmile size={18} stroke={1.6} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>表情</TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label="发送图片" disabled={disabled || uploading} onClick={() => void pickAttachments(true)}><IconPhoto size={18} stroke={1.6} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>发送图片</TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label="发送文件" disabled={disabled || uploading} onClick={() => void pickAttachments(false)}><IconPaperclip size={18} stroke={1.6} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>发送文件</TooltipContent></Tooltip>
+            {uploading && <span className="composer-uploading" role="status">上传中…</span>}
+          </div>
           <Tooltip><TooltipTrigger asChild><Button type="submit" size="icon" className="composer-send" disabled={!canSend} aria-label={isRetry ? "重试发送" : "发送消息"}><IconSendFilled size={18} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{isRetry ? "重试发送" : "发送"}</TooltipContent></Tooltip>
         </div>
       </div>
+      {mentionOpen && mentionAnchor && <MentionPanel anchor={mentionAnchor} items={mentionMatches} active={mentionIndex} onPick={pickMention} />}
+      {emojiAnchor && <EmojiPanel anchor={emojiAnchor} onPick={(emoji) => { insertText(emoji) }} onClose={() => { setEmojiAnchor(null); returnFocus() }} />}
       <p id="composer-error" role={visibleError ? "alert" : undefined} className="composer-error">{visibleError ?? ""}</p>
     </form>
   )
+
+  function returnFocus() {
+    requestAnimationFrame(() => input.current?.focus({ preventScroll: true }))
+  }
 }

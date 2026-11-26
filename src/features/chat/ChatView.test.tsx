@@ -18,6 +18,7 @@ function sessionFor(agents: { name: string; status: AgentRuntimeStatus }[] = [])
     snapshot: value, page: page(), loading: false, loadingMore: false, error: null,
     hasNewMessages: false, atBottom: true, firstItemIndex: 0, windowRevision: 0,
     targetMessageId: null, restoreAnchor: null, enteringIds: new Set<string>(), reload: vi.fn(), send: vi.fn(), recall: vi.fn(),
+    pendingMessages: [], liveAnchor: () => null,
     goToLatest: vi.fn(), jumpTo: vi.fn(), updateAtBottom: vi.fn(), updateRenderedAnchor: vi.fn(),
     setChatActive: vi.fn(), applyRoom: vi.fn(), applyAppearance: vi.fn(), loadOlder: vi.fn(), loadNewer: vi.fn(),
   }

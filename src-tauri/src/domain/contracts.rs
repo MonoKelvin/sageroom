@@ -218,11 +218,31 @@ pub struct Appearance {
     pub revision: DecimalString,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AttachmentKind {
+    Image,
+    File,
+}
+
+/// 消息附件。图片会带上原始宽高，界面据此预留占位，避免加载后跳动。
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AttachmentObject {
+    pub id: String,
+    pub file_name: String,
+    pub mime_type: String,
+    pub byte_size: u32,
+    pub kind: AttachmentKind,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MessagePart {
     Text { text: String },
-    Attachment { attachment_id: String },
+    Attachment { attachment: AttachmentObject },
     Emote { emote_id: String },
 }
 
@@ -1153,6 +1173,67 @@ pub struct SecretStatus {
 #[serde(deny_unknown_fields)]
 pub struct AvatarImportRequest {
     pub data_generation_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AttachmentImportRequest {
+    pub data_generation_id: String,
+    /// 只挑选图片：图片按钮用，文件按钮不传。
+    #[serde(default)]
+    pub images_only: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AttachmentImportResult {
+    pub attachments: Vec<AttachmentObject>,
+}
+
+/// 粘贴板图片：前端把剪贴板里的 Blob 转成 base64 直接送进来，
+/// 避免为了一个内存中的图片先落临时文件。
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AttachmentPasteRequest {
+    pub data_generation_id: String,
+    pub file_name: String,
+    #[schemars(length(min = 1, max = 36_000_000))]
+    pub data_base64: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AttachmentReadRequest {
+    pub data_generation_id: String,
+    pub attachment_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AttachmentData {
+    pub attachment_id: String,
+    pub mime_type: String,
+    pub data_base64: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AttachmentOpenRequest {
+    pub data_generation_id: String,
+    pub attachment_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AttachmentDiscardRequest {
+    pub data_generation_id: String,
+    pub attachment_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AttachmentDiscardResult {
+    pub discarded: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]

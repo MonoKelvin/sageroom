@@ -1,7 +1,7 @@
 CREATE TABLE app_meta (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     root_id TEXT NOT NULL,
-    schema_version INTEGER NOT NULL CHECK (schema_version = 6),
+    schema_version INTEGER NOT NULL CHECK (schema_version = 7),
     schema_hash TEXT NOT NULL
 );
 
@@ -39,12 +39,33 @@ CREATE TABLE messages (
 CREATE INDEX messages_sender_seq ON messages(sender_id, seq);
 CREATE INDEX messages_created_at ON messages(created_at, seq);
 
+-- 附件对象：消息里的图片与文件。message_id 为空表示已上传但尚未发送（暂存），
+-- 发送时由 insert_message 认领；撤销或删除消息时连同磁盘文件一起清理。
+CREATE TABLE attachment_objects (
+    id TEXT PRIMARY KEY,
+    relative_path TEXT NOT NULL UNIQUE,
+    message_id TEXT REFERENCES messages(id) ON DELETE CASCADE,
+    file_name TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    byte_size INTEGER NOT NULL CHECK (byte_size > 0 AND byte_size <= 26214400),
+    width INTEGER CHECK (width IS NULL OR width > 0),
+    height INTEGER CHECK (height IS NULL OR height > 0),
+    sha256 TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX attachment_objects_message ON attachment_objects(message_id);
+
 CREATE TABLE message_parts (
     message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
     ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
-    kind TEXT NOT NULL CHECK (kind = 'text'),
-    text TEXT NOT NULL,
-    PRIMARY KEY (message_id, ordinal)
+    kind TEXT NOT NULL CHECK (kind IN ('text', 'attachment')),
+    text TEXT,
+    attachment_id TEXT REFERENCES attachment_objects(id),
+    PRIMARY KEY (message_id, ordinal),
+    CHECK (
+        (kind = 'text' AND text IS NOT NULL AND attachment_id IS NULL)
+        OR (kind = 'attachment' AND attachment_id IS NOT NULL AND text IS NULL)
+    )
 );
 
 CREATE TABLE mentions (
@@ -195,4 +216,4 @@ CREATE TABLE runtime_messages (
 CREATE INDEX runtime_messages_chain ON runtime_messages(chain_id);
 CREATE INDEX runtime_messages_time ON runtime_messages(committed_at);
 
-PRAGMA user_version = 6;
+PRAGMA user_version = 7;

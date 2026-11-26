@@ -4,8 +4,18 @@ import { errorMessage, ipc, IpcError } from "@/app/ipc"
 import { compareSequence, INITIAL_ITEM_INDEX, mergePage, PAGE_SIZE } from "./timeline"
 
 export type ScrollAnchor = { id: string; seq: string; offset: number }
-export type SendOptions = Pick<ChatSendRequest, "quote_message_id" | "mention_ids" | "mention_all">
+export type SendOptions = Pick<ChatSendRequest, "quote_message_id" | "mention_ids" | "mention_all"> & {
+  /** 已经组装好的内容片段（含附件）；不传时按纯文本发送。 */
+  parts?: ChatSendRequest["parts"]
+}
 const EMPTY_SEND_OPTIONS: SendOptions = { quote_message_id: null, mention_ids: [], mention_all: false }
+
+/** 本地占位消息的 id 前缀。界面上据此显示「发送中」并禁用撤回。 */
+const PENDING_PREFIX = "pending:"
+
+export function isPendingMessage(message: Pick<ChatMessage, "id">): boolean {
+  return message.id.startsWith(PENDING_PREFIX)
+}
 
 function generationError() {
   return new IpcError({
@@ -32,6 +42,10 @@ export function useChatSession() {
   const [restoreAnchor, setRestoreAnchor] = useState<ScrollAnchor | null>(null)
   // 刚增量到达的消息，用于一次性冒出动画；不影响既有条目。
   const [enteringIds, setEnteringIds] = useState<ReadonlySet<string>>(() => new Set())
+  // 发送中的本地占位消息：先冒泡再对齐服务端回执，避免「点了发送却没反应」。
+  const [pending, setPending] = useState<readonly ChatMessage[]>([])
+  const pendingRef = useRef<readonly ChatMessage[]>([])
+  const resolvedPending = useRef(new Map<string, string>())
   const enteringTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const chatActive = useRef(true)
   const navigationEpoch = useRef(0)
@@ -54,12 +68,29 @@ export function useChatSession() {
     setSnapshot(next)
   }, [])
 
+  /** 服务端消息已经进列表后，把对应的本地占位撤掉；否则两条会并存一下。 */
+  const settlePending = useCallback((items: readonly ChatMessage[]) => {
+    if (!pendingRef.current.length || !resolvedPending.current.size) return
+    const present = new Set(items.map((item) => item.id))
+    const kept = pendingRef.current.filter((item) => {
+      const realId = resolvedPending.current.get(item.id)
+      if (!realId) return true
+      if (!present.has(realId)) return true
+      resolvedPending.current.delete(item.id)
+      return false
+    })
+    if (kept.length === pendingRef.current.length) return
+    pendingRef.current = kept
+    setPending(kept)
+  }, [])
+
   const assignPage = useCallback((next: MessagePage, index: number) => {
     pageRef.current = next
     firstIndexRef.current = index
     setPage(next)
     setFirstItemIndex(index)
-  }, [])
+    settlePending(next.items)
+  }, [settlePending])
 
   /** 标记增量到达的消息，短暂持有后释放，驱动一次性冒出动画。 */
   const markEntering = useCallback((incoming: ChatMessage[], knownSeq: string | null) => {
@@ -189,14 +220,21 @@ export function useChatSession() {
     eventCursor.current = BigInt(next.latest_event_seq)
     const currentPage = pageRef.current
     if (reset || !previous || previous.data_generation_id !== next.data_generation_id || !currentPage) {
-      pageRef.current = null
-      setPage(null)
+      // 只有真正换了数据根才清空；同一份数据的重载交给 replaceWindow 原子替换，
+      // 否则中间那一帧会把消息列表整块抽空，看起来就是一次闪白。
+      if (!currentPage || previous?.data_generation_id !== next.data_generation_id) {
+        pageRef.current = null
+        setPage(null)
+        if (pendingRef.current.length) {
+          pendingRef.current = []
+          resolvedPending.current.clear()
+          setPending(pendingRef.current)
+        }
+      }
       await replaceWindow()
     } else if (previous.room.content_epoch !== next.room.content_epoch) {
       const wasAtLatest = chatActive.current && atBottomRef.current && !currentPage.has_more_after
       const anchor = renderedAnchor.current ?? (currentPage.items[0] ? { id: currentPage.items[0].id, seq: currentPage.items[0].seq, offset: 0 } : null)
-      pageRef.current = null
-      setPage(null)
       if (wasAtLatest || !anchor) await replaceWindow()
       else await replaceWindow(anchor.seq, undefined, anchor)
     } else {
@@ -361,21 +399,53 @@ export function useChatSession() {
   const send = useCallback(async (text: string, requestId: string, options: SendOptions = EMPTY_SEND_OPTIONS): Promise<ChatSendResult> => {
     const current = snapshotRef.current
     if (!current) throw generationError()
-    const result = await ipc.send({
-      data_generation_id: current.data_generation_id,
-      client_request_id: requestId,
-      parts: [{ kind: "text", text }],
+    const parts: ChatSendRequest["parts"] = options.parts ?? (text.trim() ? [{ kind: "text", text }] : [])
+    const placeholderId = `${PENDING_PREFIX}${requestId}`
+    const placeholder: ChatMessage = {
+      id: placeholderId,
+      seq: placeholderId,
+      sender_id: current.local_user.id,
+      created_at: Date.now(),
+      state: "visible",
+      parts,
       quote_message_id: options.quote_message_id,
       mention_ids: options.mention_ids,
       mention_all: options.mention_all,
-    })
-    if (result.data_generation_id !== snapshotRef.current?.data_generation_id) throw generationError()
-    const updated = snapshotRef.current
-    if (updated && compareSequence(result.message_seq, updated.latest_message_seq) > 0) {
-      assignSnapshot({ ...updated, latest_message_seq: result.message_seq })
     }
-    void enqueue(() => synchronizeMessages()).catch(report)
-    return result
+    pendingRef.current = [...pendingRef.current, placeholder]
+    setPending(pendingRef.current)
+    try {
+      const result = await ipc.send({
+        data_generation_id: current.data_generation_id,
+        client_request_id: requestId,
+        parts,
+        quote_message_id: options.quote_message_id,
+        mention_ids: options.mention_ids,
+        mention_all: options.mention_all,
+      })
+      if (result.data_generation_id !== snapshotRef.current?.data_generation_id) throw generationError()
+      const updated = snapshotRef.current
+      if (updated && compareSequence(result.message_seq, updated.latest_message_seq) > 0) {
+        assignSnapshot({ ...updated, latest_message_seq: result.message_seq })
+      }
+      resolvedPending.current.set(placeholderId, result.message_id)
+      // 兜底：万一列表换了窗口、回执不在视野里，占位也不会一直挂在底部。
+      setTimeout(() => {
+        if (!resolvedPending.current.has(placeholderId)) return
+        resolvedPending.current.delete(placeholderId)
+        const kept = pendingRef.current.filter((item) => item.id !== placeholderId)
+        if (kept.length === pendingRef.current.length) return
+        pendingRef.current = kept
+        setPending(kept)
+      }, 8000)
+      void enqueue(() => synchronizeMessages()).catch(report)
+      return result
+    } catch (cause) {
+      pendingRef.current = pendingRef.current.filter((item) => item.id !== placeholderId)
+      resolvedPending.current.delete(placeholderId)
+      setPending(pendingRef.current)
+      throw cause
+    }
   }, [assignSnapshot, enqueue, report, synchronizeMessages])
 
   const recall = useCallback(async (messageId: string, requestId: string): Promise<ChatRecallResult> => {
@@ -404,6 +474,15 @@ export function useChatSession() {
 
   const goToLatest = useCallback(async () => {
     if (!chatActive.current) return
+    const current = pageRef.current
+    // 后面没有更多分页时（最常见情况）只要滚到底，不必重建窗口——
+    // 重建会重挂虚拟列表，看起来就是一次闪烁 + 位置跳变。
+    if (current && !current.has_more_after) {
+      atBottomRef.current = true
+      setAtBottom(true)
+      setHasNewMessages(false)
+      return
+    }
     try {
       await replaceWindow(undefined, undefined, undefined, { epoch: navigationEpoch.current })
     } catch (cause) {
@@ -423,7 +502,13 @@ export function useChatSession() {
 
   const updateRenderedAnchor = useCallback((anchor: ScrollAnchor) => {
     renderedAnchor.current = anchor
+    // 视口已经自己报了位置，说明一次性跳转锚点用完了；清掉它，
+    // 免得之后切换页签回来又被拉回旧的跳转目标。
+    setRestoreAnchor((current) => (current ? null : current))
   }, [])
+
+  /** 当前视口顶部锚点。切换页签导致列表重挂时用它恢复位置。 */
+  const liveAnchor = useCallback(() => renderedAnchor.current, [])
 
   const updateAtBottom = useCallback((value: boolean) => {
     atBottomRef.current = value
@@ -436,6 +521,7 @@ export function useChatSession() {
   return {
     snapshot, page, loading, loadingMore, error, hasNewMessages, atBottom,
     firstItemIndex, windowRevision, targetMessageId, restoreAnchor, enteringIds,
+    pendingMessages: pending, liveAnchor,
     reload, send, recall, goToLatest, jumpTo, updateAtBottom, updateRenderedAnchor, setChatActive, applyRoom, applyAppearance,
     loadOlder: () => loadPage("before"),
     loadNewer: () => loadPage("after"),

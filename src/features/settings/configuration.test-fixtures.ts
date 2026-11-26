@@ -25,7 +25,7 @@ export function pageProps(active = true): ApplicationPageProps {
   const pageSnapshot = { ...base, local_user: { ...base.local_user, avatar_id: null, profile_revision: "1" }, participants: base.participants.map((participant) => ({ ...participant, avatar_id: null, profile_revision: "1" })) }
   return { active, onNavigate: vi.fn(), inbox: inboxFixture(), session: {
     snapshot: pageSnapshot, page: null, loading: false, loadingMore: false, error: null, hasNewMessages: false, atBottom: true,
-    firstItemIndex: 0, windowRevision: 0, targetMessageId: null, restoreAnchor: null, enteringIds: new Set<string>(), setChatActive: vi.fn(), reload: vi.fn().mockResolvedValue(undefined), send: vi.fn(), recall: vi.fn(), goToLatest: vi.fn(), jumpTo: vi.fn(), updateAtBottom: vi.fn(), updateRenderedAnchor: vi.fn(), applyRoom: vi.fn(), applyAppearance: vi.fn(), loadOlder: vi.fn(), loadNewer: vi.fn(),
+    firstItemIndex: 0, windowRevision: 0, targetMessageId: null, restoreAnchor: null, enteringIds: new Set<string>(), pendingMessages: [], liveAnchor: () => null, setChatActive: vi.fn(), reload: vi.fn().mockResolvedValue(undefined), send: vi.fn(), recall: vi.fn(), goToLatest: vi.fn(), jumpTo: vi.fn(), updateAtBottom: vi.fn(), updateRenderedAnchor: vi.fn(), applyRoom: vi.fn(), applyAppearance: vi.fn(), loadOlder: vi.fn(), loadNewer: vi.fn(),
   } }
 }
 

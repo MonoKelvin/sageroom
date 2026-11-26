@@ -184,6 +184,26 @@ fn main() -> Result<(), Box<dyn Error>> {
     export::<ApiResponse<Option<AvatarObject>>>("AvatarImportResponse", &config, &mut schemas)?;
     export::<AvatarReadRequest>("AvatarReadRequest", &config, &mut schemas)?;
     export::<ApiResponse<AvatarData>>("AvatarReadResponse", &config, &mut schemas)?;
+    export::<AttachmentImportRequest>("AttachmentImportRequest", &config, &mut schemas)?;
+    export::<ApiResponse<AttachmentImportResult>>(
+        "AttachmentPickResponse",
+        &config,
+        &mut schemas,
+    )?;
+    export::<AttachmentPasteRequest>("AttachmentPasteRequest", &config, &mut schemas)?;
+    export::<ApiResponse<AttachmentObject>>("AttachmentPasteResponse", &config, &mut schemas)?;
+    export::<AttachmentReadRequest>("AttachmentReadRequest", &config, &mut schemas)?;
+    export::<ApiResponse<AttachmentData>>("AttachmentReadResponse", &config, &mut schemas)?;
+    export::<AttachmentOpenRequest>("AttachmentOpenRequest", &config, &mut schemas)?;
+    export::<ApiResponse<bool>>("AttachmentOpenResponse", &config, &mut schemas)?;
+    export::<AttachmentDiscardRequest>("AttachmentDiscardRequest", &config, &mut schemas)?;
+    export::<ApiResponse<AttachmentDiscardResult>>(
+        "AttachmentDiscardResponse",
+        &config,
+        &mut schemas,
+    )?;
+    AttachmentObject::export_all(&config)?;
+    AttachmentKind::export_all(&config)?;
     AppSnapshot::export_all(&config)?;
     ChatSendResult::export_all(&config)?;
     MessagePage::export_all(&config)?;

@@ -51,6 +51,9 @@ html[data-input-modality="keyboard"] .composer-field { transition-duration: 0ms 
 @keyframes chat-message-emerge { from { opacity: 0; transform: translateY(calc(var(--space-2) * -1)) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
 html[data-reduced-motion="true"] .chat-message-enter { animation: none; }
 @media (prefers-reduced-motion: reduce) { .chat-message-enter { animation: none; } }
+/* 发送中：浅一点表示还没落地，回执一到就恢复常态 */
+.chat-message[data-pending] { opacity: .62; }
+.chat-message[data-pending] .chat-message-bubble { cursor: progress; }
 .chat-message-row { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; }
 .chat-message-row[data-self="true"] { flex-direction: row-reverse; }
 .chat-message-avatar { flex: 0 0 auto; }
@@ -171,11 +174,82 @@ html[data-input-modality="keyboard"] :is(.chat-search-locate, .group-info-drawer
 .composer-quote > span { flex: 1; min-width: 0; }
 .composer-quote strong, .composer-quote > span > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-caption); color: var(--text-secondary); }
 .composer-quote strong { font-weight: 500; }
-.composer-mentions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-width: 0; max-height: calc(var(--control-height) * 3); overflow: auto; }
-.composer-mention-chip { display: inline-flex; align-items: center; gap: var(--space-1); max-width: 100%; min-height: var(--space-6); padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--radius-pill); background: var(--control-bg); color: var(--semantic-accent); font-size: var(--font-caption); cursor: pointer; }
-.composer-mention-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.composer-mention-chip svg { flex: none; }
-.composer-mention-toggle { color: var(--text-secondary); }
+
+/* ---- 输入框：内联 @ 胶囊 ---- */
+/* 文本层和高亮层必须共用同一套排版，否则胶囊会和真实文字错位。 */
+.composer-input-wrap { position: relative; }
+.composer-highlight,
+.composer-input {
+  margin: 0;
+  padding: var(--space-3) var(--space-3) 0;
+  border: 0;
+  font-family: inherit;
+  font-size: var(--font-body);
+  font-weight: inherit;
+  letter-spacing: inherit;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.composer-highlight {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  color: var(--text-primary);
+  pointer-events: none;
+}
+.composer-input { position: relative; z-index: 0; }
+/* 只有正文里真的出现提及时才切到「高亮层显示文字」的模式：
+   平时仍用原生文本，中文输入法组词不会出现看不见的候选字。 */
+.composer-input-rich .composer-input { color: transparent; caret-color: var(--text-primary); }
+.composer-input-rich .composer-input::placeholder { color: transparent; }
+.composer-input-composing .composer-input { color: var(--text-primary); }
+.composer-input-composing .composer-highlight { visibility: hidden; }
+.composer-mention-capsule { border-radius: calc(var(--radius) * .5); padding: 0 .15em; background: color-mix(in srgb, var(--semantic-accent) 16%, transparent); color: var(--semantic-accent); }
+
+/* ---- 悬空的提及列表与表情面板 ---- */
+.composer-mention-panel { z-index: 60; display: flex; flex-direction: column; max-height: calc(var(--control-height) * 8); padding: var(--space-1); overflow-y: auto; border: var(--stroke-width) solid var(--border-subtle); border-radius: var(--radius); background: var(--surface-elevated, var(--surface-content)); box-shadow: var(--shadow-popover, 0 12px 32px rgb(0 0 0 / 12%)); }
+.composer-mention-option { display: block; width: 100%; padding: var(--space-2) var(--space-3); border: 0; border-radius: calc(var(--radius) * .7); background: transparent; color: var(--text-primary); font-size: var(--font-body); text-align: left; cursor: pointer; }
+.composer-mention-option[data-active="true"], .composer-mention-option:hover { background: var(--control-hover-bg); }
+.composer-emoji-panel { z-index: 60; width: 352px; padding: var(--space-2); border: var(--stroke-width) solid var(--border-subtle); border-radius: var(--radius); background: var(--surface-elevated, var(--surface-content)); box-shadow: var(--shadow-popover, 0 12px 32px rgb(0 0 0 / 12%)); }
+.composer-emoji-tabs { display: flex; gap: var(--space-1); margin-bottom: var(--space-2); }
+.composer-emoji-tab { flex: 1; padding: var(--space-1) var(--space-2); border: 0; border-radius: calc(var(--radius) * .7); background: transparent; color: var(--text-secondary); font-size: var(--font-caption); cursor: pointer; }
+.composer-emoji-tab[aria-selected="true"] { background: var(--control-active-bg); color: var(--text-primary); }
+.composer-emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: var(--space-1); max-height: calc(var(--size-unit) * 96); overflow-y: auto; }
+.composer-emoji { aspect-ratio: 1; border: 0; border-radius: calc(var(--radius) * .6); background: transparent; font-size: calc(var(--size-unit) * 8); line-height: 1; cursor: pointer; }
+.composer-emoji:hover { background: var(--control-hover-bg); }
+
+/* ---- 输入框里的待发送附件 ---- */
+.composer-attachments { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-3) var(--space-3) 0; }
+.composer-attachment { position: relative; display: flex; flex-direction: column; gap: var(--space-1); width: calc(var(--size-unit) * 28); min-width: 0; }
+.composer-attachment img, .composer-attachment-placeholder { display: block; width: 100%; aspect-ratio: 1; border-radius: calc(var(--radius) * .8); background: var(--control-bg); object-fit: cover; }
+.composer-attachment-file { display: flex; align-items: center; justify-content: center; gap: var(--space-1); aspect-ratio: 1; border-radius: calc(var(--radius) * .8); background: var(--control-bg); color: var(--text-secondary); font-size: var(--font-caption); }
+.composer-attachment-name { overflow: hidden; color: var(--text-secondary); font-size: var(--font-caption); text-overflow: ellipsis; white-space: nowrap; }
+.composer-attachment-remove { position: absolute; top: calc(var(--space-1) * -1); right: calc(var(--space-1) * -1); display: grid; place-items: center; width: calc(var(--size-unit) * 7); height: calc(var(--size-unit) * 7); padding: 0; border: var(--stroke-width) solid var(--border-subtle); border-radius: var(--radius-pill); background: var(--surface-content); color: var(--text-secondary); cursor: pointer; opacity: 0; transition: opacity var(--motion-duration) ease; }
+.composer-attachment:hover .composer-attachment-remove, .composer-attachment-remove:focus-visible { opacity: 1; }
+.composer-tools { display: flex; align-items: center; gap: var(--space-1); color: var(--text-secondary); }
+.composer-uploading { color: var(--text-secondary); font-size: var(--font-caption); }
+
+/* ---- 消息气泡里的附件 ---- */
+.chat-attachments { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.chat-attachment-grid { display: grid; gap: var(--space-1); grid-template-columns: minmax(0, 1fr); max-width: calc(var(--size-unit) * 120); }
+.chat-attachment-grid[data-count="2"], .chat-attachment-grid[data-count="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.chat-attachment-grid[data-count="3"], .chat-attachment-grid[data-count="5"], .chat-attachment-grid[data-count="6"], .chat-attachment-grid[data-count="7"], .chat-attachment-grid[data-count="8"], .chat-attachment-grid[data-count="9"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.chat-attachment-image { display: block; width: 100%; padding: 0; overflow: hidden; border: 0; border-radius: calc(var(--radius) * .8); background: var(--control-bg); cursor: pointer; }
+.chat-attachment-image img { display: block; width: 100%; height: 100%; max-height: calc(var(--size-unit) * 120); object-fit: cover; }
+.chat-attachment-image-loading { aspect-ratio: 4 / 3; }
+.chat-attachment-placeholder { display: block; width: 100%; aspect-ratio: 4 / 3; }
+.chat-message-bubble[data-media] { padding: 0; background: transparent; }
+.chat-message-bubble[data-media] .chat-attachment-image { border-radius: calc(var(--radius) * 1.05); }
+.chat-message-text { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-attachment-file { display: flex; align-items: center; gap: var(--space-2); width: 100%; max-width: calc(var(--size-unit) * 120); padding: var(--space-2) var(--space-3); border: var(--stroke-width) solid var(--border-subtle); border-radius: calc(var(--radius) * .8); background: var(--surface-canvas); color: var(--text-primary); text-align: left; cursor: pointer; }
+.chat-message-bubble-self .chat-attachment-file { background: color-mix(in srgb, var(--self-bubble-bg) 12%, transparent); border-color: color-mix(in srgb, var(--self-bubble-bg) 24%, transparent); }
+.chat-attachment-file-icon, .chat-attachment-file-action { display: grid; flex: none; place-items: center; color: var(--text-secondary); }
+.chat-attachment-file-main { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.chat-attachment-file-name { overflow: hidden; font-size: var(--font-body); text-overflow: ellipsis; white-space: nowrap; }
+.chat-attachment-file-meta { color: var(--text-secondary); font-size: var(--font-caption); }
 .chat-search-filters { display: flex; flex: none; flex-direction: column; gap: var(--space-3); padding: var(--space-1) var(--space-2) var(--space-3); }
 .chat-search-filter-heading { display: flex; align-items: center; justify-content: space-between; min-width: 0; color: var(--text-secondary); font-size: var(--font-caption); }
 .chat-search-filter-heading .ui-button { height: calc(var(--size-unit) * 7); padding-inline: var(--space-2); color: var(--text-secondary); transform: none; }

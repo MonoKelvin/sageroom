@@ -13,6 +13,7 @@ import { MessageComposer } from "./MessageComposer"
 import { MessageList } from "./MessageList"
 import { SearchPanel } from "./SearchPanel"
 import { formatConversationTime } from "./message-time"
+import { prefetchAttachments } from "./attachment-sources"
 import { availableScenes, sceneAdapters } from "./scenes"
 import "./chat.css"
 
@@ -25,6 +26,18 @@ export function ChatView({ session, inbox, active, onNavigate }: ApplicationPage
   const snapshot = session.snapshot
   const generation = snapshot?.data_generation_id ?? null
   const contentEpoch = snapshot?.room.content_epoch ?? "0"
+  // 发送中的本地占位挂在窗口末尾，等回执落地后由会话层移除，用户点完立刻能看见气泡。
+  const page = useMemo(() => {
+    if (!session.page) return null
+    const pending = session.pendingMessages
+    return pending.length ? { ...session.page, items: [...session.page.items, ...pending] } : session.page
+  }, [session.page, session.pendingMessages])
+  // 图片字节按窗口批量预取，滚动到位时才不会先闪一格空白。
+  useEffect(() => {
+    if (!generation || !page) return
+    const ids = page.items.flatMap((item) => item.parts.flatMap((part) => part.kind === "attachment" && part.attachment.kind === "image" ? [part.attachment.id] : []))
+    prefetchAttachments(generation, ids.slice(0, 48))
+  }, [generation, page])
   const quoteId = selectedQuote?.generation === generation ? selectedQuote.message.id : null
   const loadedMessages = useMemo(() => new Map(session.page?.items.filter((message) => message.state === "visible").map((message) => [message.id, message])), [session.page])
   const externalQuoteIds = useMemo(() => [...new Set([quoteId, ...(session.page?.items.filter((message) => message.state === "visible").map((message) => message.quote_message_id) ?? [])].filter((id): id is string => Boolean(id)))].filter((id) => !loadedMessages.has(id)).slice(0, 32), [quoteId, session.page, loadedMessages])
@@ -179,6 +192,12 @@ export function ChatView({ session, inbox, active, onNavigate }: ApplicationPage
     return result
   }
 
+  // 回到最新：多数情况只是滚到底（会话层不会重建窗口），滚动信号统一在这里发。
+  const goToLatest = useCallback(async () => {
+    await session.goToLatest()
+    if (visible.current) setScrollToBottomSignal((value) => value + 1)
+  }, [session])
+
   const selectQuote = useCallback((message: ChatMessage) => {
     if (!generation) return
     setSelectedQuote({ generation, epoch: contentEpoch, message })
@@ -256,7 +275,7 @@ export function ChatView({ session, inbox, active, onNavigate }: ApplicationPage
           {unreadNotice && <div className="chat-unread-notice" role="status">
             <button type="button" className="chat-latest-button" onClick={() => { const target = unreadNotice; setUnreadNotice(null); void session.jumpTo(target.seq, target.id) }}>{unreadNotice.count} 条未读消息</button>
           </div>}
-          {session.page && snapshot ? <MessageList key={session.windowRevision} active={active} page={session.page} participants={participants} restoreAnchor={session.restoreAnchor} enteringIds={session.enteringIds} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !session.page.has_more_after} hasNewMessages={session.hasNewMessages} newMessageCount={hideLatestNotice ? 0 : unreadCount} hideLatestNotice={hideLatestNotice} scrollToBottomSignal={scrollToBottomSignal} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={session.goToLatest} quotes={quotes} onQuote={selectQuote} onRecall={session.recall} onLocateQuote={session.jumpTo} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}
+          {page && snapshot ? <MessageList key={session.windowRevision} active={active} page={page} participants={participants} restoreAnchor={session.restoreAnchor ?? session.liveAnchor()} enteringIds={session.enteringIds} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !page.has_more_after} hasNewMessages={session.hasNewMessages} newMessageCount={hideLatestNotice ? 0 : unreadCount} hideLatestNotice={hideLatestNotice} scrollToBottomSignal={scrollToBottomSignal} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={goToLatest} quotes={quotes} onQuote={selectQuote} onRecall={session.recall} onLocateQuote={session.jumpTo} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}
           {resolvedQuotes?.identity === quotesIdentity && resolvedQuotes.error && <p className="chat-quote-feedback" role="alert">{resolvedQuotes.error}</p>}
           <MessageComposer active={active} dataGenerationId={generation} disabled={!snapshot} participants={snapshot?.participants} canMentionAll={snapshot?.room.owner_participant_id === snapshot?.local_user.id} quoteMessageId={quoteId} quote={quote} onRemoveQuote={() => setSelectedQuote(null)} onSend={handleSend} />
         </div>

@@ -213,14 +213,20 @@ pub(super) fn local_saturation(input: &RuntimeInput, now: i64) -> Saturation {
     // 窗口从 16 扩到 40：真实的跨天复读（例如 BLG 昨晚和今天各聊一次）
     // 在 16 条里已经滑出视野，这正是用户看到「疲劳失效」的直接原因。
     let recent: Vec<_> = visible.iter().rev().take(40).collect();
+    // 复读只看最近 12 条：40 条里同一个词自然会被反复提到，那不是复读，
+    // 把它当复读会让人被迫闭嘴，正是冷场的来源。话题饱和仍然用 40 条统计。
+    let repeat_window: Vec<_> = visible.iter().rev().take(12).collect();
 
-    let mut seen = std::collections::HashSet::new();
-    let mut repeated = 0_u32;
-    for message in &recent {
-        let text: String = message.parts.iter().filter_map(|part| match part {
+    let clean_text = |message: &ChatMessage| -> String {
+        message.parts.iter().filter_map(|part| match part {
             MessagePart::Text { text } => Some(text.as_str()),
             _ => None,
-        }).collect::<String>().chars().filter(|c| !c.is_whitespace()).collect();
+        }).collect::<String>().chars().filter(|c| !c.is_whitespace()).collect()
+    };
+    let mut seen = std::collections::HashSet::new();
+    let mut repeated = 0_u32;
+    for message in &repeat_window {
+        let text = clean_text(message);
         if text.len() < 4 { continue }
         if !seen.insert(text) { repeated += 1 }
     }

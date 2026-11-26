@@ -81,6 +81,15 @@ import type {
   AvatarReadRequest,
   AvatarObject,
   AvatarData,
+  AttachmentImportRequest,
+  AttachmentImportResult,
+  AttachmentPasteRequest,
+  AttachmentObject,
+  AttachmentReadRequest,
+  AttachmentData,
+  AttachmentOpenRequest,
+  AttachmentDiscardRequest,
+  AttachmentDiscardResult,
 } from "@/contracts/generated"
 import {
   validateAppSnapshotRequest,
@@ -182,6 +191,16 @@ import {
   validateAvatarImportResponse,
   validateAvatarReadRequest,
   validateAvatarReadResponse,
+  validateAttachmentImportRequest,
+  validateAttachmentPickResponse,
+  validateAttachmentPasteRequest,
+  validateAttachmentPasteResponse,
+  validateAttachmentReadRequest,
+  validateAttachmentReadResponse,
+  validateAttachmentOpenRequest,
+  validateAttachmentOpenResponse,
+  validateAttachmentDiscardRequest,
+  validateAttachmentDiscardResponse,
 } from "@/contracts/generated/validators.js"
 
 type Validator = (value: unknown) => boolean
@@ -343,6 +362,16 @@ export const ipc = {
     request("avatar_import", input, validateAvatarImportRequest, validateAvatarImportResponse),
   readAvatar: (input: AvatarReadRequest): Promise<AvatarData> =>
     request("avatar_read", input, validateAvatarReadRequest, validateAvatarReadResponse),
+  pickAttachments: (input: AttachmentImportRequest): Promise<AttachmentImportResult> =>
+    request("attachment_pick", input, validateAttachmentImportRequest, validateAttachmentPickResponse),
+  pasteAttachment: (input: AttachmentPasteRequest): Promise<AttachmentObject> =>
+    request("attachment_paste", input, validateAttachmentPasteRequest, validateAttachmentPasteResponse),
+  readAttachment: (input: AttachmentReadRequest): Promise<AttachmentData> =>
+    request("attachment_read", input, validateAttachmentReadRequest, validateAttachmentReadResponse),
+  openAttachment: (input: AttachmentOpenRequest): Promise<boolean> =>
+    request("attachment_open", input, validateAttachmentOpenRequest, validateAttachmentOpenResponse),
+  discardAttachments: (input: AttachmentDiscardRequest): Promise<AttachmentDiscardResult> =>
+    request("attachment_discard", input, validateAttachmentDiscardRequest, validateAttachmentDiscardResponse),
   /** 读取系统剪贴板纯文本；走原生实现，避免 WebView2 对 clipboard.readText 的授权限制。 */
   readClipboardText: async (): Promise<string> => {
     if (!isDesktopEnvironment()) throw clientError("请在 Sageroom 桌面应用中粘贴。", "CAPABILITY_UNSUPPORTED")

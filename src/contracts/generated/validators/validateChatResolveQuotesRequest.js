@@ -1,14 +1,14 @@
 // generated/raw-validators/validateChatResolveQuotesRequest.js
-var validateChatResolveQuotesRequest = validate188;
-function validate188(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+var validateChatResolveQuotesRequest = validate238;
+function validate238(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
-	const evaluated0 = validate188.evaluated;
+	const evaluated0 = validate238.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		let missing0;
 		if (data.data_generation_id === void 0 && (missing0 = "data_generation_id") || data.message_ids === void 0 && (missing0 = "message_ids")) {
-			validate188.errors = [{
+			validate238.errors = [{
 				instancePath,
 				schemaPath: "#/required",
 				keyword: "required",
@@ -18,7 +18,7 @@ function validate188(data, { instancePath = "", parentData, parentDataProperty, 
 			return false;
 		} else {
 			for (const key0 in data) if (!(key0 === "data_generation_id" || key0 === "message_ids")) {
-				validate188.errors = [{
+				validate238.errors = [{
 					instancePath,
 					schemaPath: "#/additionalProperties",
 					keyword: "additionalProperties",
@@ -29,7 +29,7 @@ function validate188(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 			if (data.data_generation_id !== void 0) {
 				if (typeof data.data_generation_id !== "string") {
-					validate188.errors = [{
+					validate238.errors = [{
 						instancePath: instancePath + "/data_generation_id",
 						schemaPath: "#/properties/data_generation_id/type",
 						keyword: "type",
@@ -45,7 +45,7 @@ function validate188(data, { instancePath = "", parentData, parentDataProperty, 
 					let data1 = data.message_ids;
 					if (Array.isArray(data1)) {
 						if (data1.length > 32) {
-							validate188.errors = [{
+							validate238.errors = [{
 								instancePath: instancePath + "/message_ids",
 								schemaPath: "#/properties/message_ids/maxItems",
 								keyword: "maxItems",
@@ -56,7 +56,7 @@ function validate188(data, { instancePath = "", parentData, parentDataProperty, 
 						} else {
 							const len0 = data1.length;
 							for (let i0 = 0; i0 < len0; i0++) if (typeof data1[i0] !== "string") {
-								validate188.errors = [{
+								validate238.errors = [{
 									instancePath: instancePath + "/message_ids/" + i0,
 									schemaPath: "#/properties/message_ids/items/type",
 									keyword: "type",
@@ -67,7 +67,7 @@ function validate188(data, { instancePath = "", parentData, parentDataProperty, 
 							}
 						}
 					} else {
-						validate188.errors = [{
+						validate238.errors = [{
 							instancePath: instancePath + "/message_ids",
 							schemaPath: "#/properties/message_ids/type",
 							keyword: "type",
@@ -81,7 +81,7 @@ function validate188(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 		}
 	} else {
-		validate188.errors = [{
+		validate238.errors = [{
 			instancePath,
 			schemaPath: "#/type",
 			keyword: "type",
@@ -90,10 +90,10 @@ function validate188(data, { instancePath = "", parentData, parentDataProperty, 
 		}];
 		return false;
 	}
-	validate188.errors = vErrors;
+	validate238.errors = vErrors;
 	return true;
 }
-validate188.evaluated = {
+validate238.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

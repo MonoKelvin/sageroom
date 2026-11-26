@@ -1,4 +1,4 @@
-use std::ffi::OsStr;
+use std::path::Path;
 
 use url::Url;
 
@@ -9,39 +9,53 @@ pub fn is_external(url: &Url) -> bool {
         && url.host_str().is_some_and(|host| host != "tauri.localhost" && host != "localhost")
 }
 
-/// 用系统默认程序打开链接。跨平台实现，失败时静默忽略（不影响应用内操作）。
+/// 用系统默认程序打开链接。失败时静默忽略（不影响应用内操作）。
 pub fn open_external(url: &Url) {
-    let target = url.to_string();
+    launch(url.as_str());
+}
 
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::ffi::OsStrExt;
-        use windows_sys::Win32::{
-            UI::Shell::ShellExecuteW,
-            UI::WindowsAndMessaging::SW_SHOWNORMAL,
-        };
+/// 用系统默认程序打开本地文件（消息附件）。返回是否成功拉起。
+pub fn open_path(path: &Path) -> bool {
+    launch(&path.to_string_lossy())
+}
 
-        let wide: Vec<u16> = OsStr::new(&target).encode_wide().chain(std::iter::once(0)).collect();
-        let verb: Vec<u16> = "open".encode_utf16().chain(std::iter::once(0)).collect();
-        unsafe {
-            ShellExecuteW(
-                std::ptr::null_mut(),
-                verb.as_ptr(),
-                wide.as_ptr(),
-                std::ptr::null(),
-                std::ptr::null(),
-                SW_SHOWNORMAL,
-            );
-        }
-    }
+#[cfg(target_os = "windows")]
+fn launch(target: &str) -> bool {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::{
+        UI::Shell::ShellExecuteW,
+        UI::WindowsAndMessaging::SW_SHOWNORMAL,
+    };
 
-    #[cfg(target_os = "macos")]
-    {
-        let _ = std::process::Command::new("open").arg(&target).spawn();
-    }
+    let wide: Vec<u16> = OsStr::new(target)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let verb: Vec<u16> = "open".encode_utf16().chain(std::iter::once(0)).collect();
+    // ShellExecuteW 返回值大于 32 才算成功。
+    (unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            wide.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    }) as isize
+        > 32
+}
 
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-    {
-        let _ = std::process::Command::new("xdg-open").arg(&target).spawn();
-    }
+#[cfg(target_os = "macos")]
+fn launch(target: &str) -> bool {
+    std::process::Command::new("open").arg(target).spawn().is_ok()
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn launch(target: &str) -> bool {
+    std::process::Command::new("xdg-open")
+        .arg(target)
+        .spawn()
+        .is_ok()
 }

@@ -32,6 +32,28 @@ describe("聊天室数据与事件", () => {
     expect(ipc.send).toHaveBeenCalledWith({ data_generation_id: GENERATION, client_request_id: "request-1", parts: [{ kind: "text", text: "@Sage 回应" }], quote_message_id: "message-0", mention_ids: ["sage-test"], mention_all: false })
   })
 
+  it("发送时先插入本地占位，回执落地后再与正式消息对齐", async () => {
+    const { result } = renderHook(() => useChatSession())
+    await waitFor(() => expect(result.current.page).not.toBeNull())
+    let complete!: (value: { data_generation_id: string; message_id: string; message_seq: string; event_seq: string }) => void
+    vi.mocked(ipc.send).mockReturnValueOnce(new Promise((resolve) => { complete = resolve }))
+    let sending!: Promise<unknown>
+    act(() => { sending = result.current.send("马上回来", "request-pending") })
+    // ipc 还没返回，气泡已经在了
+    expect(result.current.pendingMessages.map((item) => (item.parts[0] as { text: string }).text)).toEqual(["马上回来"])
+    await act(async () => { complete({ data_generation_id: GENERATION, message_id: "message-9", message_seq: "9", event_seq: "9" }); await sending })
+    // 正式消息还没进列表前，占位继续挂着，不会出现「气泡闪一下消失」
+    expect(result.current.pendingMessages).toHaveLength(1)
+  })
+
+  it("发送失败时撤回本地占位", async () => {
+    const { result } = renderHook(() => useChatSession())
+    await waitFor(() => expect(result.current.page).not.toBeNull())
+    vi.mocked(ipc.send).mockRejectedValueOnce(new Error("网络断了"))
+    await act(async () => { await result.current.send("发不出去", "request-failed").catch(() => {}) })
+    expect(result.current.pendingMessages).toHaveLength(0)
+  })
+
   it("撤回事件就地替换该条，不清空窗口也不重建阅读锚点", async () => {
     const original = snapshot({ latest_message_seq: "2", latest_event_seq: "2" })
     vi.mocked(ipc.snapshot).mockResolvedValue(original)
@@ -142,7 +164,7 @@ describe("聊天室数据与事件", () => {
     expect(ipc.list).toHaveBeenCalledTimes(2)
   })
 
-  it("看历史时新消息不替换视图，回到最新才加载", async () => {
+  it("看历史时新消息不替换视图，回到最新只滚不重建", async () => {
     vi.mocked(ipc.snapshot).mockResolvedValue(snapshot({ latest_message_seq: "2", latest_event_seq: "2" }))
     vi.mocked(ipc.list).mockResolvedValue(page([1, 2]))
     const { result } = renderHook(() => useChatSession())
@@ -156,8 +178,11 @@ describe("聊天室数据与事件", () => {
     await act(async () => result.current.loadNewer())
     expect(result.current.hasNewMessages).toBe(true)
     vi.mocked(ipc.list).mockResolvedValue(page([2, 3]))
+    const callsBefore = vi.mocked(ipc.list).mock.calls.length
     await act(async () => result.current.goToLatest())
-    expect(result.current.page?.items.map((item) => item.seq)).toEqual(["2", "3"])
+    // 后面没有更多分页时只需要滚到底：重建窗口会让虚拟列表重新挂载，看起来就是闪一下。
+    expect(vi.mocked(ipc.list).mock.calls.length).toBe(callsBefore)
+    expect(result.current.page?.items.map((item) => item.seq)).toEqual(["1", "2", "3"])
     expect(result.current.hasNewMessages).toBe(false)
   })
 
@@ -224,7 +249,7 @@ describe("聊天室数据与事件", () => {
     expect(ipc.list).toHaveBeenCalledTimes(listCalls)
   })
 
-  it("正文 epoch 变化清掉旧正文并围绕当前渲染锚点重新读取", async () => {
+  it("正文 epoch 变化时保留旧正文，围绕当前渲染锚点就地换窗口", async () => {
     const original = snapshot({ latest_message_seq: "20", latest_event_seq: "20" })
     vi.mocked(ipc.snapshot).mockResolvedValue(original)
     vi.mocked(ipc.list).mockResolvedValue(page([10, 11, 12], { has_more_before: true, has_more_after: true, latest_message_seq: "20", latest_event_seq: "20" }))
@@ -240,7 +265,8 @@ describe("聊天室数据与事件", () => {
     let refresh!: Promise<void>
     act(() => { refresh = result.current.reload() })
     await waitFor(() => expect(result.current.snapshot?.room.content_epoch).toBe("1"))
-    expect(result.current.page).toBeNull()
+    // 新窗口还在路上时保留旧正文，不要先清空再等，否则中间会闪出一段空白。
+    expect(result.current.page?.items.map((item) => item.seq)).toEqual(["10", "11", "12"])
     const corrected = page([10, 11, 12], { has_more_before: true, has_more_after: true, latest_message_seq: "20", latest_event_seq: "23" })
     corrected.items[1] = { ...corrected.items[1]!, state: "recalled", parts: [] }
     await act(async () => { complete(corrected); await refresh })

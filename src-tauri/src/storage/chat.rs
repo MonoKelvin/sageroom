@@ -203,8 +203,11 @@ pub fn validate_list(request: &ChatListRequest) -> AppResult<()> {
 
 pub(crate) fn load_messages(conn: &Connection, sequences: &[i64]) -> AppResult<Vec<ChatMessage>> {
     let mut message_statement = conn.prepare("SELECT id, sender_id, created_at, state, quote_message_id, mention_all FROM messages WHERE seq = ?1")?;
-    let mut parts_statement =
-        conn.prepare("SELECT text FROM message_parts WHERE message_id = ?1 ORDER BY ordinal")?;
+    let mut parts_statement = conn.prepare(
+        "SELECT p.kind, p.text, a.id, a.file_name, a.mime_type, a.byte_size, a.width, a.height
+         FROM message_parts p LEFT JOIN attachment_objects a ON a.id = p.attachment_id
+         WHERE p.message_id = ?1 ORDER BY p.ordinal",
+    )?;
     let mut mentions_statement = conn.prepare(
         "SELECT target_participant_id FROM mentions WHERE message_id = ?1 ORDER BY ordinal",
     )?;
@@ -229,8 +232,38 @@ pub(crate) fn load_messages(conn: &Connection, sequences: &[i64]) -> AppResult<V
                 ))
             })?;
             let parts = parts_statement
-                .query_map([&id], |row| Ok(MessagePart::Text { text: row.get(0)? }))?
-                .collect::<rusqlite::Result<Vec<_>>>()?;
+                .query_map([&id], |row| {
+                    let kind: String = row.get(0)?;
+                    if kind == "attachment" {
+                        let Some(id) = row.get::<_, Option<String>>(2)? else {
+                            return Ok(None);
+                        };
+                        let mime_type: String = row.get(4)?;
+                        let byte_size: i64 = row.get(5)?;
+                        Ok(Some(MessagePart::Attachment {
+                            attachment: AttachmentObject {
+                                id,
+                                file_name: row.get(3)?,
+                                kind: if mime_type.starts_with("image/") {
+                                    AttachmentKind::Image
+                                } else {
+                                    AttachmentKind::File
+                                },
+                                mime_type,
+                                byte_size: byte_size.clamp(0, u32::MAX as i64) as u32,
+                                width: row.get(6)?,
+                                height: row.get(7)?,
+                            },
+                        }))
+                    } else {
+                        let text: Option<String> = row.get(1)?;
+                        Ok(text.map(|text| MessagePart::Text { text }))
+                    }
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
             let mention_ids = mentions_statement
                 .query_map([&id], |row| row.get(0))?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -286,33 +319,58 @@ fn sequence_query(conn: &Connection, sql: &str, cursor: i64, limit: u32) -> AppR
         .collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
+/// 校验并返回用于全文检索的纯文本。
+/// 附件参与「消息是否为空」的判断，文件名也会进入检索文本。
 pub(crate) fn validate_message_content(
     parts: &[MessagePart],
     quote: &Option<String>,
     mentions: &[String],
 ) -> AppResult<String> {
     if parts.is_empty() || parts.len() > 16 {
-        return Err(AppError::invalid("parts", "消息需要 1～16 个文本部分。"));
+        return Err(AppError::invalid("parts", "消息需要 1～16 个内容部分。"));
     }
     let mut text = String::new();
     let mut characters = 0;
+    let mut attachments = 0;
+    let mut attachment_bytes = 0u64;
     for part in parts {
-        let MessagePart::Text { text: value } = part else {
-            return Err(AppError::new(
-                ErrorCode::CapabilityUnsupported,
-                "当前交付只支持文本消息，图片和表情附件尚未启用。",
-            ));
-        };
-        characters += value.chars().count();
-        if value.len() > TEXT_BYTE_LIMIT.saturating_sub(text.len())
-            || characters > TEXT_CHARACTER_LIMIT
-        {
-            return Err(AppError::invalid(
-                "parts",
-                "消息超过 10000 个 Unicode 字符或 32KiB，请缩短后发送。",
-            ));
+        match part {
+            MessagePart::Text { text: value } => {
+                characters += value.chars().count();
+                if value.len() > TEXT_BYTE_LIMIT.saturating_sub(text.len())
+                    || characters > TEXT_CHARACTER_LIMIT
+                {
+                    return Err(AppError::invalid(
+                        "parts",
+                        "消息超过 10000 个 Unicode 字符或 32KiB，请缩短后发送。",
+                    ));
+                }
+                if !text.is_empty() {
+                    text.push(' ');
+                }
+                text.push_str(value);
+            }
+            MessagePart::Attachment { attachment } => {
+                attachments += 1;
+                attachment_bytes += u64::from(attachment.byte_size);
+                if !text.is_empty() {
+                    text.push(' ');
+                }
+                text.push_str(&attachment.file_name);
+            }
+            MessagePart::Emote { .. } => {
+                return Err(AppError::new(
+                    ErrorCode::CapabilityUnsupported,
+                    "表情包尚未启用。",
+                ));
+            }
         }
-        text.push_str(value);
+    }
+    if attachments > 9 {
+        return Err(AppError::invalid("parts", "单条消息最多 9 个附件。"));
+    }
+    if attachment_bytes > 64 * 1024 * 1024 {
+        return Err(AppError::invalid("parts", "单条消息的附件总量超过 64MiB。"));
     }
     if text.trim().is_empty() {
         return Err(AppError::invalid("parts", "消息不能只有空白字符。"));
@@ -396,11 +454,36 @@ pub(crate) fn insert_message(
         params![message_seq, message_id, sender_id],
     )?;
     for (ordinal, part) in parts.iter().enumerate() {
-        if let MessagePart::Text { text } = part {
-            transaction.execute(
-                "INSERT INTO message_parts VALUES (?1, ?2, 'text', ?3)",
-                params![message_id, ordinal as i64, text],
-            )?;
+        match part {
+            MessagePart::Text { text } => {
+                transaction.execute(
+                    "INSERT INTO message_parts(message_id,ordinal,kind,text) VALUES (?1,?2,'text',?3)",
+                    params![message_id, ordinal as i64, text],
+                )?;
+            }
+            MessagePart::Attachment { attachment } => {
+                // 只认领本次上传的暂存附件：已属于其他消息的一律拒绝，防止跨消息盗用。
+                let claimed = transaction.execute(
+                    "UPDATE attachment_objects SET message_id=?1 WHERE id=?2 AND message_id IS NULL",
+                    params![message_id, attachment.id],
+                )?;
+                if claimed != 1 {
+                    return Err(AppError::invalid(
+                        "parts",
+                        "附件已失效或已被其他消息使用，请重新上传。",
+                    ));
+                }
+                transaction.execute(
+                    "INSERT INTO message_parts(message_id,ordinal,kind,attachment_id) VALUES (?1,?2,'attachment',?3)",
+                    params![message_id, ordinal as i64, attachment.id],
+                )?;
+            }
+            MessagePart::Emote { .. } => {
+                return Err(AppError::new(
+                    ErrorCode::CapabilityUnsupported,
+                    "表情包尚未启用。",
+                ));
+            }
         }
     }
     for (ordinal, id) in mentions.iter().enumerate() {
@@ -785,6 +868,11 @@ impl Database {
         transaction.execute(
             "DELETE FROM message_parts WHERE message_id=?1",
             [&request.message_id],
+        )?;
+        crate::attachments::file::drop_message_attachments_in(
+            &transaction,
+            &self.root,
+            &request.message_id,
         )?;
         transaction.execute(
             "DELETE FROM mentions WHERE message_id=?1",

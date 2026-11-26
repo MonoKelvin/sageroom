@@ -819,7 +819,9 @@ fn apply_topic_fatigue(decision: &mut decision::Decision, addressed: bool) {
 fn apply_local_gate(decision: &mut decision::Decision, input: &crate::storage::runtime::RuntimeInput, addressed: bool) {
     let saturation = decision::local_saturation(input, now_ms());
     if addressed {
-        if saturation.repeated >= 2 || saturation.hot >= 7 { decision.messages.truncate(1) }
+        // 被点名时必须给完整回应：压条数会直接表现成「问一句答半句」。
+        // 只有连续复读才收一收，而且保留最有信息的那条。
+        if saturation.repeated >= 3 { decision.messages.truncate(1) }
         return;
     }
     // 完全复读是最强的沉默信号；但要连续三次以上，避免两人同频时全体噤声。
@@ -828,7 +830,7 @@ fn apply_local_gate(decision: &mut decision::Decision, input: &crate::storage::r
         decision.messages.clear();
         return;
     }
-    if saturation.repeated >= 2 || saturation.hot >= 6 || saturation.cooldown < 30 {
+    if saturation.repeated >= 2 || saturation.hot >= 8 {
         decision.messages.truncate(1);
     }
     // 空闲机会本来就是主动起话，话题饱和时更该换个新话题，而不是直接放弃这次机会。

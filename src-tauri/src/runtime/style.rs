@@ -50,11 +50,13 @@ impl Default for Policy {
     fn default() -> Self {
         Self {
             mode: "casual",
-            // 真人在微信里通常一条 5-16 字；28 字已接近上限。
-            preferred_chars: [5, 16],
-            max_message_chars: 28,
-            max_total_chars: 36,
-            max_messages: 2,
+            // 真人在微信里通常一条 5-20 字。上限给到 40 字、三条一轮：
+            // 太紧会被逼出一句「确实」「是这样」这种没信息量的应付话，
+            // 而且一轮只够说一条，接不上话。
+            preferred_chars: [6, 20],
+            max_message_chars: 40,
+            max_total_chars: 80,
+            max_messages: 3,
             model: None,
             repeated_opening: None,
         }
@@ -151,9 +153,10 @@ pub(super) fn for_input(input: &RuntimeInput, opportunity: &str) -> Policy {
     }
     if opportunity == "idle_tick" {
         policy.mode = "idle";
-        policy.preferred_chars = [4, 12];
-        policy.max_message_chars = policy.max_message_chars.min(20);
-        policy.max_total_chars = 28;
+        policy.preferred_chars = [5, 14];
+        // 主动起话也至少说清一件事，否则就是一句「在干嘛」然后把天聊死。
+        policy.max_message_chars = policy.max_message_chars.min(26);
+        policy.max_total_chars = 40;
         policy.max_messages = 1;
     } else if input.messages.iter().rev()
         .find(|message| message.state == MessageState::Visible && message.sender_id != input.agent.agent_id)
@@ -460,8 +463,8 @@ mod tests {
     #[test]
     fn long_casual_content_and_obvious_commentary_need_revision() {
         let policy = Policy::default();
-        assert!(policy.assess(&decision(&[&"长".repeat(49)])).unwrap().over_message_limit);
-        assert!(policy.assess(&decision(&["一", "二", "三"])).unwrap().too_many_messages);
+        assert!(policy.assess(&decision(&[&"长".repeat(41)])).unwrap().over_message_limit);
+        assert!(policy.assess(&decision(&["一", "二", "三", "四"])).unwrap().too_many_messages);
         assert!(policy.assess(&decision(&["这个比喻很有画面感，体验感拉满。"])).unwrap().formulaic_style);
         // 真实聊天里的感叹式点评与排队附和也要拦住。
         assert!(policy.assess(&decision(&["太空牵手也太浪漫了"])).unwrap().formulaic_style);
@@ -545,7 +548,7 @@ mod tests {
             invalid[field] = value;
             std::fs::write(&path, serde_json::to_vec(&invalid).unwrap()).unwrap();
             assert!(Model::load(&path).is_none(), "{field}");
-            assert_eq!(for_input(&input, "new_message").max_message_chars, 28);
+            assert_eq!(for_input(&input, "new_message").max_message_chars, 40);
         }
         std::fs::write(&path, vec![b' '; MODEL_BYTE_LIMIT as usize + 1]).unwrap();
         assert!(Model::load(&path).is_none());
@@ -583,7 +586,7 @@ mod tests {
         assert_eq!(clean.participation, Participation::Speak);
         assert_eq!(clean.messages.len(), 2);
 
-        let mut long = decision(&[&"长".repeat(40)]);
+        let mut long = decision(&[&"长".repeat(41)]);
         policy.enforce(&mut long);
         assert_eq!(long.participation, Participation::Observe);
 
@@ -591,7 +594,7 @@ mod tests {
         policy.enforce(&mut lecturing);
         assert_eq!(lecturing.participation, Participation::Observe);
 
-        let mut salvageable = decision(&["好累啊，今天从早到晚一直在开会，中间连口水都没顾上喝，脑子都木了。"]);
+        let mut salvageable = decision(&["好累啊，今天从早到晚一直在开会，中间连口水都没顾上喝，脑子都木了，晚上估计还得接着弄。"]);
         policy.enforce(&mut salvageable);
         assert_eq!(salvageable.participation, Participation::Speak);
         assert_eq!(body(&salvageable.messages[0].parts), "好累啊");
@@ -602,8 +605,8 @@ mod tests {
         assert_eq!(commentary.participation, Participation::Observe);
         assert!(commentary.messages.is_empty());
 
-        let mut too_many = decision(&["一", "二", "三"]);
+        let mut too_many = decision(&["一", "二", "三", "四"]);
         policy.enforce(&mut too_many);
-        assert_eq!(too_many.messages.len(), 2);
+        assert_eq!(too_many.messages.len(), 3);
     }
 }

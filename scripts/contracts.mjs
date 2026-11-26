@@ -65,6 +65,11 @@ const responseTypes = {
   DevelopmentModelImport: "GlobalConfiguration",
   AvatarImport: "AvatarObject | null",
   AvatarRead: "AvatarData",
+  AttachmentPick: "AttachmentImportResult",
+  AttachmentPaste: "AttachmentObject",
+  AttachmentRead: "AttachmentData",
+  AttachmentOpen: "boolean",
+  AttachmentDiscard: "AttachmentDiscardResult",
 }
 
 function files(directory, prefix = "") {

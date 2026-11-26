@@ -1077,18 +1077,16 @@ impl Database {
     }
 }
 
-const IMAGE_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "webp", "gif", "bmp", "avif"];
-
 /// 把消息片段转成一行文本摘要：附件与表情不暴露内部 ID。
 fn message_preview(parts: &[MessagePart]) -> String {
     let mut text = String::new();
     for part in parts {
         let piece = match part {
             MessagePart::Text { text } => text.replace(['\n', '\r'], " "),
-            MessagePart::Attachment { attachment_id } => {
-                let extension = attachment_id.rsplit('.').next().unwrap_or_default().to_ascii_lowercase();
-                if IMAGE_EXTENSIONS.contains(&extension.as_str()) { "[图片]" } else { "[文件]" }.to_string()
-            }
+            MessagePart::Attachment { attachment } => match attachment.kind {
+                AttachmentKind::Image => "[图片]".to_string(),
+                AttachmentKind::File => format!("[文件] {}", attachment.file_name),
+            },
             MessagePart::Emote { .. } => "[表情包]".to_string(),
         };
         if !text.is_empty() && !piece.is_empty() {

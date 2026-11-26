@@ -38,13 +38,26 @@
     }
   },
   {
-    "name": "附件结构合法但不代表已启用业务能力",
+    "name": "附件片段携带完整元数据",
     "contract": "ChatSendRequest",
     "valid": true,
     "payload": {
       "data_generation_id": "generation-fixture",
       "client_request_id": "request-attachment",
-      "parts": [{ "kind": "attachment", "attachment_id": "fixture-object" }],
+      "parts": [
+        {
+          "kind": "attachment",
+          "attachment": {
+            "id": "fixture-object",
+            "file_name": "合成图片.png",
+            "mime_type": "image/png",
+            "byte_size": 1024,
+            "kind": "image",
+            "width": 640,
+            "height": 480
+          }
+        }
+      ],
       "quote_message_id": null,
       "mention_ids": [],
       "mention_all": false

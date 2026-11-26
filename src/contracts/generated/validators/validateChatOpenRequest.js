@@ -1,6 +1,6 @@
 // generated/raw-validators/validateChatOpenRequest.js
-var validateChatOpenRequest = validate168;
-var schema224 = {
+var validateChatOpenRequest = validate218;
+var schema278 = {
 	"$schema": "https://json-schema.org/draft/2020-12/schema",
 	"additionalProperties": false,
 	"description": "主窗口领取「打开聊天页」意图；不依赖 eval 注入，事件丢失也能靠挂载/聚焦补取。",
@@ -11,14 +11,14 @@ var schema224 = {
 	"title": "ChatOpenRequest",
 	"type": "object"
 };
-function validate168(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate218(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
-	const evaluated0 = validate168.evaluated;
+	const evaluated0 = validate218.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		for (const key0 in data) if (!(key0 === "data_generation_id")) {
-			validate168.errors = [{
+			validate218.errors = [{
 				instancePath,
 				schemaPath: "#/additionalProperties",
 				keyword: "additionalProperties",
@@ -30,18 +30,18 @@ function validate168(data, { instancePath = "", parentData, parentDataProperty, 
 		if (data.data_generation_id !== void 0) {
 			let data0 = data.data_generation_id;
 			if (typeof data0 !== "string" && data0 !== null) {
-				validate168.errors = [{
+				validate218.errors = [{
 					instancePath: instancePath + "/data_generation_id",
 					schemaPath: "#/properties/data_generation_id/type",
 					keyword: "type",
-					params: { type: schema224.properties.data_generation_id.type },
+					params: { type: schema278.properties.data_generation_id.type },
 					message: "must be string,null"
 				}];
 				return false;
 			}
 		}
 	} else {
-		validate168.errors = [{
+		validate218.errors = [{
 			instancePath,
 			schemaPath: "#/type",
 			keyword: "type",
@@ -50,10 +50,10 @@ function validate168(data, { instancePath = "", parentData, parentDataProperty, 
 		}];
 		return false;
 	}
-	validate168.errors = vErrors;
+	validate218.errors = vErrors;
 	return true;
 }
-validate168.evaluated = {
+validate218.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

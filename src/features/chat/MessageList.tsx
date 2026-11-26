@@ -8,7 +8,9 @@ import { useToast } from "@/components/ui/toast-context"
 import { errorMessage } from "@/app/ipc"
 import { Avatar } from "@/components/Avatar"
 import { cn } from "@/lib/utils"
+import { MessageAttachments } from "./MessageAttachments"
 import type { ScrollAnchor } from "./useChatSession"
+import { isPendingMessage } from "./useChatSession"
 import { formatMessageTime, shouldInsertTimeTag } from "./message-time"
 import { SystemMessageTag } from "./SystemMessageTag"
 
@@ -49,7 +51,9 @@ const MessageRow = memo(function MessageRow({ message, participant, participants
   const alive = useRef(false)
   const recallDeadline = message.created_at + RECALL_WINDOW_MS
   const [recallExpired, setRecallExpired] = useState(() => Date.now() >= recallDeadline)
-  const canRecall = self && Boolean(onRecall) && message.state === "visible" && !recallExpired
+  // 本地占位消息还没拿到服务端回执，不能撤回，也不给右键菜单。
+  const pendingMessage = isPendingMessage(message)
+  const canRecall = self && Boolean(onRecall) && message.state === "visible" && !recallExpired && !pendingMessage
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
   useEffect(() => {
     if (!self || !onRecall || message.state !== "visible") return
@@ -67,6 +71,10 @@ const MessageRow = memo(function MessageRow({ message, participant, participants
   const resolvedQuote = message.quote_message_id ? quotes?.get(message.quote_message_id) : null
   const original = resolvedQuote?.state === "visible" ? resolvedQuote : null
   const quoteName = original ? participants.get(original.sender_id)?.display_name : null
+  const text = message.state === "visible" ? messageText(message) : ""
+  const attachments = message.state === "visible"
+    ? message.parts.flatMap((part) => part.kind === "attachment" ? [part.attachment] : [])
+    : []
 
   async function copy() {
     setFeedback(null)
@@ -94,7 +102,7 @@ const MessageRow = memo(function MessageRow({ message, participant, participants
     catch (cause) { if (alive.current) setFeedback({ text: errorMessage(cause), error: true }) }
   }
 
-  const menuItems: ContextMenuItem[] = message.state === "visible" ? [
+  const menuItems: ContextMenuItem[] = pendingMessage ? [] : message.state === "visible" ? [
     { key: "copy", icon: <IconCopy size={16} aria-hidden="true" />, label: "复制", onSelect: () => void copy() },
     ...(onQuote ? [{ key: "quote", icon: <IconQuote size={16} aria-hidden="true" />, label: "引用", onSelect: () => { quoted.current = true; setFeedback(null); onQuote(message) } }] : []),
     ...(canRecall ? [{ key: "recall", icon: <IconTrash size={16} aria-hidden="true" />, label: "撤回", variant: "destructive" as const, onSelect: () => void recall() }] : []),
@@ -104,7 +112,7 @@ const MessageRow = memo(function MessageRow({ message, participant, participants
   const chatBoundary = useCallback(() => bubbleRef.current?.closest<HTMLElement>(".chat-card") ?? null, [])
 
   return (
-    <article data-message-id={message.id} data-message-seq={message.seq} className={cn("chat-message", highlighted && "chat-message-highlight", entering && "chat-message-enter")} aria-label={`${participant.display_name}的消息`}>
+    <article data-message-id={message.id} data-message-seq={message.seq} data-pending={pendingMessage || undefined} className={cn("chat-message", highlighted && "chat-message-highlight", entering && "chat-message-enter")} aria-label={`${participant.display_name}的消息`}>
       {message.state === "recalled" ? <SystemMessageTag kind="recall">{participant.display_name}撤回了一条消息</SystemMessageTag> : <div className="chat-message-row" data-self={self}>
         <div className="chat-message-avatar"><Avatar name={participant.display_name} avatarId={participant.avatar_id} colorId={participant.kind === "agent" ? participant.id : undefined} generation={generation} size={40} radius={10} /></div>
         <div className="chat-message-stack">
@@ -116,9 +124,10 @@ const MessageRow = memo(function MessageRow({ message, participant, participants
             boundary={chatBoundary}
             onCloseAutoFocus={(event) => { if (quoted.current) { event.preventDefault(); quoted.current = false } }}
           >
-            <div ref={bubbleRef} className={cn("chat-message-bubble", self ? "chat-message-bubble-self" : "chat-message-bubble-other")}>
+            <div ref={bubbleRef} className={cn("chat-message-bubble", self ? "chat-message-bubble-self" : "chat-message-bubble-other")} data-media={attachments.length > 0 && !text ? "" : undefined}>
               {message.state === "visible" && message.quote_message_id && <button type="button" className="chat-message-quote" disabled={!original || !onLocateQuote} aria-label={original ? `定位引用 ${quoteName ?? "成员"}的消息` : "原消息不可用"} onClick={() => void locateQuote()}><strong>{quoteName ?? "引用"}</strong><span>{original?.state === "visible" ? messageText(original).slice(0, 120) : "原消息不可用"}</span></button>}
-              {message.state === "visible" ? messageText(message) : "消息已删除"}
+              {attachments.length > 0 && <MessageAttachments generation={generation ?? null} attachments={attachments} />}
+              {message.state === "visible" ? (text && <span className="chat-message-text">{text}</span>) : "消息已删除"}
               {message.state === "visible" && (message.mention_all || message.mention_ids.length > 0) && <div className="chat-message-mentions">{message.mention_all ? <span>@所有人</span> : message.mention_ids.map((id) => <span key={id}>@{participants.get(id)?.display_name ?? "已离开成员"}</span>)}</div>}
             </div>
           </ContextMenu>
@@ -305,8 +314,11 @@ function MessageViewport({
 }
 
 export function MessageList(props: Props) {
+  // 锚点只在挂载那一刻读一次：跳转时由 key 变化带来新值，
+  // 平时滚动不会因为父组件重渲染而重设滚动位置。
+  const [mountAnchor] = useState(props.restoreAnchor)
   return <section aria-label="聊天记录" className="relative flex min-h-0 flex-1 flex-col">
-    {props.page.items.length > 0 && (props.active ?? true) && <MessageViewport {...props} initialSaved={null} />}
+    {props.page.items.length > 0 && (props.active ?? true) && <MessageViewport {...props} restoreAnchor={mountAnchor} initialSaved={null} />}
     {!props.hideLatestNotice && (props.hasNewMessages || props.page.has_more_after) && <div className="chat-latest-position">
       <Button size="sm" variant="secondary" className="chat-latest-button" onClick={() => void props.onGoToLatest()}>
         <IconArrowDown size={16} aria-hidden="true" />
