@@ -60,7 +60,7 @@ dependencies = [
 
 [[package]]
 name = "sageroom-contracts"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "schemars",
  "serde",

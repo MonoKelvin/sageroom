@@ -12,6 +12,11 @@ use tauri::Manager;
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // 开机自启默认关闭：插件只提供系统级开关，不在启动时主动 enable。
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
@@ -62,6 +67,8 @@ pub fn run() {
             app::commands::ui_preferences_save,
             app::commands::tray_sync,
             app::commands::tray_open_main,
+            app::commands::autostart_status,
+            app::commands::autostart_set,
             app::commands::agent_list,
             app::commands::agent_delete,
             app::commands::agent_save,

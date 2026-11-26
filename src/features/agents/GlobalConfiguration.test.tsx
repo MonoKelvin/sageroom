@@ -35,7 +35,8 @@ describe("即时应用的全局配置", () => {
     expect(within(results).getAllByRole("listitem")).toHaveLength(1)
     expect(within(results).getByText("测试热点")).toBeInTheDocument()
     expect(screen.queryByLabelText("搜索关键词", { selector: "input" })).not.toBeInTheDocument()
-    expect(screen.getByText("让 AI 按聊天需要查新闻，自己选关键词、筛选和整理结果。")).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "联网新闻" })).not.toBeInTheDocument()
+    expect(screen.queryByText("让 AI 按聊天需要查新闻，自己选关键词、筛选和整理结果。")).not.toBeInTheDocument()
     expect(ipc.saveNewsConfiguration).not.toHaveBeenCalled()
   })
   it("新闻配置读取失败暴露原因与重试入口，不再停留空提示", async () => {

@@ -10,7 +10,6 @@ import { EditableInput } from "@/components/ui/editable-input"
 import { EditableTextarea } from "@/components/ui/editable-textarea"
 import { NumberInput } from "@/components/ui/number-input"
 import { SegmentedControl } from "@/components/ui/segmented-control"
-import { SettingSection } from "@/components/ui/setting-row"
 import { SettingsSelect } from "@/components/ui/settings-select"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -228,7 +227,7 @@ export function GlobalConfiguration({ active }: { active: boolean }) {
             <ResourceFeedback resource={store.news} state={newsState} />
           </div>}
           {newsState.value && <div className="config-stack">
-            <SettingSection title="联网新闻" description="让 AI 按聊天需要查新闻，自己选关键词、筛选和整理结果。">
+            <div className="setting-section-body">
               <Field label="联网搜索" caption="开启后，智能体可在需要时自行联网查新闻。"><Switch label="联网搜索" checked={newsState.value.configuration.enabled} onCheckedChange={(enabled) => void run(() => store.news.change((current) => ({ ...current, configuration: { ...current.configuration, enabled } })))} /></Field>
               <Field label="搜索来源" caption={newsProviders.find((item) => item.value === newsState.value?.configuration.provider)?.caption}><SettingsSelect label="搜索来源" value={newsState.value.configuration.provider} options={newsProviders} onValueChange={(provider) => void run(() => store.news.change((current) => ({ ...current, configuration: { ...current.configuration, provider: provider as NewsProvider } })))} /></Field>
               {(["tavily", "serper"] as NewsProvider[]).includes(newsState.value.configuration.provider) && <NewsCredentials key={newsState.value.configuration.provider} provider={newsState.value.configuration.provider} active={active && section === "news"} disabled={runtime.exiting} />}
@@ -259,7 +258,7 @@ export function GlobalConfiguration({ active }: { active: boolean }) {
                 </li>)}</ol>}
                 {!!visibleNewsPreview.diagnostics.length && <Disclosure title="来源诊断">{visibleNewsPreview.diagnostics.map((item) => <p className="form-caption" key={item.provider}>{newsLabel(item.provider)}：{item.message}</p>)}</Disclosure>}
               </div>}
-            </SettingSection>
+            </div>
             <ResourceFeedback resource={store.news} state={newsState} />
           </div>}
         </div>

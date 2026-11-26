@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties } from "react"
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react"
 import { IconX } from "@tabler/icons-react"
 import { ipc } from "@/app/ipc"
 import { loadUiPreferences } from "./uiPreferences"
@@ -15,6 +15,13 @@ import { useConfigurationAppearance, useConfigurationRuntime } from "./configura
 export type { ApplicationPageProps, PageId } from "./navigation"
 
 const resizeDirections = ["North", "NorthEast", "East", "SouthEast", "South", "SouthWest", "West", "NorthWest"] as const
+
+declare global {
+  interface Window {
+    /** Rust 点击托盘会话时自增；事件可能早于 React 挂载，挂载后靠它补导航。 */
+    __SAGEROOM_OPEN_CHAT__?: number
+  }
+}
 
 export function AppShell() {
   const session = useChatSession()
@@ -58,10 +65,16 @@ function ApplicationShell({ session }: { session: ReturnType<typeof useChatSessi
   }, [generation, trayFlashing, conversationCount])
 
   // 托盘面板点击会话后由 Rust 派发事件，主窗口落到聊天页而不是停在别的页面。
+  // 标记与事件双保险：窗口刚启动、React 还没挂载时事件会丢，但标记仍在。
+  const openChatMarker = useRef(0)
   useEffect(() => {
-    const handler = () => navigate("chat")
-    window.addEventListener("sageroom-open-chat", handler)
-    return () => window.removeEventListener("sageroom-open-chat", handler)
+    const open = () => {
+      openChatMarker.current = Math.max(openChatMarker.current, window.__SAGEROOM_OPEN_CHAT__ ?? 0)
+      navigate("chat")
+    }
+    window.addEventListener("sageroom-open-chat", open)
+    if ((window.__SAGEROOM_OPEN_CHAT__ ?? 0) > openChatMarker.current) open()
+    return () => window.removeEventListener("sageroom-open-chat", open)
   }, [navigate])
 
   useEffect(() => {

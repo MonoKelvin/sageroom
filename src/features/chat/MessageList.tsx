@@ -144,6 +144,8 @@ type Props = MessageActions & {
   hasNewMessages: boolean
   /** 停留期间新到达的条数，用于底部提示；为 0 时退化为通用文案。 */
   newMessageCount: number
+  /** 顶部未读入口优先，或第一条未读已在视口内时，底部胶囊整体让位。 */
+  hideLatestNotice?: boolean
   scrollToBottomSignal?: number
   loadingMore: boolean
   onLoadOlder: () => Promise<void>
@@ -305,7 +307,7 @@ function MessageViewport({
 export function MessageList(props: Props) {
   return <section aria-label="聊天记录" className="relative flex min-h-0 flex-1 flex-col">
     {props.page.items.length > 0 && (props.active ?? true) && <MessageViewport {...props} initialSaved={null} />}
-    {(props.hasNewMessages || props.page.has_more_after) && <div className="chat-latest-position">
+    {!props.hideLatestNotice && (props.hasNewMessages || props.page.has_more_after) && <div className="chat-latest-position">
       <Button size="sm" variant="secondary" className="chat-latest-button" onClick={() => void props.onGoToLatest()}>
         <IconArrowDown size={16} aria-hidden="true" />
         {props.hasNewMessages ? (props.newMessageCount > 0 ? `${props.newMessageCount} 条新消息` : "有新消息") : "回到最新"}

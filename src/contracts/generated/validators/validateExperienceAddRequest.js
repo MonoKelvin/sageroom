@@ -1,16 +1,16 @@
 import { t as require_ucs2length } from "./ucs2length.js";
 // generated/raw-validators/validateExperienceAddRequest.js
-var validateExperienceAddRequest = validate260;
+var validateExperienceAddRequest = validate276;
 var func2 = require_ucs2length().default;
-function validate260(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
+function validate276(data, { instancePath = "", parentData, parentDataProperty, rootData = data, dynamicAnchors = {} } = {}) {
 	let vErrors = null;
-	const evaluated0 = validate260.evaluated;
+	const evaluated0 = validate276.evaluated;
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		let missing0;
 		if (data.data_generation_id === void 0 && (missing0 = "data_generation_id") || data.agent_id === void 0 && (missing0 = "agent_id") || data.content === void 0 && (missing0 = "content") || data.score === void 0 && (missing0 = "score")) {
-			validate260.errors = [{
+			validate276.errors = [{
 				instancePath,
 				schemaPath: "#/required",
 				keyword: "required",
@@ -20,7 +20,7 @@ function validate260(data, { instancePath = "", parentData, parentDataProperty, 
 			return false;
 		} else {
 			for (const key0 in data) if (!(key0 === "agent_id" || key0 === "content" || key0 === "data_generation_id" || key0 === "score")) {
-				validate260.errors = [{
+				validate276.errors = [{
 					instancePath,
 					schemaPath: "#/additionalProperties",
 					keyword: "additionalProperties",
@@ -31,7 +31,7 @@ function validate260(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 			if (data.agent_id !== void 0) {
 				if (typeof data.agent_id !== "string") {
-					validate260.errors = [{
+					validate276.errors = [{
 						instancePath: instancePath + "/agent_id",
 						schemaPath: "#/properties/agent_id/type",
 						keyword: "type",
@@ -47,7 +47,7 @@ function validate260(data, { instancePath = "", parentData, parentDataProperty, 
 					let data1 = data.content;
 					if (typeof data1 === "string") {
 						if (func2(data1) > 2e3) {
-							validate260.errors = [{
+							validate276.errors = [{
 								instancePath: instancePath + "/content",
 								schemaPath: "#/properties/content/maxLength",
 								keyword: "maxLength",
@@ -56,7 +56,7 @@ function validate260(data, { instancePath = "", parentData, parentDataProperty, 
 							}];
 							return false;
 						} else if (func2(data1) < 1) {
-							validate260.errors = [{
+							validate276.errors = [{
 								instancePath: instancePath + "/content",
 								schemaPath: "#/properties/content/minLength",
 								keyword: "minLength",
@@ -66,7 +66,7 @@ function validate260(data, { instancePath = "", parentData, parentDataProperty, 
 							return false;
 						}
 					} else {
-						validate260.errors = [{
+						validate276.errors = [{
 							instancePath: instancePath + "/content",
 							schemaPath: "#/properties/content/type",
 							keyword: "type",
@@ -80,7 +80,7 @@ function validate260(data, { instancePath = "", parentData, parentDataProperty, 
 				if (valid0) {
 					if (data.data_generation_id !== void 0) {
 						if (typeof data.data_generation_id !== "string") {
-							validate260.errors = [{
+							validate276.errors = [{
 								instancePath: instancePath + "/data_generation_id",
 								schemaPath: "#/properties/data_generation_id/type",
 								keyword: "type",
@@ -95,7 +95,7 @@ function validate260(data, { instancePath = "", parentData, parentDataProperty, 
 						if (data.score !== void 0) {
 							let data3 = data.score;
 							if (!(typeof data3 == "number" && !(data3 % 1) && !isNaN(data3) && isFinite(data3))) {
-								validate260.errors = [{
+								validate276.errors = [{
 									instancePath: instancePath + "/score",
 									schemaPath: "#/properties/score/type",
 									keyword: "type",
@@ -106,7 +106,7 @@ function validate260(data, { instancePath = "", parentData, parentDataProperty, 
 							}
 							if (typeof data3 == "number" && isFinite(data3)) {
 								if (data3 > 100 || isNaN(data3)) {
-									validate260.errors = [{
+									validate276.errors = [{
 										instancePath: instancePath + "/score",
 										schemaPath: "#/properties/score/maximum",
 										keyword: "maximum",
@@ -118,7 +118,7 @@ function validate260(data, { instancePath = "", parentData, parentDataProperty, 
 									}];
 									return false;
 								} else if (data3 < 0 || isNaN(data3)) {
-									validate260.errors = [{
+									validate276.errors = [{
 										instancePath: instancePath + "/score",
 										schemaPath: "#/properties/score/minimum",
 										keyword: "minimum",
@@ -138,7 +138,7 @@ function validate260(data, { instancePath = "", parentData, parentDataProperty, 
 			}
 		}
 	} else {
-		validate260.errors = [{
+		validate276.errors = [{
 			instancePath,
 			schemaPath: "#/type",
 			keyword: "type",
@@ -147,10 +147,10 @@ function validate260(data, { instancePath = "", parentData, parentDataProperty, 
 		}];
 		return false;
 	}
-	validate260.errors = vErrors;
+	validate276.errors = vErrors;
 	return true;
 }
-validate260.evaluated = {
+validate276.evaluated = {
 	"props": true,
 	"dynamicProps": false,
 	"dynamicItems": false

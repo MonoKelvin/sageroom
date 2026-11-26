@@ -1,5 +1,5 @@
 import type {} from "@testing-library/jest-dom/vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ApplicationPageProps } from "@/app/navigation"
 import type { AgentRuntimeStatus } from "@/contracts/generated"
@@ -103,6 +103,30 @@ describe("会话未读", () => {
     await waitFor(() => expect(inbox.markRead).toHaveBeenCalledWith("room-test", "3"))
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
+  })
+
+  it("滚动到第一条未读时立刻收起顶部提示", async () => {
+    vi.spyOn(document, "hasFocus").mockReturnValue(true)
+    const summary = inboxSummary([inboxConversation({
+      unread_count: 5, latest_seq: "3", last_read_seq: "2",
+      first_unread_seq: "3", first_unread_id: "message-3",
+      latest_at: Date.now(), latest_sender: "小夏", latest_preview: "在吗",
+    })])
+    const session = { ...sessionFor(), page: page(["3"]) }
+    const { container } = render(<ChatView inbox={inboxFixture(summary)} session={session} active onNavigate={vi.fn()} />)
+    expect(await screen.findByRole("status")).toHaveTextContent("5 条未读消息")
+
+    const scroller = container.querySelector<HTMLElement>(".chat-list-scroller")
+    if (!scroller) throw new Error("没有找到聊天滚动容器")
+    const article = document.createElement("article")
+    article.dataset.messageId = "message-3"
+    scroller.append(article)
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      top: 100, bottom: 140, left: 0, right: 300, width: 300, height: 40, x: 0, y: 100,
+      toJSON: () => ({}),
+    } as DOMRect)
+    act(() => { scroller.dispatchEvent(new Event("scroll")) })
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument())
   })
 
   it("免打扰会话用浅色圆点代替数字，并显示铃铛", () => {

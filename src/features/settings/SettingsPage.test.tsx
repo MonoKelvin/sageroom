@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ipc, IpcError } from "@/app/ipc"
+import * as ipcModule from "@/app/ipc"
 import { useConfigurationAppearance } from "@/app/configurationContext"
 import { APP_METADATA } from "@/app/metadata"
 import { ConfigurationTestProvider, mockConfigurationIpc, pageProps } from "./configuration.test-fixtures"
@@ -13,6 +14,19 @@ function page(props = pageProps()) { return <ConfigurationTestProvider snapshot=
 async function theme(value: string) { await userEvent.click(screen.getByRole("combobox", { name: "主题" })); await userEvent.click(await screen.findByRole("option", { name: value })) }
 
 describe("软件设置直接应用", () => {
+  it("操作中的开机自启默认关闭，开启后写入系统自启项", async () => {
+    vi.spyOn(ipcModule, "isDesktopEnvironment").mockReturnValue(true)
+    vi.spyOn(ipc, "autostartStatus").mockResolvedValue({ enabled: false })
+    const setAutostart = vi.spyOn(ipc, "autostartSet").mockResolvedValue({ enabled: true })
+    render(page())
+    await userEvent.click(screen.getByRole("button", { name: "操作" }))
+    const toggle = await screen.findByRole("switch", { name: "开机自启" })
+    await waitFor(() => expect(toggle).toHaveAttribute("data-state", "unchecked"))
+    await userEvent.click(toggle)
+    await waitFor(() => expect(setAutostart).toHaveBeenCalledWith({ enabled: true }))
+    await waitFor(() => expect(toggle).toHaveAttribute("data-state", "checked"))
+  })
+
   it("首次激活展示，主题选择和动画开关直接写入并更新共享外观资源", async () => {
     const props = pageProps(false)
     const view = render(page(props))

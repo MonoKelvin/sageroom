@@ -39,6 +39,9 @@ class ChatStyleTests(unittest.TestCase):
         self.assertEqual(trainer.features(text), expected)
         self.assertEqual(trainer.features("")[1], 0)
         self.assertEqual(trainer.features("...~~～…")[4], 5)
+        # 真实聊天暴露的感叹点评与排队附和要计入对应的两套特征。
+        self.assertGreater(trainer.features("太空牵手也太浪漫了")[10], 0)
+        self.assertGreater(trainer.features("算我一个，给我留一罐")[11], 0)
 
     def test_parsers_cover_douban_tieba_ptt_qingyun_and_weibo(self):
         self.assertEqual(trainer.parse_douban("1\t上下文\t晚饭 吃了 面条\n".encode()), "晚饭 吃了 面条")

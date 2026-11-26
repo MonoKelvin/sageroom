@@ -1,7 +1,8 @@
 use std::{sync::Mutex, time::Duration};
 
 use tauri::{
-    AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    AppHandle, Emitter, Manager, PhysicalPosition, Rect, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
     image::Image,
     tray::{MouseButton, MouseButtonState, TrayIconEvent},
 };
@@ -10,8 +11,17 @@ use crate::domain::contracts::{InboxGetRequest, TraySyncState};
 
 pub const POPUP_LABEL: &str = "tray_popup";
 pub const TRAY_ID: &str = "sageroom";
-const POPUP_WIDTH: f64 = 320.0;
-const POPUP_HEIGHT: f64 = 288.0;
+const POPUP_WIDTH: f64 = 260.0;
+/// 与 tray.css 的尺寸一一对应：面板 padding 8 + 边框 1（每侧共 9），
+/// 列表项固定 52，项间距 2。窗口高度必须精确匹配，否则会出现无谓滚动条或空白。
+const PANEL_INSET: f64 = 9.0;
+const ITEM_HEIGHT: f64 = 52.0;
+const ITEM_GAP: f64 = 2.0;
+/// 超过 3 条才让列表内部滚动；少于 3 条则按实际条数收缩窗口。
+const MAX_VISIBLE_ITEMS: u32 = 3;
+const MIN_POPUP_HEIGHT: f64 = PANEL_INSET * 2.0 + ITEM_HEIGHT;
+/// 面板下沿与任务栏上沿的留白；面板固定在工作区底部，不跟随鼠标。
+const TASKBAR_GAP: f64 = 8.0;
 const FLASH_INTERVAL: Duration = Duration::from_millis(700);
 const ANCHOR_RADIUS: f64 = 90.0;
 
@@ -132,8 +142,8 @@ pub fn start_flasher(app: AppHandle) {
 pub fn install_popup(app: &AppHandle) -> tauri::Result<()> {
     WebviewWindowBuilder::new(app, POPUP_LABEL, WebviewUrl::App("index.html".into()))
         .title("Sageroom")
-        .inner_size(POPUP_WIDTH, POPUP_HEIGHT)
-        .min_inner_size(260.0, 180.0)
+        .inner_size(POPUP_WIDTH, MIN_POPUP_HEIGHT)
+        .min_inner_size(POPUP_WIDTH, MIN_POPUP_HEIGHT)
         .decorations(false)
         .transparent(true)
         .shadow(false)
@@ -171,54 +181,85 @@ fn cursor_near_anchor(app: &AppHandle, anchor: Option<PhysicalPosition<f64>>) ->
     (dx * dx + dy * dy).sqrt() <= ANCHOR_RADIUS
 }
 
-pub fn show_popup(app: &AppHandle, position: PhysicalPosition<f64>) {
+/// 列表窗口高度与 CSS 一一对应：1 项起、3 项封顶；超过 3 条由列表自身滚动。
+fn popup_height(count: u32) -> f64 {
+    let visible = count.clamp(1, MAX_VISIBLE_ITEMS);
+    PANEL_INSET * 2.0 + visible as f64 * ITEM_HEIGHT + (visible - 1) as f64 * ITEM_GAP
+}
+
+/// 托盘图标的几何中心（物理像素）：面板水平对齐它，而不是在任务栏上方整体居中。
+fn tray_icon_center(rect: &Rect, scale: f64) -> PhysicalPosition<f64> {
+    let origin = rect.position.to_physical::<f64>(scale);
+    let size = rect.size.to_physical::<f64>(scale);
+    PhysicalPosition::new(origin.x + size.width / 2.0, origin.y + size.height / 2.0)
+}
+
+pub fn show_popup(app: &AppHandle, rect: &Rect) {
     let Some(window) = app.get_webview_window(POPUP_LABEL) else {
         return;
     };
     let state = app.state::<TrayState>();
-    state.set_anchor(position);
-    // 面板高度按未读会话数伸缩，避免少数会话时留大片空白、多会话时被固定高度裁切。
-    let count = app.state::<TrayState>().conversation_count();
-    let logical_height = (52.0 + count.min(5) as f64 * 56.0).max(108.0);
     let scale = window.scale_factor().unwrap_or(1.0);
+    let anchor = tray_icon_center(rect, scale);
+    state.set_anchor(anchor);
+    let count = state.conversation_count();
+    let logical_height = popup_height(count);
     let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize {
-        width: (POPUP_WIDTH * scale) as u32,
-        height: (logical_height * scale) as u32,
+        // 四舍五入而非截断：高 DPI 下少 1 个物理像素也会触发滚动条。
+        width: (POPUP_WIDTH * scale).round() as u32,
+        height: (logical_height * scale).round() as u32,
     }));
-    let size = window
-        .outer_size()
-        .unwrap_or(tauri::PhysicalSize::new(POPUP_WIDTH as u32, POPUP_HEIGHT as u32));
+    let size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(
+        POPUP_WIDTH as u32,
+        MIN_POPUP_HEIGHT as u32,
+    ));
     let monitor = window
         .current_monitor()
         .ok()
         .flatten()
         .or_else(|| app.primary_monitor().ok().flatten());
-    let mut x = position.x - size.width as f64 / 2.0;
-    let mut y = position.y - size.height as f64 - 12.0;
-    if let Some(monitor) = monitor {
-        let origin = monitor.position();
-        let screen = monitor.size();
-        let min_x = origin.x as f64 + 8.0;
-        let max_x = origin.x as f64 + screen.width as f64 - size.width as f64 - 8.0;
-        x = x.clamp(min_x, max_x.max(min_x));
-        let min_y = origin.y as f64 + 8.0;
-        if y < min_y {
-            // 任务栏在顶部或图标过高时翻到图标下方。
-            y = position.y + 20.0;
+    // 水平方向贴着托盘图标（并夹在屏幕内），垂直方向贴工作区下沿，也就是任务栏上方。
+    let (x, y) = match monitor {
+        Some(monitor) => {
+            let work = monitor.work_area();
+            let screen = monitor.size();
+            let screen_origin = monitor.position();
+            let min_x = screen_origin.x as f64 + TASKBAR_GAP;
+            let max_x = (screen_origin.x as f64 + screen.width as f64
+                - size.width as f64
+                - TASKBAR_GAP)
+                .max(min_x);
+            let x = (anchor.x - size.width as f64 / 2.0).clamp(min_x, max_x);
+            let y = work.position.y as f64 + work.size.height as f64
+                - size.height as f64
+                - TASKBAR_GAP;
+            (x, y)
         }
-        let max_y = origin.y as f64 + screen.height as f64 - size.height as f64 - 8.0;
-        y = y.clamp(min_y, max_y.max(min_y));
-    }
+        None => (
+            anchor.x - size.width as f64 / 2.0,
+            anchor.y - size.height as f64 - TASKBAR_GAP,
+        ),
+    };
     let _ = window.set_position(PhysicalPosition::new(x, y));
     let _ = window.show();
-    // 直接读取并推送汇总，避免面板自己两次 IPC 与事件监听的时序竞态。
+    // 汇总由 Rust 直接推送：Tauri 事件可能早于前端注册监听而丢失，
+    // 因此同时把数据写进面板的全局变量并派发 DOM 事件，面板无需靠两次 IPC 才能显示内容。
     let push_app = app.clone();
+    let popup = window.clone();
     tauri::async_runtime::spawn(async move {
         let Some(state) = push_app.try_state::<crate::app::state::AppState>() else { return };
         let Ok(worker) = state.worker() else { return };
         let generation = state.generation.clone();
-        if let Ok(summary) = worker.get_inbox(InboxGetRequest { data_generation_id: generation }).await {
-            let _ = push_app.emit("sageroom-tray-summary", summary);
+        if let Ok(summary) = worker.get_inbox(InboxGetRequest { data_generation_id: generation.clone() }).await {
+            let _ = push_app.emit("sageroom-tray-summary", &summary);
+            if let Ok(json) = serde_json::to_string(&summary) {
+                // generation 一并注入：点击会话时不再依赖可能失败的 snapshot IPC 才能拿到它。
+                let generation_json = serde_json::to_string(&generation).unwrap_or_else(|_| "\"\"".into());
+                let script = format!(
+                    "window.__TRAY_GENERATION__ = {generation_json}; window.__TRAY_SUMMARY__ = {json}; window.dispatchEvent(new CustomEvent('sageroom-tray-summary-dom', {{ detail: {json} }}))"
+                );
+                let _ = popup.eval(&script);
+            }
         }
     });
     watch_popup(app.clone());
@@ -257,13 +298,13 @@ pub fn hide_popup(app: &AppHandle) {
 
 pub fn on_icon_event(app: &AppHandle, event: &TrayIconEvent) {
     match event {
-        TrayIconEvent::Enter { position, .. } => {
+        TrayIconEvent::Enter { rect, .. } => {
             if app.state::<TrayState>().has_conversations() {
-                show_popup(app, *position);
+                show_popup(app, rect);
             }
         }
         // 部分 Windows 环境只上报 Move 而不上报 Enter，这里按不可见状态兜底。
-        TrayIconEvent::Move { position, .. } => {
+        TrayIconEvent::Move { rect, .. } => {
             if !app.state::<TrayState>().has_conversations() {
                 return;
             }
@@ -271,7 +312,7 @@ pub fn on_icon_event(app: &AppHandle, event: &TrayIconEvent) {
                 .get_webview_window(POPUP_LABEL)
                 .is_some_and(|window| !window.is_visible().unwrap_or(false))
             {
-                show_popup(app, *position);
+                show_popup(app, rect);
             }
         }
         TrayIconEvent::Click {
@@ -300,6 +341,17 @@ mod tests {
         // 会话被删空后立即回到不弹出。
         state.sync(false, 0);
         assert!(!state.has_conversations());
+    }
+
+    #[test]
+    fn popup_height_matches_one_to_three_list_items() {
+        // 面板 padding 8×2 + 边框 1×2 + 每项 52 + 项间距 2×(n-1)。
+        assert_eq!(super::popup_height(0), 70.0);
+        assert_eq!(super::popup_height(1), 70.0);
+        assert_eq!(super::popup_height(2), 124.0);
+        assert_eq!(super::popup_height(3), 178.0);
+        // 超过 3 条窗口不再长高，滚动交给列表自身。
+        assert_eq!(super::popup_height(9), 178.0);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 {
   "name": "sageroom",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "releaseDate": "2026-11-25",
   "private": true,
   "productName": "Sageroom",
@@ -26,6 +26,7 @@
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "test": "vitest run",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm contracts:check",
     "build": "node scripts/sync-metadata.mjs && tsc -b && vite build",
     "tauri": "node scripts/sync-metadata.mjs && tauri",
     "sync:metadata": "node scripts/sync-metadata.mjs",

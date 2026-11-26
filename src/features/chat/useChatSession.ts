@@ -428,7 +428,9 @@ export function useChatSession() {
   const updateAtBottom = useCallback((value: boolean) => {
     atBottomRef.current = value
     setAtBottom(value)
-    if (value && !pageRef.current?.has_more_after) setHasNewMessages(false)
+    // 回到底部就是看完了：无论分页窗口是否仍标记“后面有消息”，新消息提示都要清掉。
+    // 自己发送消息后也会走这里，否则会误弹「有新消息」。
+    if (value) setHasNewMessages(false)
   }, [])
 
   return {

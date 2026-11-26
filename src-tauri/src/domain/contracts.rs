@@ -819,6 +819,26 @@ pub enum SendKey { Enter, CtrlEnter }
 fn default_close_action() -> CloseAction { CloseAction::Hide }
 fn default_send_key() -> SendKey { SendKey::Enter }
 
+/// 开机自启是系统级开关，不写入应用偏好：以操作系统中的自启项为准，默认关闭。
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AutostartRequest {
+    #[serde(default)]
+    pub data_generation_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(deny_unknown_fields)]
+pub struct AutostartSetRequest {
+    pub enabled: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AutostartState {
+    pub enabled: bool,
+}
+
 impl Default for UiPreferences {
     fn default() -> Self { Self { close_action: default_close_action(), send_key: default_send_key() } }
 }

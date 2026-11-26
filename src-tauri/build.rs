@@ -33,6 +33,8 @@ fn main() {
             "inbox_set_muted",
             "tray_sync",
             "tray_open_main",
+            "autostart_status",
+            "autostart_set",
             "app_request_exit",
             "app_exit_ready",
         ]),

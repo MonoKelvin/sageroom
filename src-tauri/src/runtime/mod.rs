@@ -68,9 +68,11 @@ pub struct IdleClock {
 impl IdleClock {
     // 冷场目标只用来决定「多久没说话算一次机会」，不再随空档一路拉长到 45 分钟；
     // 否则一次长假会让智能体之后再也不主动开口，正是用户看到的长时间冷场。
-    const INITIAL_MS: u64 = 5 * 60_000;
-    const MIN_MS: u64 = 90_000;
-    const MAX_MS: u64 = 12 * 60_000;
+    // 真实数据显示白天冷场仍达 50–74 分钟：三个成员各自乘活动系数与 miss 放大后过长，
+    // 这里把基线与上限一起收紧，让「一次长假」与「常态冷场处在同一量级」。
+    const INITIAL_MS: u64 = 2 * 60_000;
+    const MIN_MS: u64 = 60_000;
+    const MAX_MS: u64 = 5 * 60_000;
     /// 小于此间隔视为连续对话，不计入冷场统计。
     const MIN_GAP_MS: i64 = 30_000;
 
@@ -116,15 +118,18 @@ fn observe_message_activity() {
 /// 活跃度 100 约 ×0.6，50 约 ×1.0，0 约 ×1.4；睡眠时再放宽一点。
 fn idle_interval_ms(activity: u8, target_ms: u64, seed: u64, sleeping: bool, misses: u32) -> u64 {
     let activity = i64::from(activity.min(100));
-    let factor = 1.0 + (50 - activity) as f64 / 100.0 * 0.8;
+    // 原先低活跃按 1.4 倍、高活跃 0.6 倍放大；静默门槛收紧后收敛系数，
+    // 避免三个成员的「看一眼」机会错开成十分钟的真空。
+    let factor = 1.0 + (50 - activity) as f64 / 100.0 * 0.4;
     let base = (target_ms as f64 * factor) as u64;
     let jitter = seed % (base / 4 + 1);
     let interval = base + jitter;
     // sleep/defer 是成员明确要求休息，放宽到 2 倍；普通 observe 不再叠加延迟。
     let interval = if sleeping { interval * 2 } else { interval };
-    // 连续几次空闲机会都没话说，最多放慢 50%，避免一次没灵感就进入长时间沉默。
-    let interval = interval.saturating_mul(u64::from(2 + misses.min(2))) / 2;
-    interval.clamp(30_000, 30 * 60_000)
+    // miss 只表示「这次没话说」，不表示用户离开了。原公式最多放大到 2 倍，
+    // 与冷却门控叠加后会滚成半小时以上的真空；这里最多放慢 25%。
+    let interval = interval.saturating_mul(u64::from(4 + misses.min(2))) / 4;
+    interval.clamp(30_000, 10 * 60_000)
 }
 
 fn random_seed() -> u64 {
@@ -138,7 +143,10 @@ fn reading_delay_ms(addressed: bool, seed: u64) -> u64 {
 /// 空闲触发概率：高活跃成员几乎每次空闲机会都会真正去看一眼有没有可聊的，
 /// 是否发言仍由模型决定；低活跃成员保持克制。
 fn idle_trigger_chance(activity: u8) -> u64 {
-    20 + u64::from(activity.min(100)) * 75 / 100
+    // 原下限 20% 意味着低活跃成员平均每 5 次空闲才真正看一眼，
+    // 叠上间隔后白天空档轻易超过半小时；提高到至少一半机会会去看，
+    // 说不说仍由模型决定，不会强制发言。
+    50 + u64::from(activity.min(100)) * 45 / 100
 }
 
 struct Actor {
@@ -740,9 +748,10 @@ async fn run_actor(
             decision.participation,
             Participation::Sleep | Participation::Defer
         );
-        // 刚参与过对话，重新开始空闲计时，避免马上又主动插话。
+        // 只有「看了却主动选择沉默」才算一次 miss；话题饱和被门控压下的 observe
+        // 不该让下次更晚打扰，否则「越没话说→越不问→越冷场」会自我强化。
         idle_misses = if idle_opportunity && decision.participation == Participation::Observe {
-            (idle_misses + 1).min(4)
+            (idle_misses + 1).min(2)
         } else if decision.participation == Participation::Observe {
             idle_misses
         } else {
@@ -795,27 +804,34 @@ async fn run_actor(
 fn apply_topic_fatigue(decision: &mut decision::Decision, addressed: bool) {
     let fatigue = decision.topic_fatigue.unwrap_or(0);
     if fatigue >= 80 && !addressed {
-        decision.participation = Participation::Observe;
-        decision.messages.clear();
+        // 旧版直接 Observe：模型一旦判疲劳就彻底沉默，是冷场的另一来源。
+        // 改为只留一条，逼这句必须是新话题或新信息。
+        decision.messages.truncate(1);
     } else if fatigue >= 60 && decision.messages.len() > 1 {
         decision.messages.truncate(1);
     }
 }
 
-/// 本地门控：模型自评的疲劳度不可靠，用最近消息客观判断是否该沉默。
+/// 本地门控：模型自评的疲劳度不可靠，用最近消息客观限流。
+/// 关键修正：饱和不再强制沉默，而是压到一条并靠 `saturated_topics` 引导换话题。
+/// 这与冷场目标一致——要少说废话，不是少说话；只有纯复读才真正闭嘴。
 /// 被明确 @ 时只压条数，不剥夺回应义务。
 fn apply_local_gate(decision: &mut decision::Decision, input: &crate::storage::runtime::RuntimeInput, addressed: bool) {
-    let (repeated, hot, cooldown) = decision::local_saturation(input, now_ms());
+    let saturation = decision::local_saturation(input, now_ms());
     if addressed {
-        if repeated >= 2 || hot >= 7 { decision.messages.truncate(1) }
+        if saturation.repeated >= 2 || saturation.hot >= 7 { decision.messages.truncate(1) }
         return;
     }
-    if repeated >= 2 || hot >= 8 {
+    // 完全复读是最强的沉默信号；但要连续三次以上，避免两人同频时全体噤声。
+    if saturation.repeated >= 3 {
         decision.participation = Participation::Observe;
         decision.messages.clear();
-    } else if hot >= 5 || cooldown < 30 {
+        return;
+    }
+    if saturation.repeated >= 2 || saturation.hot >= 6 || saturation.cooldown < 30 {
         decision.messages.truncate(1);
     }
+    // 空闲机会本来就是主动起话，话题饱和时更该换个新话题，而不是直接放弃这次机会。
 }
 
 async fn make_decision(
@@ -1327,7 +1343,7 @@ mod tests {
         let previous = clock.target_ms();
         clock.observe(30 * 60_000);
         assert!(clock.target_ms() > previous);
-        assert_eq!(idle_trigger_chance(0), 20);
+        assert_eq!(idle_trigger_chance(0), 50);
         assert_eq!(idle_trigger_chance(100), 95);
         for seed in [0, 1, 123456, u64::MAX] {
             assert!((800..3000).contains(&reading_delay_ms(true, seed)));
@@ -1344,10 +1360,11 @@ mod tests {
                 "messages":[{"parts":[{"kind":"text","text":"第一句"}]},{"parts":[{"kind":"text","text":"第二句"}]}]
             })).unwrap()
         }
+        // 高疲劳只留一条换话题的话，不再整体沉默——否则模型误报疲劳就直接冷场。
         let mut decision = speak(90);
         apply_topic_fatigue(&mut decision, false);
-        assert_eq!(decision.participation, Participation::Observe);
-        assert!(decision.messages.is_empty());
+        assert_eq!(decision.participation, Participation::Speak);
+        assert_eq!(decision.messages.len(), 1);
 
         let mut decision = speak(90);
         apply_topic_fatigue(&mut decision, true);

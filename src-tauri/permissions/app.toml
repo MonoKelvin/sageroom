@@ -117,3 +117,8 @@ commands.allow = ["ui_preferences_get", "ui_preferences_save"]
 identifier = "tray-open"
 description = "登录托盘面板的点击唤回主窗口并定位到指定会话"
 commands.allow = ["tray_open_main"]
+
+[[permission]]
+identifier = "autostart"
+description = "读取与切换系统开机自启状态"
+commands.allow = ["autostart_status", "autostart_set"]

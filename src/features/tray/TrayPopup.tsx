@@ -7,13 +7,23 @@ import { useAppearance } from "@/app/useAppearance"
 import { formatConversationTime } from "@/features/chat/message-time"
 import "./tray.css"
 
+declare global {
+  interface Window {
+    /** Rust 在每次显示面板时直接写入，避免首次 hover 的事件注册竞态。 */
+    __TRAY_SUMMARY__?: InboxSummary
+    /** 随汇总一起注入，点击会话时无需再靠 snapshot IPC 才能拿到generation。 */
+    __TRAY_GENERATION__?: string
+  }
+}
+
 /**
  * 托盘悬浮面板：独立窗口，不启动聊天会话，只读取未读摘要。
- * 每次显示由 Rust 派发 `sageroom-tray-refresh`，因此始终是刚取到的数据。
+ * 数据优先取 Rust 直接注入的汇总，IPC 只作为窗口已就绪后的刷新手段。
  */
 export function TrayPopup() {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null)
-  const [summary, setSummary] = useState<InboxSummary | null>(null)
+  const [summary, setSummary] = useState<InboxSummary | null>(() => window.__TRAY_SUMMARY__ ?? null)
+  const [error, setError] = useState<string | null>(null)
   const generation = useRef<string | null>(null)
   useAppearance(snapshot?.appearance)
 
@@ -27,25 +37,34 @@ export function TrayPopup() {
         setSnapshot(next)
       }
       const inbox = await ipc.getInbox({ data_generation_id: generation.current })
+      window.__TRAY_SUMMARY__ = inbox
       setSummary(inbox)
-    } catch {
-      // 面板保持上一次内容；错误不影响主窗口的聊天与提示。
+      setError(null)
+    } catch (cause) {
+      // 之前这里静默吞掉异常，任何一次 IPC 失败都会让面板永久停在“正在读取…”。
+      setError(cause instanceof Error ? cause.message : String(cause))
     }
   }, [])
 
   useEffect(() => {
     queueMicrotask(() => { void refresh() })
-    // Rust 在每次显示时直接推送汇总，绕过 IPC 时序；同时保留旧事件作为兜底。
     let unlisten: (() => void) | undefined
-    void listen<InboxSummary>("sageroom-tray-summary", (event) => { setSummary(event.payload) }).then((fn) => { unlisten = fn })
-    const handler = () => { void refresh() }
-    window.addEventListener("sageroom-tray-refresh", handler)
-    return () => { window.removeEventListener("sageroom-tray-refresh", handler); unlisten?.() }
+    const accept = (inbox: InboxSummary) => {
+      if (!inbox) return
+      window.__TRAY_SUMMARY__ = inbox
+      setSummary(inbox)
+      setError(null)
+    }
+    // Rust 在 show 时直接注入 DOM 事件与全局变量，不依赖 Tauri 监听是否已注册。
+    const domHandler = (event: Event) => accept((event as CustomEvent<InboxSummary>).detail)
+    window.addEventListener("sageroom-tray-summary-dom", domHandler)
+    void listen<InboxSummary>("sageroom-tray-summary", (event) => accept(event.payload)).then((fn) => { unlisten = fn })
+    return () => { window.removeEventListener("sageroom-tray-summary-dom", domHandler); unlisten?.() }
   }, [refresh])
 
   async function open(conversationId: string, throughSeq: string) {
-    const current = generation.current
-    if (!current) return
+    // 不因 generation 缺失而放弃打开：Rust 侧会把标已读失败与唤回主窗口解耦。
+    const current = generation.current ?? window.__TRAY_GENERATION__ ?? ""
     try {
       await ipc.trayOpenMain({ data_generation_id: current, conversation_id: conversationId, through_seq: throughSeq })
     } catch {
@@ -57,7 +76,12 @@ export function TrayPopup() {
   const conversations = (summary?.conversations ?? []).filter((item) => item.unread_count > 0)
   return <div className="tray-panel">
     {!summary
-      ? <p className="tray-panel-empty">正在读取…</p>
+      ? error
+        ? <div className="tray-panel-error">
+            <p>读取失败：{error.slice(0, 100)}</p>
+            <button type="button" onClick={() => { setError(null); void refresh() }}>重试</button>
+          </div>
+        : <p className="tray-panel-empty">正在读取…</p>
       : conversations.length === 0
       ? <p className="tray-panel-empty">暂无会话</p>
       : <ul className="tray-conversation-list">

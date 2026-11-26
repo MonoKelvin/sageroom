@@ -28,8 +28,10 @@ const EMPATHY: [&str; 8] = [
 ];
 const METAPHORS: [&str; 7] = ["仿佛", "宛如", "犹如", "就像", "简直是", "不只是", "更像是"];
 // 点评式发言与无主观附和：真人闲聊里偶尔有，整轮都在评价对方措辞就是机器特征。
-const COMMENTARY: [&str; 14] = ["绝了", "这个比喻", "这个形容", "你这配置", "有画面感", "体验感拉满", "说得对", "确实很", "挺合理", "属实是", "太文艺", "不愧是", "好家伙", "妙啊"];
-const HOLLOW: [&str; 13] = ["哈哈哈哈", "哈哈哈", "确实", "对啊", "对对", "真的假的", "是吗", "然后呢", "我超", "超好奇", "不是吧", "啊这", "哈哈"];
+const COMMENTARY: [&str; 18] = ["绝了", "这个比喻", "这个形容", "你这配置", "有画面感", "体验感拉满", "说得对", "确实很", "挺合理", "属实是", "太文艺", "不愧是", "好家伙", "妙啊", "太浪漫", "好有意思", "有意思的", "含金量拉满"];
+// 真实聊天里「算我一个」「给我留一罐」这类排队报名是零信息附和，
+// 和老词表里的「确实/哈哈哈」一样会把对话拖成复读。
+const HOLLOW: [&str; 20] = ["哈哈哈哈", "哈哈哈", "确实", "对啊", "对对", "真的假的", "是吗", "然后呢", "我超", "超好奇", "不是吧", "啊这", "哈哈", "算我一个", "我也来", "给我留", "留一罐", "留点呀", "先吃饭", "正等我"];
 
 #[derive(Serialize)]
 pub(super) struct Policy {
@@ -461,6 +463,9 @@ mod tests {
         assert!(policy.assess(&decision(&[&"长".repeat(49)])).unwrap().over_message_limit);
         assert!(policy.assess(&decision(&["一", "二", "三"])).unwrap().too_many_messages);
         assert!(policy.assess(&decision(&["这个比喻很有画面感，体验感拉满。"])).unwrap().formulaic_style);
+        // 真实聊天里的感叹式点评与排队附和也要拦住。
+        assert!(policy.assess(&decision(&["太空牵手也太浪漫了"])).unwrap().formulaic_style);
+        assert!(policy.assess(&decision(&["算我一个", "给我留一罐", "我也来"])).unwrap().formulaic_style);
     }
 
     #[test]

@@ -13,12 +13,20 @@ html[data-tray-popup="true"] body { overflow: hidden; }
   border: var(--stroke-width) solid var(--floating-border);
   border-radius: var(--radius-card);
   background: var(--surface-canvas);
-  box-shadow: var(--floating-shadow);
+  /* 透明窗口里的 box-shadow 会在圆角外铺出一层矩形色块，直接去掉。 */
+  box-shadow: none;
   overflow: hidden;
 }
 .tray-panel-empty { margin: 0; padding: 0 var(--space-2); color: var(--text-secondary); font-size: var(--font-caption); }
-.tray-conversation-list { display: flex; flex-direction: column; gap: calc(var(--size-unit) * .5); min-height: 0; margin: 0; padding: var(--space-1) 0; overflow: auto; list-style: none; }
-.tray-conversation { display: flex; align-items: flex-start; width: 100%; min-width: 0; gap: var(--space-2); padding: var(--space-2); border: 0; border-radius: var(--radius); background: transparent; color: var(--text-primary); text-align: left; cursor: pointer; }
+.tray-panel-error { display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-2); color: var(--text-secondary); font-size: var(--font-caption); }
+.tray-panel-error p { margin: 0; overflow-wrap: anywhere; }
+.tray-panel-error button { align-self: flex-start; padding: var(--space-1) var(--space-2); border: var(--stroke-width) solid var(--floating-border); border-radius: var(--radius); background: transparent; color: var(--text-primary); font-size: var(--font-caption); cursor: pointer; }
+/* 四周内边距统一由 panel 提供，列表不再额外加上下留白。 */
+.tray-conversation-list { display: flex; flex: 1; flex-direction: column; gap: calc(var(--size-unit) * .5); min-height: 0; margin: 0; padding: 0; overflow: auto; list-style: none; }
+/* 固定单项高度，Rust 侧用同一尺寸计算窗口高度（52px = 8 内边距×2 + 18 标题 + 2 间距 + 16 摘要）。 */
+.tray-conversation { display: flex; align-items: flex-start; width: 100%; height: calc(var(--size-unit) * 13); min-width: 0; gap: var(--space-2); padding: var(--space-2); border: 0; border-radius: var(--radius); background: transparent; color: var(--text-primary); text-align: left; cursor: pointer; }
+.tray-conversation .conversation-heading { line-height: calc(var(--size-unit) * 4.5); }
+.tray-conversation .conversation-preview { line-height: calc(var(--size-unit) * 4); }
 .tray-avatar { position: relative; display: grid; place-items: center; flex: none; width: calc(var(--size-unit) * 9); height: calc(var(--size-unit) * 9); border-radius: var(--radius); background: var(--accent); color: var(--text-primary); }
 /* 角标外观与导航、聊天列表共用 .unread-badge，这里只声明面板内的锚点。 */
 .tray-unread-tag { position: absolute; top: calc(var(--size-unit) * -1); right: calc(var(--size-unit) * -1); }

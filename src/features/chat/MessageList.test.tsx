@@ -200,4 +200,10 @@ describe("底部新消息提示", () => {
     mount(propsFor([recent()], { page: page([], { items: [recent()], has_more_after: true }) }))
     expect(screen.getByRole("button", { name: /回到最新/ })).toBeInTheDocument()
   })
+
+  it("顶部未读入口或第一条未读已可见时，底部不再出现胶囊", () => {
+    mount(propsFor([recent()], { hasNewMessages: true, newMessageCount: 3, hideLatestNotice: true }))
+    expect(screen.queryByRole("button", { name: /3 条新消息/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /回到最新/ })).not.toBeInTheDocument()
+  })
 })

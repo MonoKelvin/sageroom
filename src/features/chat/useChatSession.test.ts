@@ -161,6 +161,18 @@ describe("聊天室数据与事件", () => {
     expect(result.current.hasNewMessages).toBe(false)
   })
 
+  it("回到底部立即清除新消息提示，包括分页窗口仍标记后续消息的情况", async () => {
+    vi.mocked(ipc.snapshot).mockResolvedValue(snapshot({ latest_message_seq: "2", latest_event_seq: "2" }))
+    vi.mocked(ipc.list).mockResolvedValue(page([1, 2]))
+    const { result } = renderHook(() => useChatSession())
+    await waitFor(() => expect(result.current.page?.items).toHaveLength(2))
+    act(() => result.current.updateAtBottom(false))
+    act(() => receiveEvent(event(3)))
+    await waitFor(() => expect(result.current.hasNewMessages).toBe(true))
+    act(() => result.current.updateAtBottom(true))
+    expect(result.current.hasNewMessages).toBe(false)
+  })
+
   it("首次快照暂时失败后重新读取恢复事件消费", async () => {
     vi.mocked(ipc.snapshot).mockRejectedValueOnce(new Error("数据库忙碌")).mockResolvedValue(snapshot())
     const { result } = renderHook(() => useChatSession())

@@ -184,17 +184,36 @@ pub(super) fn addressed_since(input: &RuntimeInput, observed: &DecimalString) ->
 }
 
 /// 本地确定性检测：模型自评的话题疲劳度会低报，这里用最近消息做客观兜底。
-/// 返回 (重复文本次数, 话题词最高频, 自己刚发言的秒数)。
-pub(super) fn local_saturation(input: &RuntimeInput, now: i64) -> (u32, u32, i64) {
+/// 与旧版的差别：除计数外还返回「实际被反复提及的词」，让模型知道该换什么话题，
+/// 而不是只知道一个抽象的高频数字；冷却也只用于降频，不再直接封死发言。
+pub(super) struct Saturation {
+    /// 完全重复的文本次数（不同成员互相复述也算）。
+    pub repeated: u32,
+    /// 最高频的话题片段出现次数。
+    pub hot: u32,
+    /// 高频话题片段（去重、过滤通用词后最多 4 个），供提示词引导换话题。
+    pub topics: Vec<String>,
+    /// 自己上一条发言距今的秒数。
+    pub cooldown: i64,
+}
+
+// 这些词在闲聊里天然高频，统计出来没有话题意义；当成饱和词会误导模型。
+const GENERIC_TOKENS: [&str; 18] = [
+    "什么", "怎么", "这个", "那个", "一个", "我们", "你们", "他们", "自己",
+    "就是", "不是", "可以", "没有", "现在", "还是", "已经", "真的", "知道",
+];
+
+pub(super) fn local_saturation(input: &RuntimeInput, now: i64) -> Saturation {
     let agent_id = &input.agent.agent_id;
     let visible: Vec<_> = input
         .messages
         .iter()
         .filter(|message| message.state == MessageState::Visible)
         .collect();
-    let recent: Vec<_> = visible.iter().rev().take(16).collect();
+    // 窗口从 16 扩到 40：真实的跨天复读（例如 BLG 昨晚和今天各聊一次）
+    // 在 16 条里已经滑出视野，这正是用户看到「疲劳失效」的直接原因。
+    let recent: Vec<_> = visible.iter().rev().take(40).collect();
 
-    // 完全重复的文本（含不同成员互相复述），是复读循环最明确的信号。
     let mut seen = std::collections::HashSet::new();
     let mut repeated = 0_u32;
     for message in &recent {
@@ -206,10 +225,11 @@ pub(super) fn local_saturation(input: &RuntimeInput, now: i64) -> (u32, u32, i64
         if !seen.insert(text) { repeated += 1 }
     }
 
-    // 话题词频：中文没有空格，用 2–4 字滑动窗口统计高频片段，
-    // 避免整句被当成一个词；窗口越短越容易撞上同一话题词。
+    // 统计「多少条消息提到」，同一条内部只算一次。若按出现次数累加，
+    // 长句里共享前缀的窗口会自我放大，把真正跨话题复现的词挤出榜单。
     let mut counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
-    for message in recent.iter().take(12) {
+    for message in &recent {
+        let mut in_message = std::collections::HashSet::new();
         for part in &message.parts {
             if let MessagePart::Text { text } = part {
                 let clean: String = text.chars()
@@ -219,13 +239,51 @@ pub(super) fn local_saturation(input: &RuntimeInput, now: i64) -> (u32, u32, i64
                 for size in 2..=4 {
                     for window in chars.windows(size) {
                         let token: String = window.iter().collect();
-                        *counts.entry(token).or_insert(0) += 1;
+                        if GENERIC_TOKENS.contains(&token.as_str()) { continue }
+                        // 带数字的窗口多为编号或模板句，不是话题词。
+                        if token.chars().any(|c| c.is_numeric()) { continue }
+                        in_message.insert(token);
                     }
                 }
             }
         }
+        for token in in_message { *counts.entry(token).or_insert(0) += 1 }
     }
-    let hot = counts.values().copied().max().unwrap_or(0);
+    let mut ranked: Vec<_> = counts.into_iter().collect();
+    ranked.sort_by(|a, b| b.1.cmp(&a.1).then(b.0.chars().count().cmp(&a.0.chars().count())));
+
+    // 连续字母数字（BLG、AI、PR）是最强的话题标识：它们不会被中文 n-gram
+    // 的共享前缀污染，且跨天提起同一专名通常就是复读。单独统计并优先入列。
+    let mut proper: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    for message in &recent {
+        let mut in_message = std::collections::HashSet::new();
+        for part in &message.parts {
+            if let MessagePart::Text { text } = part {
+                let mut run = String::new();
+                for c in text.chars().chain(std::iter::once('\0')) {
+                    if c.is_ascii_alphanumeric() && c.len_utf8() == 1 {
+                        run.push(c);
+                    } else {
+                        if run.chars().count() >= 2 { in_message.insert(run.to_ascii_uppercase()); }
+                        run.clear();
+                    }
+                }
+            }
+        }
+        for token in in_message { *proper.entry(token).or_insert(0) += 1 }
+    }
+    let mut proper: Vec<_> = proper.into_iter().collect();
+    proper.sort_by(|a, b| b.1.cmp(&a.1).then(b.0.cmp(&a.0)));
+
+    let mut topics: Vec<String> = Vec::new();
+    // 三次提及就够判为复读：真实跨天话题通常也就重复这么多。
+    for (token, _count) in proper.iter().chain(ranked.iter()).filter(|(_, count)| *count >= 3) {
+        if topics.iter().any(|kept| kept.contains(token.as_str())) { continue }
+        topics.push(token.clone());
+        if topics.len() == 4 { break }
+    }
+    let hot = ranked.first().map(|(_, count)| *count).unwrap_or(0)
+        .max(proper.first().map(|(_, count)| *count).unwrap_or(0));
 
     let cooldown = visible
         .iter()
@@ -233,7 +291,7 @@ pub(super) fn local_saturation(input: &RuntimeInput, now: i64) -> (u32, u32, i64
         .find(|message| &message.sender_id == agent_id)
         .map(|message| now.saturating_sub(message.created_at) / 1000)
         .unwrap_or(i64::MAX);
-    (repeated, hot, cooldown)
+    Saturation { repeated, hot, topics, cooldown }
 }
 
 pub(super) fn participation_chance(input: &RuntimeInput, addressed: bool, now: i64) -> u64 {
@@ -266,11 +324,13 @@ pub(super) fn participation_chance(input: &RuntimeInput, addressed: bool, now: i
             chance = chance * 3 / 4;
         }
     }
-    let (repeated, hot, cooldown) = local_saturation(input, now);
-    // 代码层门控：重复与话题饱和时压低非点名参与概率；冷却期内不主动接话。
-    if repeated >= 2 { chance /= 4 }
-    else if hot >= 5 { chance /= 3 }
-    if cooldown < 45 { chance = chance * 2 / 5 }
+    let saturation = local_saturation(input, now);
+    // 旧版把重复 / 饱和 / 冷却三者连乘，activity=0 时概率掉到个位数，
+    // 直接制造冷场。现在只轻度降频：饱和主要靠提示词引导换话题，
+    // 冷却只压到一半——「刚说过话」不该等于「接下来一小时别开口」。
+    if saturation.repeated >= 2 { chance = chance * 2 / 3 }
+    else if saturation.hot >= 6 { chance = chance * 3 / 4 }
+    if saturation.cooldown < 30 { chance /= 2 }
     chance.min(95)
 }
 
@@ -453,6 +513,9 @@ pub fn context(input: &mut RuntimeInput, opportunity: &str, observed: &DecimalSt
         news_brief.push(entry);
     }
     let addressed_to_me = addressed_since(input, observed);
+    // 把本地客观检测到的饱和话题交给模型，明确要求换题；只给词，不替它决定说什么。
+    let saturation = local_saturation(input, now_ms());
+    let saturated_topics: Vec<_> = saturation.topics.iter().take(3).cloned().collect();
     let mut used_experience_bytes = 0;
     let mut experiences = Vec::new();
     for entry in &input.experiences {
@@ -470,6 +533,7 @@ pub fn context(input: &mut RuntimeInput, opportunity: &str, observed: &DecimalSt
             "autonomous_wake_allowed":true,"addressed_to_me":addressed_to_me,"unread_after_seq":observed,"recent_messages":messages,
             "quoted_messages":quoted,"experiences":experiences,"response_style":policy,
             "news_brief":news_brief,"news_search_available":false,
+            "saturated_topics":saturated_topics,
         }).to_string();
         if context.len() + repair_hint().len() <= budget {
             input.messages.retain(|message| messages.iter().any(|visible| visible["id"] == message.id));
@@ -597,11 +661,11 @@ mod tests {
             parts: vec![MessagePart::Text { text: "知道了。".into() }],
             quote_message_id: None, mention_ids: vec![], mention_all: false,
         });
-        // 刚发言触发代码层冷却门控，比原先的 17 更低。
-        assert_eq!(participation_chance(&input, false, now), 6);
+        // 刚发言 ÷2，冷却再 ÷2；比原先连乘到 6 温和，避免冷场。
+        assert_eq!(participation_chance(&input, false, now), 8);
         assert_eq!(participation_chance(&input, true, now), 100);
         input.messages[1].mention_ids = vec!["someone-else".into()];
-        // 冷却门控同样作用于提及他人的场景，5 再乘 2/5 得 2。
+        // 提及他人时再 ÷3，得到 2。
         assert_eq!(participation_chance(&input, false, now), 2);
         input.messages[1].mention_ids.clear();
         input.messages[1].quote_message_id = Some("own".into());
@@ -629,10 +693,39 @@ mod tests {
             push(&mut input, index, if index % 2 == 0 { "a" } else { "b" }, "瓜子管够瓜子管够", (4 - index) as i64 * 60_000);
         }
         push(&mut input, 9, &own_id, "我先记着", 1_000);
-        let (repeated, hot, cooldown) = local_saturation(&input, now);
-        assert!(repeated >= 2, "互相复述应计为重复");
-        assert!(hot >= 5, "高频话题词应被识别");
-        assert!(cooldown < 45, "刚发言应处于冷却期");
+        let saturation = local_saturation(&input, now);
+        assert!(saturation.repeated >= 2, "互相复述应计为重复");
+        assert!(saturation.hot >= 3, "反复出现的话题词应被识别（按消息数计）");
+        assert!(saturation.cooldown < 45, "刚发言应处于冷却期");
+        assert!(saturation.topics.iter().any(|topic| topic.contains("瓜子")), "饱和话题词应被提取并反馈给模型");
+    }
+
+    #[test]
+    fn saturation_ignores_generic_words_and_tracks_cross_day_repeats() {
+        let (_dir, mut input) = input();
+        let now = now_ms();
+        let push = |input: &mut RuntimeInput, text: String, age: i64| {
+            let text = text.as_str();
+            input.messages.push(ChatMessage {
+                id: format!("m{}-{}", input.messages.len(), age), seq: (input.messages.len() as i64).into(),
+                sender_id: "other".into(), created_at: now - age, state: MessageState::Visible,
+                parts: vec![MessagePart::Text { text: text.into() }],
+                quote_message_id: None, mention_ids: vec![], mention_all: false,
+            });
+        };
+        // 「什么/怎么」一类通用词即使刷屏也不能当成话题。
+        for index in 0..10 { push(&mut input, "你说什么，这到底是什么".into(), (30 - index) as i64 * 60_000); }
+        let saturation = local_saturation(&input, now);
+        assert!(saturation.topics.iter().all(|topic| !GENERIC_TOKENS.contains(&topic.as_str())));
+
+        // 昨晚与今天各出现一次的话题，在 40 条窗口内仍能被识别。
+        input.messages.clear();
+        for index in 0..12 { push(&mut input, format!("随便聊点别的{}", index), (40 - index) as i64 * 60_000); }
+        push(&mut input, "昨晚看了BLG的比赛".into(), 24 * 3_600_000);
+        push(&mut input, "今天继续看BLG".into(), 60_000);
+        push(&mut input, "BLG晚上还有一场".into(), 30_000);
+        let saturation = local_saturation(&input, now);
+        assert!(saturation.topics.first().is_some_and(|topic| topic.contains("BLG")), "跨天重复的专名话题应优先被识别");
     }
 
     #[test]

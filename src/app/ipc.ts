@@ -35,6 +35,9 @@ import type {
   InboxSummary,
   TrayOpenRequest,
   TrayOpenResult,
+  AutostartRequest,
+  AutostartSetRequest,
+  AutostartState,
   TraySyncRequest,
   UiPreferences,
   UiPreferencesSaveRequest,
@@ -125,6 +128,10 @@ import {
   validateTraySyncResponse,
   validateTrayOpenRequest,
   validateTrayOpenResponse,
+  validateAutostartRequest,
+  validateAutostartStatusResponse,
+  validateAutostartSetRequest,
+  validateAutostartSetResponse,
   validateNewsConfigurationGetRequest,
   validateNewsConfigurationGetResponse,
   validateNewsConfigurationSaveRequest,
@@ -274,6 +281,10 @@ export const ipc = {
     request("tray_sync", input, validateTraySyncRequest, validateTraySyncResponse),
   trayOpenMain: (input: TrayOpenRequest): Promise<TrayOpenResult> =>
     request("tray_open_main", input, validateTrayOpenRequest, validateTrayOpenResponse),
+  autostartStatus: (input: AutostartRequest): Promise<AutostartState> =>
+    request("autostart_status", input, validateAutostartRequest, validateAutostartStatusResponse),
+  autostartSet: (input: AutostartSetRequest): Promise<AutostartState> =>
+    request("autostart_set", input, validateAutostartSetRequest, validateAutostartSetResponse),
   getInbox: (input: InboxGetRequest): Promise<InboxSummary> =>
     request("inbox_get", input, validateInboxGetRequest, validateInboxGetResponse),
   markInboxRead: (input: InboxMarkReadRequest): Promise<InboxSummary> =>

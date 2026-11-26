@@ -1,6 +1,7 @@
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use tauri::{Manager, State, WebviewWindow};
+use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_dialog::DialogExt;
 
 use super::{lifecycle, state::AppState};
@@ -384,24 +385,74 @@ pub async fn tray_open_main(
     let result = async {
         trusted_window(&window)?;
         let request: TrayOpenRequest = decode(request)?;
+        // 标已读失败不能挡住“打开主界面”这个明确意图：generation 可能已过期，
+        // 未读状态随后由主窗口自己的 inbox 同步收敛。
         if let Some(through_seq) = request.through_seq.clone() {
-            state
+            let _ = state
                 .mark_inbox_read(InboxMarkReadRequest {
                     data_generation_id: request.data_generation_id.clone(),
                     client_request_id: uuid::Uuid::now_v7().to_string(),
                     conversation_id: request.conversation_id.clone(),
                     through_seq,
                 })
-                .await?;
+                .await;
         }
         let app = window.app_handle();
         crate::app::tray::hide_popup(app);
         crate::app::lifecycle::show_main(app);
         // 面板只为会话而存在，唤回后落在聊天页，避免停在用户上次浏览的其他页面。
+        // 事件可能在主窗口 React 挂载前发出而丢失，先写持久标记：挂载后读标记即可补上导航。
         if let Some(main) = app.get_webview_window("main") {
-            let _ = main.eval("window.dispatchEvent(new CustomEvent('sageroom-open-chat'))");
+            let _ = main.eval(
+                "window.__SAGEROOM_OPEN_CHAT__ = (window.__SAGEROOM_OPEN_CHAT__ || 0) + 1; window.dispatchEvent(new CustomEvent('sageroom-open-chat'))",
+            );
         }
         Ok(TrayOpenResult { opened: true })
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn autostart_status(
+    window: WebviewWindow,
+    request: Value,
+) -> Result<ApiResponse<AutostartState>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let _: AutostartRequest = decode(request)?;
+        let autolaunch = window.app_handle().autolaunch();
+        let enabled = autolaunch
+            .is_enabled()
+            .map_err(|error| AppError::new(ErrorCode::IoError, error.to_string()))?;
+        Ok(AutostartState { enabled })
+    }
+    .await;
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn autostart_set(
+    window: WebviewWindow,
+    request: Value,
+) -> Result<ApiResponse<AutostartState>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let request: AutostartSetRequest = decode(request)?;
+        let autolaunch = window.app_handle().autolaunch();
+        if request.enabled {
+            autolaunch
+                .enable()
+                .map_err(|error| AppError::new(ErrorCode::IoError, error.to_string()))?;
+        } else {
+            autolaunch
+                .disable()
+                .map_err(|error| AppError::new(ErrorCode::IoError, error.to_string()))?;
+        }
+        let enabled = autolaunch
+            .is_enabled()
+            .map_err(|error| AppError::new(ErrorCode::IoError, error.to_string()))?;
+        Ok(AutostartState { enabled })
     }
     .await;
     Ok(result.into())

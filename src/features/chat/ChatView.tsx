@@ -59,7 +59,11 @@ export function ChatView({ session, inbox, active, onNavigate }: ApplicationPage
   const scene = scenes[0]
   const [focused, setFocused] = useState(() => document.hasFocus())
   const [unreadNotice, setUnreadNotice] = useState<{ count: number; seq: string; id: string } | null>(null)
+  /** 第一条未读当前是否在视口里：滚到它就必须收起所有提示，而不是等定时器。 */
+  const [firstUnreadVisible, setFirstUnreadVisible] = useState(false)
   const evaluatedUnread = useRef<string | null>(null)
+  /** 本次进入关注的第一条未读；提示收起后仍要跟踪它，滚走时才能恢复底部提示。 */
+  const unreadTargetId = useRef<string | null>(null)
   const returnTarget = useRef<HTMLElement | null>(null)
   const onlineCount = snapshot?.participants.filter((participant) => participant.status === "present").length ?? 0
   const restoreFocus = useCallback(() => {
@@ -80,8 +84,8 @@ export function ChatView({ session, inbox, active, onNavigate }: ApplicationPage
     return () => { window.removeEventListener("focus", onFocus); window.removeEventListener("blur", onBlur) }
   }, [])
 
-  // 进入会话时只判断一次：最早未读若已在视口内，说明用户已经看到，不再弹提示；
-  // 看不到才给顶部提示。停留期间新到的消息交给底部「x 条新消息」，两者不并存。
+  // 顶部「未读消息」只在进入会话时评估一次：第一条未读已在视口内就不提示，
+  // 看不见才给跳转入口。停留期间的新消息交给底部「新消息」，两者互斥。
   const sceneId = scene?.id
   const inboxSummary = inbox.summary
   const { conversation: findConversation, markRead: markInboxRead } = inbox
@@ -98,26 +102,56 @@ export function ChatView({ session, inbox, active, onNavigate }: ApplicationPage
   useEffect(() => {
     if (!active || !focused || !sceneId) {
       evaluatedUnread.current = null
-      queueMicrotask(() => setUnreadNotice(null))
+      unreadTargetId.current = null
+      queueMicrotask(() => { setUnreadNotice(null); setFirstUnreadVisible(false) })
       return
     }
     // 容器还没挂载时量不出位置，等它出现再评估，避免误判成“看不见”。
     if (!chatCard || evaluatedUnread.current === sceneId) return
     const info = findConversation(sceneId)
-    if (!info || info.unread_count === 0 || !info.first_unread_id || !info.first_unread_seq) return
+    if (!info || info.unread_count === 0 || !info.first_unread_id || !info.first_unread_seq) {
+      evaluatedUnread.current = sceneId
+      unreadTargetId.current = null
+      queueMicrotask(() => { setUnreadNotice(null); setFirstUnreadVisible(false) })
+      return
+    }
     const count = info.unread_count
     const latestSeq = info.latest_seq
     const firstId = info.first_unread_id
     const firstSeq = info.first_unread_seq
+    unreadTargetId.current = firstId
     // 等一帧再量位置：虚拟列表刚挂载时还没完成首次布局，此刻判断会把“其实看得见”误判成看不见。
     const frame = requestAnimationFrame(() => {
       evaluatedUnread.current = sceneId
       void markInboxRead(sceneId, latestSeq)
-      if (isFirstUnreadVisible(firstId)) return
-      setUnreadNotice({ count, seq: firstSeq, id: firstId })
+      const visibleNow = isFirstUnreadVisible(firstId)
+      setFirstUnreadVisible(visibleNow)
+      setUnreadNotice(visibleNow ? null : { count, seq: firstSeq, id: firstId })
     })
     return () => cancelAnimationFrame(frame)
   }, [active, focused, sceneId, inboxSummary, chatCard, findConversation, markInboxRead, isFirstUnreadVisible])
+
+  // 用户滚到第一条未读即视为已看到：立即收起顶部提示，也顺带压制底部新消息提示。
+  useEffect(() => {
+    const targetId = unreadTargetId.current
+    if (!active || !chatCard || !targetId) return
+    const scroller = chatCard.querySelector<HTMLElement>(".chat-list-scroller")
+    if (!scroller) return
+    const check = () => {
+      const visible = isFirstUnreadVisible(targetId)
+      setFirstUnreadVisible(visible)
+      // 滚到第一条未读就收起入口，不依赖定时器或另一个 effect。
+      if (visible) setUnreadNotice(null)
+    }
+    const frame = requestAnimationFrame(check)
+    scroller.addEventListener("scroll", check, { passive: true })
+    window.addEventListener("resize", check)
+    return () => {
+      cancelAnimationFrame(frame)
+      scroller.removeEventListener("scroll", check)
+      window.removeEventListener("resize", check)
+    }
+  }, [active, chatCard, unreadNotice, inboxSummary, isFirstUnreadVisible])
 
   // 已经在底部就等于看到最新：把停留期间累积的未读收回，避免底部还在提示“新消息”。
   const unreadCount = inbox.conversation(sceneId ?? "")?.unread_count ?? 0
@@ -129,11 +163,8 @@ export function ChatView({ session, inbox, active, onNavigate }: ApplicationPage
     if (info) void markInboxRead(sceneId, info.latest_seq)
   }, [active, focused, sceneId, session.atBottom, unreadCount, findConversation, markInboxRead])
 
-  useEffect(() => {
-    if (!unreadNotice) return
-    const timer = setTimeout(() => setUnreadNotice(null), 5000)
-    return () => clearTimeout(timer)
-  }, [unreadNotice])
+  // 顶部未读入口优先；它存在或第一条未读已可见时，底部不再出现任何跳转胶囊。
+  const hideLatestNotice = Boolean(unreadNotice) || firstUnreadVisible
 
   async function handleSend(text: string, requestId: string, options: SendOptions) {
     const adapter = sceneAdapters[scene?.kind ?? "group"]
@@ -225,7 +256,7 @@ export function ChatView({ session, inbox, active, onNavigate }: ApplicationPage
           {unreadNotice && <div className="chat-unread-notice" role="status">
             <button type="button" className="chat-latest-button" onClick={() => { const target = unreadNotice; setUnreadNotice(null); void session.jumpTo(target.seq, target.id) }}>{unreadNotice.count} 条未读消息</button>
           </div>}
-          {session.page && snapshot ? <MessageList key={session.windowRevision} active={active} page={session.page} participants={participants} restoreAnchor={session.restoreAnchor} enteringIds={session.enteringIds} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !session.page.has_more_after} hasNewMessages={session.hasNewMessages} newMessageCount={unreadCount} scrollToBottomSignal={scrollToBottomSignal} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={session.goToLatest} quotes={quotes} onQuote={selectQuote} onRecall={session.recall} onLocateQuote={session.jumpTo} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}
+          {session.page && snapshot ? <MessageList key={session.windowRevision} active={active} page={session.page} participants={participants} restoreAnchor={session.restoreAnchor} enteringIds={session.enteringIds} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !session.page.has_more_after} hasNewMessages={session.hasNewMessages} newMessageCount={hideLatestNotice ? 0 : unreadCount} hideLatestNotice={hideLatestNotice} scrollToBottomSignal={scrollToBottomSignal} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={session.goToLatest} quotes={quotes} onQuote={selectQuote} onRecall={session.recall} onLocateQuote={session.jumpTo} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}
           {resolvedQuotes?.identity === quotesIdentity && resolvedQuotes.error && <p className="chat-quote-feedback" role="alert">{resolvedQuotes.error}</p>}
           <MessageComposer active={active} dataGenerationId={generation} disabled={!snapshot} participants={snapshot?.participants} canMentionAll={snapshot?.room.owner_participant_id === snapshot?.local_user.id} quoteMessageId={quoteId} quote={quote} onRemoveQuote={() => setSelectedQuote(null)} onSend={handleSend} />
         </div>

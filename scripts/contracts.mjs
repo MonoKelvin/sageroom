@@ -43,6 +43,8 @@ const responseTypes = {
   InboxMute: "InboxSummary",
   TraySync: "TraySyncState",
   TrayOpen: "TrayOpenResult",
+  AutostartStatus: "AutostartState",
+  AutostartSet: "AutostartState",
   AgentList: "AgentConfiguration[]",
   AgentSave: "AgentConfiguration",
   AgentDelete: "void",

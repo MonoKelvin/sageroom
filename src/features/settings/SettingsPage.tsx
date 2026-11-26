@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { IconArrowUpRight, IconBrandGithub, IconBrush, IconDatabase, IconFolder, IconInfoCircle, IconLoader2, IconPointer } from "@tabler/icons-react"
 import { APP_METADATA } from "@/app/metadata"
 import type { UiPreferences } from "@/contracts/generated"
-import { ipc } from "@/app/ipc"
+import { ipc, isDesktopEnvironment } from "@/app/ipc"
 import { loadUiPreferences, saveUiPreferences } from "@/app/uiPreferences"
 import type { ApplicationPageProps } from "@/app/navigation"
 import { useAppliedResource, useConfiguration, useConfigurationRuntime } from "@/app/configurationContext"
@@ -189,6 +189,32 @@ function AppearanceCard({ active }: { active: boolean }) {
   </fieldset><ResourceFeedback resource={store.appearance} state={state} /></div>
 }
 
+function AutostartField() {
+  const [enabled, setEnabled] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const desktop = isDesktopEnvironment()
+  useEffect(() => {
+    if (!desktop) return
+    let alive = true
+    void ipc.autostartStatus({ data_generation_id: null }).then((state) => {
+      if (!alive) return
+      setEnabled(state.enabled)
+      setError(null)
+    }).catch((cause) => { if (alive) setError(String(cause)) })
+    return () => { alive = false }
+  }, [desktop])
+  return <>
+    <Field label="开机自启" caption="默认关闭；开启后登录系统时自动启动 Sageroom。">
+      <Switch label="开机自启" checked={enabled} disabled={!desktop} onCheckedChange={async (next) => {
+        const state = await ipc.autostartSet({ enabled: next })
+        setEnabled(state.enabled)
+        setError(null)
+      }} />
+    </Field>
+    {error && <p role="alert" className="form-caption">读取自启状态失败：{error}</p>}
+  </>
+}
+
 function UiPreferencesCard({ generation }: { generation: string }) {
   const [preferences, setPreferences] = useState<UiPreferences | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -205,6 +231,7 @@ function UiPreferencesCard({ generation }: { generation: string }) {
   return <div className="config-stack settings-tight">
     <Field label="关闭窗口" caption="关闭主窗口时直接退出，或隐藏到托盘继续接收消息。"><SettingsSelect label="关闭窗口" value={preferences?.close_action ?? "hide"} options={[{ value: "hide", label: "隐藏到托盘" }, { value: "exit", label: "退出应用" }]} onValueChange={(close_action) => { if (preferences) update({ ...preferences, close_action: close_action as UiPreferences["close_action"] }) }} /></Field>
     <Field label="发送消息" caption="选择输入框里用哪个组合键发送，另一个用于换行。"><SettingsSelect label="发送消息" value={preferences?.send_key ?? "enter"} options={[{ value: "enter", label: "Enter 发送，Shift+Enter 换行" }, { value: "ctrl_enter", label: "Ctrl+Enter 发送，Enter 换行" }]} onValueChange={(send_key) => { if (preferences) update({ ...preferences, send_key: send_key as UiPreferences["send_key"] }) }} /></Field>
+    <AutostartField />
     {error && <p role="alert" className="form-caption">保存失败：{error}</p>}
   </div>
 }
