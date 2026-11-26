@@ -1,7 +1,7 @@
 import { sendOnEnter } from "@/app/uiPreferences"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
 import { createPortal } from "react-dom"
-import { IconClipboard, IconCopy, IconCut, IconMoodSmile, IconPaperclip, IconPhoto, IconSelectAll, IconSendFilled, IconTrash, IconUsers, IconX } from "@tabler/icons-react"
+import { IconClipboard, IconCopy, IconCut, IconFile, IconMoodSmile, IconPaperclip, IconPhoto, IconSelectAll, IconSendFilled, IconTrash, IconUsers, IconX } from "@tabler/icons-react"
 import type { AttachmentObject, ChatMessage, Participant } from "@/contracts/generated"
 import { Button } from "@/components/ui/button"
 import { ContextMenu, type ContextMenuItem } from "@/components/ui/context-menu"
@@ -50,12 +50,21 @@ const EMOJI_PANEL_HEIGHT = 240
 
 function AttachmentPreview({ generation, attachment, onRemove }: { generation: string | null; attachment: AttachmentObject; onRemove: () => void }) {
   const source = useAttachmentSource(generation, attachment.id, attachment.kind === "image")
-  return <div className="composer-attachment" data-kind={attachment.kind}>
-    {attachment.kind === "image"
-      ? (source ? <img src={source} alt={attachment.file_name} draggable={false} /> : <span className="composer-attachment-placeholder" />)
-      : <span className="composer-attachment-file"><IconPaperclip size={15} stroke={1.6} aria-hidden="true" />{formatAttachmentSize(attachment.byte_size)}</span>}
-    <span className="composer-attachment-name" title={attachment.file_name}>{attachment.file_name}</span>
-    <button type="button" className="composer-attachment-remove" aria-label={`移除 ${attachment.file_name}`} onClick={onRemove}><IconX size={12} aria-hidden="true" /></button>
+  const remove = <button type="button" className="composer-attachment-remove" aria-label={`移除 ${attachment.file_name}`} onClick={onRemove}><IconX size={12} aria-hidden="true" /></button>
+  // 图片只给缩略图，不再挂文件名；文件用矮的横向矩形，名字太长就在卡片里省略。
+  if (attachment.kind === "image") {
+    return <div className="composer-attachment" data-kind="image" title={attachment.file_name}>
+      {source ? <img src={source} alt={attachment.file_name} draggable={false} /> : <span className="composer-attachment-placeholder" />}
+      {remove}
+    </div>
+  }
+  return <div className="composer-attachment" data-kind="file">
+    <span className="composer-attachment-icon" aria-hidden="true"><IconFile size={16} stroke={1.6} /></span>
+    <span className="composer-attachment-main">
+      <span className="composer-attachment-file-name" title={attachment.file_name}>{attachment.file_name}</span>
+      <span className="composer-attachment-file-size">{formatAttachmentSize(attachment.byte_size)}</span>
+    </span>
+    {remove}
   </div>
 }
 

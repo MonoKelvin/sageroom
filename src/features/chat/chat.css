@@ -252,13 +252,36 @@ html[data-input-modality="keyboard"] :is(.chat-search-locate, .group-info-drawer
 .composer-kaomoji:hover { background: var(--control-hover-bg); }
 
 /* ---- 输入框里的待发送附件 ---- */
-.composer-attachments { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-3) var(--space-3) 0; }
-.composer-attachment { position: relative; display: flex; flex-direction: column; gap: var(--space-1); width: calc(var(--size-unit) * 28); min-width: 0; }
-.composer-attachment img, .composer-attachment-placeholder { display: block; width: 100%; aspect-ratio: 1; border-radius: calc(var(--radius) * .8); background: var(--control-bg); object-fit: cover; }
-.composer-attachment-file { display: flex; align-items: center; justify-content: center; gap: var(--space-1); aspect-ratio: 1; border-radius: calc(var(--radius) * .8); background: var(--control-bg); color: var(--text-secondary); font-size: var(--font-caption); }
-.composer-attachment-name { overflow: hidden; color: var(--text-secondary); font-size: var(--font-caption); text-overflow: ellipsis; white-space: nowrap; }
-.composer-attachment-remove { position: absolute; top: calc(var(--space-1) * -1); right: calc(var(--space-1) * -1); display: grid; place-items: center; width: calc(var(--size-unit) * 7); height: calc(var(--size-unit) * 7); padding: 0; border: var(--stroke-width) solid var(--border-subtle); border-radius: var(--radius-pill); background: var(--surface-content); color: var(--text-secondary); cursor: pointer; opacity: 0; transition: opacity var(--motion-duration) ease; }
-.composer-attachment:hover .composer-attachment-remove, .composer-attachment-remove:focus-visible { opacity: 1; }
+.composer-attachments { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-3) 0; }
+.composer-attachment { position: relative; display: flex; min-width: 0; }
+/* 图片只占一个方缩略图 */
+.composer-attachment[data-kind="image"] { flex-direction: column; width: calc(var(--size-unit) * 30); }
+.composer-attachment[data-kind="image"] img,
+.composer-attachment-placeholder { display: block; width: 100%; aspect-ratio: 1; border-radius: calc(var(--radius) * .8); background: var(--control-bg); object-fit: cover; }
+/* 文件是横向矩形：比缩略图矮，宽度有上限，名字超长在卡片内省略。 */
+.composer-attachment[data-kind="file"] {
+  align-items: center;
+  gap: var(--space-2);
+  height: calc(var(--size-unit) * 11);
+  max-width: calc(var(--size-unit) * 60);
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border: var(--stroke-width) solid var(--border);
+  border-radius: calc(var(--radius) * .8);
+  background: var(--control-bg);
+}
+.composer-attachment-icon { display: grid; flex: none; place-items: center; color: var(--text-secondary); }
+.composer-attachment-main { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.composer-attachment-file-name { overflow: hidden; color: var(--text-primary); font-size: var(--font-body); line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.composer-attachment-file-size { color: var(--text-secondary); font-size: var(--font-caption); line-height: 1.3; }
+.composer-attachment-remove { display: grid; place-items: center; padding: 0; border: var(--stroke-width) solid var(--border); border-radius: var(--radius-pill); background: var(--surface-content); color: var(--text-secondary); cursor: pointer; }
+/* 缩略图上的移除按钮浮在角上，默认隐藏 */
+.composer-attachment[data-kind="image"] .composer-attachment-remove { position: absolute; top: calc(var(--space-1) * -1); right: calc(var(--space-1) * -1); width: calc(var(--size-unit) * 7); height: calc(var(--size-unit) * 7); opacity: 0; transition: opacity var(--motion-duration) ease; }
+.composer-attachment[data-kind="image"]:hover .composer-attachment-remove,
+.composer-attachment[data-kind="image"] .composer-attachment-remove:focus-visible { opacity: 1; }
+/* 文件卡片的移除按钮排在行尾，常驻但弱化 */
+.composer-attachment[data-kind="file"] .composer-attachment-remove { flex: none; width: calc(var(--size-unit) * 6); height: calc(var(--size-unit) * 6); border-color: transparent; background: transparent; opacity: .55; transition: opacity var(--motion-duration) ease; }
+.composer-attachment[data-kind="file"]:hover .composer-attachment-remove,
+.composer-attachment[data-kind="file"] .composer-attachment-remove:focus-visible { opacity: 1; }
 .composer-tools { display: flex; align-items: center; gap: var(--space-1); color: var(--text-secondary); }
 .composer-uploading { color: var(--text-secondary); font-size: var(--font-caption); }
 
@@ -274,7 +297,7 @@ html[data-input-modality="keyboard"] :is(.chat-search-locate, .group-info-drawer
 .chat-message-bubble[data-media] { padding: 0; background: transparent; }
 .chat-message-bubble[data-media] .chat-attachment-image { border-radius: calc(var(--radius) * 1.05); }
 .chat-message-text { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
-.chat-attachment-file { display: flex; align-items: center; gap: var(--space-2); width: 100%; max-width: calc(var(--size-unit) * 120); padding: var(--space-2) var(--space-3); border: var(--stroke-width) solid var(--border-subtle); border-radius: calc(var(--radius) * .8); background: var(--surface-canvas); color: var(--text-primary); text-align: left; cursor: pointer; }
+.chat-attachment-file { display: flex; align-items: center; gap: var(--space-2); width: 100%; max-width: calc(var(--size-unit) * 120); padding: var(--space-2) var(--space-3); border: var(--stroke-width) solid var(--border); border-radius: calc(var(--radius) * .8); background: var(--surface-canvas); color: var(--text-primary); text-align: left; cursor: pointer; }
 .chat-message-bubble-self .chat-attachment-file { background: color-mix(in srgb, var(--self-bubble-bg) 12%, transparent); border-color: color-mix(in srgb, var(--self-bubble-bg) 24%, transparent); }
 .chat-attachment-file-icon, .chat-attachment-file-action { display: grid; flex: none; place-items: center; color: var(--text-secondary); }
 .chat-attachment-file-main { display: flex; flex: 1; flex-direction: column; min-width: 0; }
