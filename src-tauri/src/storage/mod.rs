@@ -41,6 +41,28 @@ mod data_root_tests {
     }
 
     #[test]
+    fn second_migration_starts_from_configured_root() {
+        let dir = TempDir::new().unwrap();
+        let first = dir.path().join("first");
+        let second = dir.path().join("second");
+        let config = dir.path().join("config");
+        fs::create_dir_all(&first).unwrap();
+        fs::write(first.join("marker.txt"), b"moved").unwrap();
+        fs::create_dir_all(&second).unwrap();
+
+        data_root::migrate(&first, &config, &second).unwrap();
+        // 模拟命令层逻辑：优先使用覆盖根目录。
+        let current = data_root::configured_root(&config).unwrap();
+        assert_eq!(current, second);
+
+        let third = dir.path().join("third");
+        fs::create_dir_all(&third).unwrap();
+        data_root::migrate(&current, &config, &third).unwrap();
+        assert_eq!(fs::read_to_string(third.join("marker.txt")).unwrap(), "moved");
+        assert_eq!(data_root::configured_root(&config), Some(third));
+    }
+
+    #[test]
     fn migrate_rejects_non_empty_target() {
         let dir = TempDir::new().unwrap();
         let current = dir.path().join("current");

@@ -294,7 +294,10 @@ pub async fn data_directory_migrate(
         state.worker()?.call(move |database| database.check_generation(&request.data_generation_id)).await?;
         let app = window.app_handle();
         let config_dir = app.path().app_config_dir().map_err(|error| AppError::new(crate::domain::contracts::ErrorCode::IoError, error.to_string()))?;
-        let current = app.path().app_local_data_dir().map_err(|error| AppError::new(crate::domain::contracts::ErrorCode::IoError, error.to_string()))?;
+        // 二次迁移必须从当前实际生效的根目录复制，而不是回退到默认目录。
+        let current = crate::storage::data_root::configured_root(&config_dir)
+            .or_else(|| app.path().app_local_data_dir().ok())
+            .ok_or_else(|| AppError::new(crate::domain::contracts::ErrorCode::IoError, "无法确定当前数据目录。"))?;
         crate::storage::data_root::migrate(&current, &config_dir, std::path::Path::new(&request.target))
             .map_err(|message| AppError::new(crate::domain::contracts::ErrorCode::IoError, message))
     }
