@@ -1,12 +1,13 @@
 import { sendOnEnter } from "@/app/uiPreferences"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
 import { createPortal } from "react-dom"
-import { IconClipboard, IconCopy, IconCut, IconMoodSmile, IconPaperclip, IconPhoto, IconSelectAll, IconSendFilled, IconTrash, IconX } from "@tabler/icons-react"
+import { IconClipboard, IconCopy, IconCut, IconMoodSmile, IconPaperclip, IconPhoto, IconSelectAll, IconSendFilled, IconTrash, IconUsers, IconX } from "@tabler/icons-react"
 import type { AttachmentObject, ChatMessage, Participant } from "@/contracts/generated"
 import { Button } from "@/components/ui/button"
 import { ContextMenu, type ContextMenuItem } from "@/components/ui/context-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { errorMessage, ipc } from "@/app/ipc"
+import { Avatar } from "@/components/Avatar"
 import { cn } from "@/lib/utils"
 import type { SendOptions } from "./useChatSession"
 import { textValidationError } from "./textValidation"
@@ -38,7 +39,14 @@ type Props = {
   onSend: (text: string, requestId: string, options: SendOptions) => Promise<unknown>
 }
 
-type FloatingAnchor = { top: number; left: number; width: number }
+type FloatingAnchor = { top: number; left: number; width: number; height?: number }
+
+/** 提及列表除了名字还要头像，所以比纯逻辑层的 MentionTarget 多带一点展示信息。 */
+type MentionOption = MentionTarget & { avatarId?: string | null; colorId?: string; kind: "user" | "agent" | "all" }
+
+/** 表情面板固定 3:2，这里与 chat.css 里的尺寸保持一致。 */
+const EMOJI_PANEL_WIDTH = 360
+const EMOJI_PANEL_HEIGHT = 240
 
 function AttachmentPreview({ generation, attachment, onRemove }: { generation: string | null; attachment: AttachmentObject; onRemove: () => void }) {
   const source = useAttachmentSource(generation, attachment.id, attachment.kind === "image")
@@ -69,25 +77,36 @@ function EmojiPanel({ anchor, onPick, onClose }: { anchor: FloatingAnchor; onPic
     document.addEventListener("keydown", onKeyDown)
     return () => { document.removeEventListener("pointerdown", onPointerDown); document.removeEventListener("keydown", onKeyDown) }
   }, [onClose])
-  const style = { position: "fixed" as const, left: Math.min(anchor.left, window.innerWidth - 356), bottom: window.innerHeight - anchor.top + 8 }
+  // 默认浮在按钮上方；窗口太矮放不下时翻到下方，避免被窗口顶边裁掉。
+  const left = Math.max(8, Math.min(anchor.left, window.innerWidth - EMOJI_PANEL_WIDTH - 8))
+  const style = anchor.top >= EMOJI_PANEL_HEIGHT + 16
+    ? { position: "fixed" as const, left, bottom: window.innerHeight - anchor.top + 8 }
+    : { position: "fixed" as const, left, top: anchor.top + (anchor.height ?? 0) + 8 }
   const active = EMOJI_TABS[tab]
   return createPortal(<div ref={panel} className="composer-emoji-panel" style={style} role="dialog" aria-label="选择表情">
     <div className="composer-emoji-tabs" role="tablist">
       {EMOJI_TABS.map((item, index) => <button key={item.name} type="button" role="tab" aria-selected={index === tab} className="composer-emoji-tab" onClick={() => setTab(index)}>{item.name}</button>)}
     </div>
     {active.kaomoji
-      ? <div className="composer-kaomoji-grid">
+      ? <div className="composer-emoji-body"><div className="composer-kaomoji-grid">
         {active.items.map((item, index) => <button key={`${item}-${index}`} type="button" className="composer-kaomoji" onClick={() => onPick(item)}>{item}</button>)}
-      </div>
-      : <div className="composer-emoji-grid">
+      </div></div>
+      : <div className="composer-emoji-body"><div className="composer-emoji-grid">
         {active.items.map((item, index) => <button key={`${item}-${index}`} type="button" className="composer-emoji" onClick={() => onPick(item)}>{item}</button>)}
-      </div>}
+      </div></div>}
   </div>, document.body)
 }
 
-function MentionPanel({ anchor, items, active, onPick }: { anchor: FloatingAnchor; items: readonly MentionTarget[]; active: number; onPick: (item: MentionTarget) => void }) {
+function MentionPanel({ anchor, items, active, generation, onPick }: { anchor: FloatingAnchor; items: readonly MentionOption[]; active: number; generation: string | null; onPick: (item: MentionTarget) => void }) {
   return createPortal(<div className="composer-mention-panel" role="listbox" aria-label="选择提及成员" style={{ position: "fixed", left: Math.min(anchor.left, window.innerWidth - 232), bottom: window.innerHeight - anchor.top + 6, width: Math.max(160, Math.min(anchor.width, 232)) }}>
-    {items.map((item, index) => <button key={item.id} type="button" role="option" aria-selected={index === active} className="composer-mention-option" data-active={index === active} onMouseDown={(event) => { event.preventDefault(); onPick(item) }}>{item.name}</button>)}
+    {items.map((item, index) => <button key={item.id} type="button" role="option" aria-selected={index === active} className="composer-mention-option" data-active={index === active} onMouseDown={(event) => { event.preventDefault(); onPick(item) }}>
+      <span className="composer-mention-avatar" aria-hidden="true">
+        {item.kind === "all"
+          ? <IconUsers size={14} stroke={1.6} />
+          : <Avatar name={item.name} avatarId={item.avatarId} colorId={item.colorId} generation={generation ?? undefined} size={18} radius={5} />}
+      </span>
+      <span className="composer-mention-name">{item.name}</span>
+    </button>)}
   </div>, document.body)
 }
 
@@ -134,12 +153,19 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
   const resizeOrigin = useRef<{ y: number; height: number } | null>(null)
   const failedRequest = useRef<{ requestId: string; revision: number; generation: string | null } | null>(null)
 
-  const mentionTargets = useMemo<MentionTarget[]>(() => {
+  const mentionTargets = useMemo<MentionOption[]>(() => {
     // 自己不参与提及：@ 列表里出现「我」既没用也容易被误点。
     const targets = participants
       .filter((participant) => participant.id !== localUserId)
-      .map((participant) => ({ id: participant.id, name: participant.display_name }))
-    if (canMentionAll) targets.push({ id: "__all__", name: MENTION_ALL_NAME })
+      .map<MentionOption>((participant) => ({
+        id: participant.id,
+        name: participant.display_name,
+        avatarId: participant.avatar_id,
+        // 智能体用 id 派生头像底色，本机用户走默认 logo，和聊天里保持一致。
+        colorId: participant.kind === "agent" ? participant.id : undefined,
+        kind: participant.kind,
+      }))
+    if (canMentionAll) targets.push({ id: "__all__", name: MENTION_ALL_NAME, kind: "all" })
     return targets
   }, [canMentionAll, localUserId, participants])
   const segments = useMemo(() => splitMentions(draft, mentionTargets), [draft, mentionTargets])
@@ -640,7 +666,7 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
               onClick={(event) => {
                 if (emojiAnchor) { setEmojiAnchor(null); return }
                 const box = event.currentTarget.getBoundingClientRect()
-                setEmojiAnchor({ top: box.top, left: box.left, width: box.width })
+                setEmojiAnchor({ top: box.top, left: box.left, width: box.width, height: box.height })
               }}><IconMoodSmile size={18} stroke={1.6} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>表情</TooltipContent></Tooltip>
             <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label="发送图片" disabled={disabled || uploading} onClick={() => void pickAttachments(true)}><IconPhoto size={18} stroke={1.6} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>发送图片</TooltipContent></Tooltip>
             <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label="发送文件" disabled={disabled || uploading} onClick={() => void pickAttachments(false)}><IconPaperclip size={18} stroke={1.6} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>发送文件</TooltipContent></Tooltip>
@@ -649,7 +675,7 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
           <Tooltip><TooltipTrigger asChild><Button type="submit" size="icon" className="composer-send" disabled={!canSend} aria-label={isRetry ? "重试发送" : "发送消息"}><IconSendFilled size={18} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{isRetry ? "重试发送" : "发送"}</TooltipContent></Tooltip>
         </div>
       </div>
-      {mentionOpen && mentionAnchor && <MentionPanel anchor={mentionAnchor} items={mentionMatches} active={mentionIndex} onPick={pickMention} />}
+      {mentionOpen && mentionAnchor && <MentionPanel anchor={mentionAnchor} items={mentionMatches} active={mentionIndex} generation={dataGenerationId} onPick={pickMention} />}
       {emojiAnchor && <EmojiPanel anchor={emojiAnchor} onPick={(emoji) => { insertText(emoji) }} onClose={() => { setEmojiAnchor(null); returnFocus() }} />}
       <p id="composer-error" role={visibleError ? "alert" : undefined} className="composer-error">{visibleError ?? ""}</p>
     </form>

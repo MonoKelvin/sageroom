@@ -232,17 +232,22 @@ html[data-input-modality="keyboard"] :is(.chat-search-locate, .group-info-drawer
   backdrop-filter: blur(var(--glass-blur)) saturate(140%);
 }
 .composer-mention-panel { display: flex; flex-direction: column; max-height: calc(var(--control-height) * 8); padding: var(--space-1); overflow-y: auto; }
-.composer-emoji-panel { width: 352px; padding: var(--space-2); }
-.composer-mention-option { display: block; width: 100%; padding: var(--space-2) var(--space-3); border: 0; border-radius: calc(var(--radius) * .7); background: transparent; color: var(--text-primary); font-size: var(--font-body); text-align: left; cursor: pointer; }
+/* 固定 3:2，切换分类时面板尺寸不变；内容区独立滚动，且只允许纵向滚动。 */
+.composer-emoji-panel { display: flex; flex-direction: column; width: 360px; height: 240px; padding: var(--space-2); overflow: hidden; }
+.composer-emoji-body { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+.composer-mention-option { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-1) var(--space-2); border: 0; border-radius: calc(var(--radius) * .7); background: transparent; color: var(--text-primary); font-size: var(--font-body); text-align: left; cursor: pointer; }
 .composer-mention-option[data-active="true"], .composer-mention-option:hover { background: var(--control-hover-bg); }
-.composer-emoji-tabs { display: flex; gap: var(--space-1); margin-bottom: var(--space-2); }
-.composer-emoji-tab { flex: 1; padding: var(--space-1) var(--space-2); border: 0; border-radius: calc(var(--radius) * .7); background: transparent; color: var(--text-secondary); font-size: var(--font-caption); cursor: pointer; }
+.composer-mention-avatar { display: grid; flex: none; place-items: center; width: 18px; height: 18px; color: var(--text-secondary); }
+.composer-mention-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-emoji-tabs { display: flex; flex: none; gap: var(--space-1); margin-bottom: var(--space-2); }
+.composer-emoji-tab { flex: 1; min-width: 0; padding: var(--space-1) var(--space-2); border: 0; border-radius: calc(var(--radius) * .7); background: transparent; color: var(--text-secondary); font-size: var(--font-caption); white-space: nowrap; cursor: pointer; }
 .composer-emoji-tab[aria-selected="true"] { background: var(--control-active-bg); color: var(--text-primary); }
-.composer-emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: var(--space-1); max-height: calc(var(--size-unit) * 96); overflow-y: auto; }
-.composer-emoji { aspect-ratio: 1; border: 0; border-radius: calc(var(--radius) * .6); background: transparent; font-size: calc(var(--size-unit) * 8); line-height: 1; cursor: pointer; }
+/* minmax(0, 1fr)：默认的 minmax(auto, 1fr) 会被宽字形撑开格子，撑出横向滚动条。 */
+.composer-emoji-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: var(--space-1); }
+.composer-emoji { display: grid; place-items: center; aspect-ratio: 1; min-width: 0; padding: 0; overflow: hidden; border: 0; border-radius: calc(var(--radius) * .6); background: transparent; font-size: calc(var(--size-unit) * 8); line-height: 1; cursor: pointer; }
 .composer-emoji:hover { background: var(--control-hover-bg); }
 /* 字符表情（颜文字）宽度差别大，单独用流式排布，不塞进正方形格子。 */
-.composer-kaomoji-grid { display: flex; flex-wrap: wrap; gap: var(--space-1); max-height: calc(var(--size-unit) * 96); overflow-y: auto; }
+.composer-kaomoji-grid { display: flex; flex-wrap: wrap; align-content: flex-start; gap: var(--space-1); }
 .composer-kaomoji { padding: var(--space-1) var(--space-2); border: 0; border-radius: calc(var(--radius) * .6); background: transparent; color: var(--text-primary); font-size: var(--font-body); white-space: nowrap; cursor: pointer; }
 .composer-kaomoji:hover { background: var(--control-hover-bg); }
 
