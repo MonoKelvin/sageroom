@@ -1273,6 +1273,9 @@ mod tests {
                         if std::time::Instant::now() >= deadline { return; }
                         thread::sleep(Duration::from_millis(5));
                     };
+                    // listener 是非阻塞的，accept 出来的连接在 Windows 上会继承这个标记，
+                    // 直接 read 会偶发 WouldBlock；这里显式改回阻塞读。
+                    socket.set_nonblocking(false).unwrap();
                     socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
                     let mut bytes = Vec::new();
                     let (start, length) = loop {

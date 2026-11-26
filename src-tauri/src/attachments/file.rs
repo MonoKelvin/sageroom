@@ -540,3 +540,36 @@ mod tests {
         assert!(database.read_attachment("attachments", &staged.id).is_err());
     }
 }
+
+/// 附件命令必须同时出现在三处才能被前端调用：
+/// 构建期清单（build.rs）、handler 注册（lib.rs）、权限声明（permissions + capabilities）。
+/// 少任何一处，界面都会报「Command not found / not allowed」，所以这里钉死。
+#[cfg(test)]
+mod wiring_tests {
+    const COMMANDS: [&str; 5] = [
+        "attachment_pick",
+        "attachment_paste",
+        "attachment_read",
+        "attachment_open",
+        "attachment_discard",
+    ];
+
+    #[test]
+    fn attachment_commands_are_manifested_handled_and_granted() {
+        let manifest = include_str!("../../build.rs");
+        let handlers = include_str!("../lib.rs");
+        let permissions = include_str!("../../permissions/app.toml");
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../../capabilities/main.json")).unwrap();
+        for command in COMMANDS {
+            assert!(manifest.contains(&format!("\"{command}\"")), "命令必须进入 AppManifest：{command}");
+            assert!(handlers.contains(&format!("app::commands::{command}")), "命令必须注册 handler：{command}");
+            assert!(permissions.contains(&format!("\"{command}\"")), "命令必须获得权限：{command}");
+        }
+        let granted = capability["permissions"].as_array().unwrap();
+        assert!(
+            granted.iter().any(|value| value.as_str() == Some("attachment-manage")),
+            "主窗口必须授予 attachment-manage"
+        );
+    }
+}

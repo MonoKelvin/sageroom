@@ -12,7 +12,7 @@ import type { SendOptions } from "./useChatSession"
 import { textValidationError } from "./textValidation"
 import { activeMentionQuery, applyMention, collectMentionIds, splitMentions, type MentionTarget } from "./mentions"
 import { caretPoint } from "./caret"
-import { EMOJI_GROUPS } from "./emoji"
+import { EMOJI_GROUPS, KAOMOJI } from "./emoji"
 import { formatAttachmentSize, useAttachmentSource } from "./attachment-sources"
 
 const MIN_COMPOSER_HEIGHT = 76
@@ -27,9 +27,13 @@ type Props = {
   dataGenerationId: string | null
   disabled: boolean
   participants?: readonly Participant[]
+  /** 本地用户自己：@ 列表里不该出现自己。 */
+  localUserId?: string | null
   canMentionAll?: boolean
   quoteMessageId?: string | null
   quote?: ChatMessage | null
+  /** 外部（例如右键头像「@某人」）请求插入的提及；nonce 变化即触发。 */
+  mentionRequest?: { name: string; nonce: number } | null
   onRemoveQuote?: () => void
   onSend: (text: string, requestId: string, options: SendOptions) => Promise<unknown>
 }
@@ -47,8 +51,13 @@ function AttachmentPreview({ generation, attachment, onRemove }: { generation: s
   </div>
 }
 
+const EMOJI_TABS = [
+  ...EMOJI_GROUPS.map((group) => ({ name: group.name, kaomoji: false, items: group.emojis })),
+  { name: "字符", kaomoji: true, items: KAOMOJI },
+]
+
 function EmojiPanel({ anchor, onPick, onClose }: { anchor: FloatingAnchor; onPick: (emoji: string) => void; onClose: () => void }) {
-  const [group, setGroup] = useState(0)
+  const [tab, setTab] = useState(0)
   const panel = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
@@ -61,13 +70,18 @@ function EmojiPanel({ anchor, onPick, onClose }: { anchor: FloatingAnchor; onPic
     return () => { document.removeEventListener("pointerdown", onPointerDown); document.removeEventListener("keydown", onKeyDown) }
   }, [onClose])
   const style = { position: "fixed" as const, left: Math.min(anchor.left, window.innerWidth - 356), bottom: window.innerHeight - anchor.top + 8 }
+  const active = EMOJI_TABS[tab]
   return createPortal(<div ref={panel} className="composer-emoji-panel" style={style} role="dialog" aria-label="选择表情">
     <div className="composer-emoji-tabs" role="tablist">
-      {EMOJI_GROUPS.map((item, index) => <button key={item.name} type="button" role="tab" aria-selected={index === group} className="composer-emoji-tab" onClick={() => setGroup(index)}>{item.name}</button>)}
+      {EMOJI_TABS.map((item, index) => <button key={item.name} type="button" role="tab" aria-selected={index === tab} className="composer-emoji-tab" onClick={() => setTab(index)}>{item.name}</button>)}
     </div>
-    <div className="composer-emoji-grid">
-      {EMOJI_GROUPS[group].emojis.map((emoji, index) => <button key={`${emoji}-${index}`} type="button" className="composer-emoji" onClick={() => onPick(emoji)}>{emoji}</button>)}
-    </div>
+    {active.kaomoji
+      ? <div className="composer-kaomoji-grid">
+        {active.items.map((item, index) => <button key={`${item}-${index}`} type="button" className="composer-kaomoji" onClick={() => onPick(item)}>{item}</button>)}
+      </div>
+      : <div className="composer-emoji-grid">
+        {active.items.map((item, index) => <button key={`${item}-${index}`} type="button" className="composer-emoji" onClick={() => onPick(item)}>{item}</button>)}
+      </div>}
   </div>, document.body)
 }
 
@@ -77,7 +91,7 @@ function MentionPanel({ anchor, items, active, onPick }: { anchor: FloatingAncho
   </div>, document.body)
 }
 
-export function MessageComposer({ active = true, dataGenerationId, disabled, participants = NO_PARTICIPANTS, canMentionAll = false, quoteMessageId = null, quote = null, onRemoveQuote, onSend }: Props) {
+export function MessageComposer({ active = true, dataGenerationId, disabled, participants = NO_PARTICIPANTS, localUserId = null, canMentionAll = false, quoteMessageId = null, quote = null, mentionRequest = null, onRemoveQuote, onSend }: Props) {
   const [draft, setDraft] = useState("")
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -105,6 +119,8 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
   const [selection, setSelection] = useState<{ start: number; end: number } | null>(null)
   const [caret, setCaret] = useState(0)
   const [composing, setComposing] = useState(false)
+  // 只有真正的输入动作才允许呼出成员列表：点进已经 @ 好的名字里不该再弹一次。
+  const [inputting, setInputting] = useState(false)
   const [emojiAnchor, setEmojiAnchor] = useState<FloatingAnchor | null>(null)
   const [mentionAnchor, setMentionAnchor] = useState<FloatingAnchor | null>(null)
   const [mentionIndex, setMentionIndex] = useState(0)
@@ -119,10 +135,13 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
   const failedRequest = useRef<{ requestId: string; revision: number; generation: string | null } | null>(null)
 
   const mentionTargets = useMemo<MentionTarget[]>(() => {
-    const targets = participants.map((participant) => ({ id: participant.id, name: participant.display_name }))
+    // 自己不参与提及：@ 列表里出现「我」既没用也容易被误点。
+    const targets = participants
+      .filter((participant) => participant.id !== localUserId)
+      .map((participant) => ({ id: participant.id, name: participant.display_name }))
     if (canMentionAll) targets.push({ id: "__all__", name: MENTION_ALL_NAME })
     return targets
-  }, [canMentionAll, participants])
+  }, [canMentionAll, localUserId, participants])
   const segments = useMemo(() => splitMentions(draft, mentionTargets), [draft, mentionTargets])
   const rich = segments.some((segment) => segment.kind === "mention")
   const limitError = draft.trim().length > 0 ? textValidationError(draft) : null
@@ -138,7 +157,7 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
       .filter((target) => !keyword || target.name.toLowerCase().includes(keyword))
       .slice(0, 8)
   }, [mentionTargets, query])
-  const mentionOpen = mentionMatches.length > 0 && !emojiAnchor
+  const mentionOpen = mentionMatches.length > 0 && inputting && !emojiAnchor
 
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
 
@@ -256,6 +275,7 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
     const next = draft.slice(0, start) + value + draft.slice(end)
     const caretAfter = start + value.length
     editIntent()
+    setInputting(false)
     setDraft(next)
     setCaret(caretAfter)
     setSelection({ start: caretAfter, end: caretAfter })
@@ -266,17 +286,59 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
   }, [draft, selection])
 
   function pickMention(target: MentionTarget) {
-    if (!query) return
-    const applied = applyMention(draft, query.start, caret, target.name)
+    const textarea = input.current
+    if (!textarea) return
+    // 直接用文本框里的真实光标，不依赖可能落后一帧的 state。
+    const live = activeMentionQuery(textarea.value, textarea.selectionStart)
+    if (!live) return
+    const applied = applyMention(textarea.value, live.start, textarea.selectionStart, target.name)
     editIntent()
+    setInputting(false)
     setDraft(applied.text)
     setCaret(applied.caret)
     setSelection({ start: applied.caret, end: applied.caret })
     requestAnimationFrame(() => {
-      input.current?.focus({ preventScroll: true })
-      input.current?.setSelectionRange(applied.caret, applied.caret)
+      const node = input.current
+      if (!node) return
+      node.focus({ preventScroll: true })
+      node.setSelectionRange(applied.caret, applied.caret)
+      // 段落变长后高度要跟着长，否则光标会落在可视区外。
+      node.scrollTop = node.scrollHeight
     })
   }
+
+  /** 右键头像的「@某人」：把提及追加到草稿末尾并聚焦。 */
+  function appendMention(name: string) {
+    const textarea = input.current
+    const value = textarea?.value ?? draft
+    const start = textarea?.selectionStart ?? value.length
+    const end = textarea?.selectionEnd ?? value.length
+    const lead = start > 0 && !/\s/.test(value[start - 1] ?? "") ? " " : ""
+    const insertion = `${lead}@${name} `
+    const next = value.slice(0, start) + insertion + value.slice(end)
+    const caretAfter = start + insertion.length
+    editIntent()
+    setInputting(false)
+    setDraft(next)
+    setCaret(caretAfter)
+    setSelection({ start: caretAfter, end: caretAfter })
+    requestAnimationFrame(() => {
+      const node = input.current
+      if (!node) return
+      node.focus({ preventScroll: true })
+      node.setSelectionRange(caretAfter, caretAfter)
+      node.scrollTop = node.scrollHeight
+    })
+  }
+
+  const mentionNonce = useRef(0)
+  useEffect(() => {
+    if (!mentionRequest || mentionRequest.nonce === mentionNonce.current) return
+    mentionNonce.current = mentionRequest.nonce
+    appendMention(mentionRequest.name)
+    // appendMention 每次渲染都是新函数，用 nonce 保证只执行一次。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mentionRequest])
 
   /** 图片与文件都走同一条上传链路；粘贴板里的 Blob 直接转 base64 过 IPC。 */
   const uploadBlobs = useCallback(async (blobs: { name: string; data: string }[]) => {
@@ -558,8 +620,10 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
               {"\u200b"}
             </div>
             <textarea ref={input} aria-label="消息输入" placeholder={attachments.length ? "给这些附件加句话…" : "说点什么……"} value={draft} rows={3} className="composer-input"
-              onChange={(event) => { editIntent(); setDraft(event.target.value); setCaret(event.target.selectionStart); setSelection({ start: event.target.selectionStart, end: event.target.selectionEnd }) }}
+              onChange={(event) => { editIntent(); setInputting(true); setDraft(event.target.value); setCaret(event.target.selectionStart); setSelection({ start: event.target.selectionStart, end: event.target.selectionEnd }) }}
               onSelect={syncCaret}
+              onPointerDown={() => setInputting(false)}
+              onClick={() => setInputting(false)}
               onScroll={(event) => { if (highlight.current) highlight.current.scrollTop = event.currentTarget.scrollTop }}
               onContextMenu={rememberSelection}
               onMouseDown={keepSelectionOnRightDown}

@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Virtuoso, type StateSnapshot, type VirtuosoHandle } from "react-virtuoso"
-import { IconArrowDown, IconCopy, IconQuote, IconTrash } from "@tabler/icons-react"
+import { IconArrowDown, IconAt, IconCopy, IconInfoCircle, IconQuote, IconTrash } from "@tabler/icons-react"
 import type { ChatMessage, MessagePage, Participant } from "@/contracts/generated"
 import { Button } from "@/components/ui/button"
 import { ContextMenu, type ContextMenuItem } from "@/components/ui/context-menu"
@@ -38,9 +38,13 @@ type MessageActions = {
   onQuote?: (message: ChatMessage) => void
   onRecall?: (messageId: string, requestId: string) => Promise<unknown>
   onLocateQuote?: (seq: string, id: string) => Promise<void>
+  /** 右键头像：把 @他 塞进输入框。 */
+  onMentionParticipant?: (participant: Participant) => void
+  /** 右键头像：打开成员信息。 */
+  onInspectParticipant?: (participantId: string) => void
 }
 
-const MessageRow = memo(function MessageRow({ message, participant, participants, self, highlighted, entering, generation, quotes, onQuote, onRecall, onLocateQuote }: {
+const MessageRow = memo(function MessageRow({ message, participant, participants, self, highlighted, entering, generation, quotes, onQuote, onRecall, onLocateQuote, onMentionParticipant, onInspectParticipant }: {
   message: ChatMessage; participant: Participant; participants: ReadonlyMap<string, Participant>; self: boolean; highlighted: boolean; entering: boolean; generation?: string
 } & MessageActions) {
   const toast = useToast()
@@ -114,7 +118,16 @@ const MessageRow = memo(function MessageRow({ message, participant, participants
   return (
     <article data-message-id={message.id} data-message-seq={message.seq} data-pending={pendingMessage || undefined} className={cn("chat-message", highlighted && "chat-message-highlight", entering && "chat-message-enter")} aria-label={`${participant.display_name}的消息`}>
       {message.state === "recalled" ? <SystemMessageTag kind="recall">{participant.display_name}撤回了一条消息</SystemMessageTag> : <div className="chat-message-row" data-self={self}>
-        <div className="chat-message-avatar"><Avatar name={participant.display_name} avatarId={participant.avatar_id} colorId={participant.kind === "agent" ? participant.id : undefined} generation={generation} size={40} radius={10} /></div>
+        <ContextMenu
+          label={`${participant.display_name} 的头像操作`}
+          items={[
+            ...(self || !onMentionParticipant ? [] : [{ key: "mention", icon: <IconAt size={16} aria-hidden="true" />, label: `@${participant.display_name}`, onSelect: () => onMentionParticipant(participant) }]),
+            { key: "inspect", icon: <IconInfoCircle size={16} aria-hidden="true" />, label: "查看信息", disabled: !onInspectParticipant, onSelect: () => onInspectParticipant?.(participant.id) },
+          ]}
+          boundary={chatBoundary}
+        >
+          <div className="chat-message-avatar"><Avatar name={participant.display_name} avatarId={participant.avatar_id} colorId={participant.kind === "agent" ? participant.id : undefined} generation={generation} size={40} radius={10} /></div>
+        </ContextMenu>
         <div className="chat-message-stack">
           {!self && <span className="chat-message-name">{participant.display_name}</span>}
           <ContextMenu
@@ -171,7 +184,7 @@ type ViewportProps = Props & {
 function MessageViewport({
   generation, page, participants, localUserId, firstItemIndex, targetMessageId, restoreAnchor, enteringIds, followLatest,
   scrollToBottomSignal = 0, loadingMore, onLoadOlder, onLoadNewer, onAtBottomChange, onRenderedAnchorChange, initialSaved,
-  quotes, onQuote, onRecall, onLocateQuote,
+  quotes, onQuote, onRecall, onLocateQuote, onMentionParticipant, onInspectParticipant,
 }: ViewportProps) {
   // 滚动恢复状态由本组件独占；卸载后由 restoreAnchor/targetMessageId 重新定位。
   const saved = useRef<SavedScroll | null>(initialSaved)
@@ -307,7 +320,7 @@ function MessageViewport({
       const previous = page.items[index - firstItemIndex - 1]
       return <>
         {shouldInsertTimeTag(previous?.created_at, message.created_at) && <SystemMessageTag kind="time">{formatMessageTime(message.created_at)}</SystemMessageTag>}
-        <MessageRow message={message} participant={participants.get(message.sender_id)!} participants={participants} self={message.sender_id === localUserId} highlighted={message.id === targetMessageId} entering={enteringIds?.has(message.id) ?? false} generation={generation} quotes={quotes} onQuote={onQuote} onRecall={onRecall} onLocateQuote={onLocateQuote} />
+        <MessageRow message={message} participant={participants.get(message.sender_id)!} participants={participants} self={message.sender_id === localUserId} highlighted={message.id === targetMessageId} entering={enteringIds?.has(message.id) ?? false} generation={generation} quotes={quotes} onQuote={onQuote} onRecall={onRecall} onLocateQuote={onLocateQuote} onMentionParticipant={onMentionParticipant} onInspectParticipant={onInspectParticipant} />
       </>
     }}
   />

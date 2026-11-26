@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { IconBellOff, IconMessageCircle, IconUsers } from "@tabler/icons-react"
-import type { ChatMessage } from "@/contracts/generated"
+import type { ChatMessage, Participant } from "@/contracts/generated"
 import { errorMessage, ipc } from "@/app/ipc"
 import type { SendOptions } from "./useChatSession"
 import type { ApplicationPageProps } from "@/app/navigation"
@@ -204,6 +204,13 @@ export function ChatView({ session, inbox, active, onNavigate }: ApplicationPage
     requestAnimationFrame(() => { if (visible.current) chatCard?.querySelector<HTMLTextAreaElement>("textarea[aria-label='消息输入']")?.focus() })
   }, [generation, contentEpoch, chatCard])
 
+  // 右键头像「@某人」：把请求交给输入框，它负责插到光标处并聚焦。
+  const [mentionRequest, setMentionRequest] = useState<{ name: string; nonce: number } | null>(null)
+  const mentionParticipant = useCallback((participant: Participant) => {
+    setMentionRequest((current) => ({ name: participant.display_name, nonce: (current?.nonce ?? 0) + 1 }))
+  }, [])
+  const inspectParticipant = useCallback(() => { openPanel("members") }, [openPanel])
+
   useEffect(() => {
     if (!active) return
     const onKeyDown = (event: KeyboardEvent) => {
@@ -275,9 +282,9 @@ export function ChatView({ session, inbox, active, onNavigate }: ApplicationPage
           {unreadNotice && <div className="chat-unread-notice" role="status">
             <button type="button" className="chat-latest-button" onClick={() => { const target = unreadNotice; setUnreadNotice(null); void session.jumpTo(target.seq, target.id) }}>{unreadNotice.count} 条未读消息</button>
           </div>}
-          {page && snapshot ? <MessageList key={session.windowRevision} active={active} page={page} participants={participants} restoreAnchor={session.restoreAnchor ?? session.liveAnchor()} enteringIds={session.enteringIds} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !page.has_more_after} hasNewMessages={session.hasNewMessages} newMessageCount={hideLatestNotice ? 0 : unreadCount} hideLatestNotice={hideLatestNotice} scrollToBottomSignal={scrollToBottomSignal} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={goToLatest} quotes={quotes} onQuote={selectQuote} onRecall={session.recall} onLocateQuote={session.jumpTo} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}
+          {page && snapshot ? <MessageList key={session.windowRevision} active={active} page={page} participants={participants} restoreAnchor={session.restoreAnchor ?? session.liveAnchor()} enteringIds={session.enteringIds} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !page.has_more_after} hasNewMessages={session.hasNewMessages} newMessageCount={hideLatestNotice ? 0 : unreadCount} hideLatestNotice={hideLatestNotice} scrollToBottomSignal={scrollToBottomSignal} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={goToLatest} quotes={quotes} onQuote={selectQuote} onRecall={session.recall} onLocateQuote={session.jumpTo} onMentionParticipant={mentionParticipant} onInspectParticipant={inspectParticipant} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}
           {resolvedQuotes?.identity === quotesIdentity && resolvedQuotes.error && <p className="chat-quote-feedback" role="alert">{resolvedQuotes.error}</p>}
-          <MessageComposer active={active} dataGenerationId={generation} disabled={!snapshot} participants={snapshot?.participants} canMentionAll={snapshot?.room.owner_participant_id === snapshot?.local_user.id} quoteMessageId={quoteId} quote={quote} onRemoveQuote={() => setSelectedQuote(null)} onSend={handleSend} />
+          <MessageComposer active={active} dataGenerationId={generation} disabled={!snapshot} participants={snapshot?.participants} localUserId={snapshot?.local_user.id ?? null} canMentionAll={snapshot?.room.owner_participant_id === snapshot?.local_user.id} mentionRequest={mentionRequest} quoteMessageId={quoteId} quote={quote} onRemoveQuote={() => setSelectedQuote(null)} onSend={handleSend} />
         </div>
       </div>
       {snapshot && <GroupInfoDrawer key={snapshot.data_generation_id} snapshot={snapshot} container={chatCard} open={panel === "members" && active} onOpenChange={(open) => { if (!open) closePanel() }} onRoomChange={session.applyRoom} onManageAgents={() => { closePanel(); onNavigate("agents") }} onReturnFocus={restoreFocus} muted={inbox.conversation(snapshot.room.id)?.muted ?? false} onMutedChange={(muted) => void inbox.setMuted(snapshot.room.id, muted)} />}

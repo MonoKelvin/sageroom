@@ -79,6 +79,11 @@ description = "原生选择头像并以不透明对象标识读取"
 commands.allow = ["avatar_import", "avatar_read"]
 
 [[permission]]
+identifier = "attachment-manage"
+description = "选择或粘贴消息附件、按标识读取与用系统程序打开，只在本机数据目录内生效"
+commands.allow = ["attachment_pick", "attachment_paste", "attachment_read", "attachment_open", "attachment_discard"]
+
+[[permission]]
 identifier = "clipboard-read"
 description = "读取系统剪贴板纯文本，用于输入框粘贴"
 commands.allow = ["clipboard_read_text"]

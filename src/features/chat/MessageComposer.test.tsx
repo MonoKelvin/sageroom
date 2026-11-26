@@ -93,6 +93,20 @@ describe("消息输入", () => {
     expect(onSend.mock.calls[0]?.[2]).toEqual(expect.objectContaining({ mention_ids: [], mention_all: true }))
   })
 
+  it("提及列表排除自己，右键头像的 @ 请求会插进草稿", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined)
+    const view = render(<MessageComposer dataGenerationId="generation" disabled={false} participants={snapshot().participants} localUserId="user-test" onSend={onSend} />)
+    const input = screen.getByRole("textbox", { name: "消息输入" })
+    await userEvent.type(input, "@")
+    expect(await screen.findByRole("option", { name: "Sage" })).toBeInTheDocument()
+    expect(screen.queryByRole("option", { name: "我" })).not.toBeInTheDocument()
+
+    // 外部发起「@Sage」：直接落到草稿里并聚焦
+    view.rerender(<MessageComposer dataGenerationId="generation" disabled={false} participants={snapshot().participants} localUserId="user-test" mentionRequest={{ name: "Sage", nonce: 1 }} onSend={onSend} />)
+    await waitFor(() => expect(input).toHaveValue("@ @Sage "))
+    expect(input).toHaveFocus()
+  })
+
   it("IME 组合态 Enter 和 Shift+Enter 都不发送", async () => {
     const onSend = vi.fn().mockResolvedValue(undefined)
     render(<MessageComposer dataGenerationId="generation" disabled={false} onSend={onSend} />)

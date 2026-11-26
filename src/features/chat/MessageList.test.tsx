@@ -108,16 +108,21 @@ describe("消息撤回菜单与系统 Tag", () => {
     expect(screen.queryByRole("menuitem", { name: "撤回" })).not.toBeInTheDocument()
   })
 
-  it("右键点击气泡以外的空白区域不弹出菜单", async () => {
+  it("右键点击气泡以外的空白区域不弹出消息菜单，头像有自己的菜单", async () => {
     const { container } = mount(propsFor([recent(1), recent(2)]))
     const row = container.querySelector<HTMLElement>('[data-message-id="message-2"]')!
     const article = row.closest("article")!
-    const avatar = row.querySelector(".chat-message-avatar")!
-    for (const target of [article, row, avatar]) {
+    for (const target of [article, row]) {
       await act(async () => { fireEvent.contextMenu(target, { clientX: 12, clientY: 12 }) })
       expect(screen.queryByRole("menu")).not.toBeInTheDocument()
       expect(target).not.toHaveAttribute("aria-haspopup", "menu")
     }
+    // 头像单独提供 @某人 / 查看信息，但不该顺带弹出消息菜单
+    const avatar = row.querySelector(".chat-message-avatar")!
+    await act(async () => { fireEvent.contextMenu(avatar, { clientX: 12, clientY: 12 }) })
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+    expect(screen.getByRole("menuitem", { name: "查看信息" })).toBeInTheDocument()
+    await act(async () => { fireEvent.keyDown(document, { key: "Escape" }) })
     // 气泡本身仍然可以弹出
     await openMessageMenu(container, "2")
     expect(screen.getByRole("menu")).toBeInTheDocument()

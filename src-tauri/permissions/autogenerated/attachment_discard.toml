@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-attachment-discard"
+description = "Enables the attachment_discard command without any pre-configured scope."
+commands.allow = ["attachment_discard"]
+
+[[permission]]
+identifier = "deny-attachment-discard"
+description = "Denies the attachment_discard command without any pre-configured scope."
+commands.deny = ["attachment_discard"]

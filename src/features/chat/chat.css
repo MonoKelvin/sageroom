@@ -205,21 +205,46 @@ html[data-input-modality="keyboard"] :is(.chat-search-locate, .group-info-drawer
    平时仍用原生文本，中文输入法组词不会出现看不见的候选字。 */
 .composer-input-rich .composer-input { color: transparent; caret-color: var(--text-primary); }
 .composer-input-rich .composer-input::placeholder { color: transparent; }
+/* 组词时不整层隐藏——那样每打一个字胶囊都会闪一下。
+   只把高亮层的文字交给原生文本框显示，胶囊底色继续留着，位置也不会错。
+   前提是胶囊不改变排版宽度（见下面的 box-shadow 画法）。 */
 .composer-input-composing .composer-input { color: var(--text-primary); }
-.composer-input-composing .composer-highlight { visibility: hidden; }
-.composer-mention-capsule { border-radius: calc(var(--radius) * .5); padding: 0 .15em; background: color-mix(in srgb, var(--semantic-accent) 16%, transparent); color: var(--semantic-accent); }
+.composer-input-composing .composer-highlight { color: transparent; }
+.composer-input-composing .composer-mention-capsule { color: transparent; }
+/* 胶囊的视觉留白用 box-shadow 扩散，而不是 padding：
+   padding 会把高亮层撑宽，和高亮层下面真实文本框的位置对不上，光标就会错位。 */
+.composer-mention-capsule {
+  border-radius: .45em;
+  background: color-mix(in srgb, var(--semantic-accent) 15%, transparent);
+  box-shadow: 0 0 0 .18em color-mix(in srgb, var(--semantic-accent) 15%, transparent);
+  color: var(--semantic-accent);
+}
 
 /* ---- 悬空的提及列表与表情面板 ---- */
-.composer-mention-panel { z-index: 60; display: flex; flex-direction: column; max-height: calc(var(--control-height) * 8); padding: var(--space-1); overflow-y: auto; border: var(--stroke-width) solid var(--border-subtle); border-radius: var(--radius); background: var(--surface-elevated, var(--surface-content)); box-shadow: var(--shadow-popover, 0 12px 32px rgb(0 0 0 / 12%)); }
+/* 毛玻璃：和浮层按钮共用同一套 token，半透明底 + 背景模糊，跟着主题反色。 */
+.composer-mention-panel, .composer-emoji-panel {
+  z-index: 60;
+  border: var(--stroke-width) solid var(--floating-border);
+  border-radius: var(--radius);
+  background: var(--surface-glass);
+  box-shadow: var(--floating-shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+}
+.composer-mention-panel { display: flex; flex-direction: column; max-height: calc(var(--control-height) * 8); padding: var(--space-1); overflow-y: auto; }
+.composer-emoji-panel { width: 352px; padding: var(--space-2); }
 .composer-mention-option { display: block; width: 100%; padding: var(--space-2) var(--space-3); border: 0; border-radius: calc(var(--radius) * .7); background: transparent; color: var(--text-primary); font-size: var(--font-body); text-align: left; cursor: pointer; }
 .composer-mention-option[data-active="true"], .composer-mention-option:hover { background: var(--control-hover-bg); }
-.composer-emoji-panel { z-index: 60; width: 352px; padding: var(--space-2); border: var(--stroke-width) solid var(--border-subtle); border-radius: var(--radius); background: var(--surface-elevated, var(--surface-content)); box-shadow: var(--shadow-popover, 0 12px 32px rgb(0 0 0 / 12%)); }
 .composer-emoji-tabs { display: flex; gap: var(--space-1); margin-bottom: var(--space-2); }
 .composer-emoji-tab { flex: 1; padding: var(--space-1) var(--space-2); border: 0; border-radius: calc(var(--radius) * .7); background: transparent; color: var(--text-secondary); font-size: var(--font-caption); cursor: pointer; }
 .composer-emoji-tab[aria-selected="true"] { background: var(--control-active-bg); color: var(--text-primary); }
 .composer-emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: var(--space-1); max-height: calc(var(--size-unit) * 96); overflow-y: auto; }
 .composer-emoji { aspect-ratio: 1; border: 0; border-radius: calc(var(--radius) * .6); background: transparent; font-size: calc(var(--size-unit) * 8); line-height: 1; cursor: pointer; }
 .composer-emoji:hover { background: var(--control-hover-bg); }
+/* 字符表情（颜文字）宽度差别大，单独用流式排布，不塞进正方形格子。 */
+.composer-kaomoji-grid { display: flex; flex-wrap: wrap; gap: var(--space-1); max-height: calc(var(--size-unit) * 96); overflow-y: auto; }
+.composer-kaomoji { padding: var(--space-1) var(--space-2); border: 0; border-radius: calc(var(--radius) * .6); background: transparent; color: var(--text-primary); font-size: var(--font-body); white-space: nowrap; cursor: pointer; }
+.composer-kaomoji:hover { background: var(--control-hover-bg); }
 
 /* ---- 输入框里的待发送附件 ---- */
 .composer-attachments { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-3) var(--space-3) 0; }
