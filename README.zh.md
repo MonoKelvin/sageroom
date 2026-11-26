@@ -66,7 +66,7 @@ Sageroom 是一个桌面聊天应用。打开它，里面有一个群聊，群�
 | 文件 | 说明 |
 | --- | --- |
 | `Sageroom-<版本>-setup.exe` | 安装版，约 8 MB。装到当前用户目录，不弹 UAC，带开始菜单快捷方式和卸载程序。 |
-| `Sageroom-<版本>-portable.exe` | 免安装版，约 8 MB。双击即用，不写注册表、不建快捷方式、没有卸载程序。 |
+| `Sageroom-<版本>-portable.zip` | 免安装版，约 8.5 MB。解压到任意位置，双击里面的 `Sageroom.exe` 就能用——不用安装、不写注册表、不建快捷方式。 |
 
 **系统要求**：Windows 10 1809 及以上 / Windows 11，64 位。需要 Microsoft Edge WebView2 运行时——Windows 11 自带，Windows 10 如果缺失，安装程序会提示并打开下载页。
 

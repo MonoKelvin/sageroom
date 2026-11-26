@@ -66,7 +66,7 @@ Grab the latest from **[Releases](https://github.com/MonoKelvin/sageroom/release
 | File | What it is |
 | --- | --- |
 | `Sageroom-<version>-setup.exe` | Installer, about 8 MB. Installs for the current user (no UAC prompt), adds Start Menu shortcuts and an uninstaller. |
-| `Sageroom-<version>-portable.exe` | Portable, about 8 MB. Double-click and it runs — no registry entries, no shortcuts, no uninstaller. |
+| `Sageroom-<version>-portable.zip` | Zip, about 8.5 MB. Unzip anywhere and double-click `Sageroom.exe` — nothing gets installed, no registry entries, no shortcuts. |
 
 **Requirements:** Windows 10 1809 or newer / Windows 11, 64-bit. Sageroom needs the Microsoft Edge WebView2 runtime — Windows 11 ships with it, and on Windows 10 the installer will tell you and open the download page if it's missing.
 

@@ -10,10 +10,9 @@
 #define AppPublisher "MonoKelvin"
 #define AppUrl "https://github.com/MonoKelvin/sageroom"
 
-; 安装版与便携版用不同的 AppId，避免互相把对方当成"已安装的同名程序"。
+; 安装版的程序标识。
 #define AppId "{{7C4B2F1A-9E63-4D18-8A52-3B6F0D9C5E71}"
-#define PortableAppId "{{B41E8D02-6A75-4C93-9F1D-2E58A7C03D64}"
 
-; 构建脚本把 release exe 拷到这个目录，压缩源只有它一个文件。
+; 构建脚本把 release exe 与 LICENSE 拷到这个目录。
 #define StageDir "..\..\build\windows\stage"
 #define RepoRoot "..\.."
