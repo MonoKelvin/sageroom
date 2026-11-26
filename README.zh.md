@@ -1,125 +1,108 @@
-# Sageroom
+<p align="center">
+  <img src="src-tauri/icons/icon.png" width="112" height="112" alt="Sageroom">
+</p>
 
-[English](README.md)
+<h1 align="center">Sageroom</h1>
 
-**Sageroom 是一个本地优先的桌面智能体聊天室：一位真人与多位 AI 智能体共处同一个聊天室。** 仍在开发中：桌面壳与本地文本聊天切片已经实现，完整 P0/P1 产品尚未交付。
+<p align="center">一个人，几个有性格的 AI，一个群聊。</p>
 
-目标是形成一种自然的群聊，而不是简单罗列多个模型回答。智能体观察群消息，自行决定接话、沉默、等待或休息，也可以彼此交谈。代码负责边界、权限与一致性；“是否值得发言”由各成员的模型决定。
+<p align="center">
+  <a href="https://github.com/MonoKelvin/sageroom/releases"><img src="https://img.shields.io/github/v/release/MonoKelvin/sageroom?style=flat-square&color=3b82f6" alt="版本"></a>
+  <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-0078d4?style=flat-square" alt="Windows 10 / 11">
+  <img src="https://img.shields.io/badge/Tauri-2-24c8db?style=flat-square" alt="Tauri 2">
+  <img src="https://img.shields.io/badge/React-19-61dafb?style=flat-square" alt="React 19">
+  <img src="https://img.shields.io/badge/Rust-1.90-dea584?style=flat-square" alt="Rust">
+  <img src="https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square" alt="MIT">
+</p>
 
-## 产品基线
+<p align="center"><b>简体中文</b> · <a href="README.md">English</a></p>
 
-- 一个本地真人身份、一个聊天室；不做账号、云同步或互联网多人联机。
-- 桌面端先行；目标平台为 Windows 10 19045 与 Windows 11，移动端不在 V1 范围内。
-- 技术栈：Tauri 2、React、TypeScript、Tailwind、shadcn/ui、Tabler Icons、react-virtuoso 与用于平滑滚动的 Lenis。
-- 内置 Sage；成员可独立配置模型、人格/SKILL、语言风格与头像。
-- 聊天记录本地保存，用户掌控数据；远端模型调用可见、有边界、可取消。
-- 可选的联网新闻摘要：全局配置支持自动免费回退、AIHOT、Google 新闻 RSS、AnySearch、FreeNews、BBC 科技 RSS、GDELT，以及可选 API Key 的 Tavily / Serper。可由 AI 按聊天需要选择关键词，筛选并整理结果；全局只配置缓存时间、条数与代理，立即测试并查看来源、日期和失败诊断；密钥只存系统凭据库，其他收费账户不参与自动回退。摘要作为外部资料注入模型，失败短暂缓存、旧结果最多保留 6 小时，不阻断正常聊天。
-- 群主只增加四项群管理权限：修改群名称、修改允许的群资料、`@所有人`、发布通告；聊天地位与普通成员平等。
+Sageroom 是一个桌面聊天应用。打开它，里面有一个群聊，群里坐着几个 AI。你像在普通群里那样说话：发消息、@ 人、引用某一句、丢一张图进去。他们看着群里的动静，自己决定要不要接话——有时候回，有时候不出声，有时候两个 AI 自己聊起来了。
 
-“本地优先”不等于“完全离线”。使用远端模型、搜索或生图服务时，相应内容会离开设备。
+每个 AI 都是独立的：有自己的性格、自己的模型、自己记住的事。同一个群里，两个 AI 可能会互相不同意。
 
-## 当前已实现
+数据都在你自己电脑上。聊天记录、设置和图片存在本地数据库，密钥存在系统凭据库里。除了你主动发给模型服务的内容，其余都不会离开这台机器。
 
-- **原生桌面壳：** 无边框半透明 Tauri 窗口、自绘窗口控制、系统托盘、关闭隐藏、明确退出与单实例激活。
-- **聊天：** 文本消息本地持久化、稳定排序、历史分页、虚拟列表、安全的中文输入法组合输入、基础字面检索与群名称修改。
-- **配置：** 聊天、智能体、设置、用户四个导航区；模型提供方配置与连接测试；真人资料和头像编辑；设置即时生效。
-- **数据与边界：** SQLite WAL、schema 版本校验、同源生成的类型化 IPC 合同、CSP 与权限限制、输入上限，以及仅写入隔离测试目录的桌面端测试流程。
+## 用起来是什么感觉
 
-## 尚未实现
+- **不需要你一句一句地推。** AI 看到新消息，自己判断这是不是该它说话的时候，也可以完全不说。你不需要维护一条队列。
+- **你走了他们还在聊。** 两个 AI 可以在你去做别的事的时候接着聊下去。
+- **这是个聊天，不是仪表盘。** 短句、一条一个意思，不会在对话中间给你列个清单。
 
-自主运行的智能体 actor 与自然接话、长期记忆与上下文压缩、图片/文件/表情发送、工具成员与后台任务、完整备份恢复与目录迁移、通知策略，以及最终实机验收仍在进行中。模型连接测试成功不代表这些能力已完成。
+## 能做什么
 
-设计文档描述的是目标与方案；其中标记为“建议”或“待确认”的内容不是已交付功能。
+**聊天**
 
-## 环境要求
+- 消息本地保存，重开还在，能一直往上翻
+- 输入 `@` 弹出带头像的成员列表，选中后变成彩色胶囊嵌在正文里
+- 引用某条消息；点引用可以直接跳回原消息
+- 发图片和文件，也能把截图直接粘进输入框
+- 自己发的消息三分钟内可以撤回
+- <kbd>Ctrl</kbd> + <kbd>F</kbd> 搜聊天记录，点结果直接跳过去
+- 消息免打扰、未读角标、一键跳到第一条未读
 
-| 组件 | 版本 / 前置条件 |
-|---|---|
-| Node.js | `>=24.14.1 <25` |
-| pnpm | `>=11.9.0 <12`（`packageManager` 固定为 `pnpm@11.9.0`） |
-| Rust | `1.90` 或更高（`src-tauri/Cargo.toml` 的 `rust-version`） |
-| 桌面环境 | Tauri 2 依赖；Windows 上需要 WebView2 与 MSVC 构建工具 |
+**AI 成员**
 
-目前已验证 Windows 10 + WebView2 + 100% DPI。Windows 11、其他 DPI、安装态与 release 性能仍未验收；当前未启用安装包打包（`bundle.active: false`）。
+- 内置 Sage，也可以自己加成员
+- 每个成员单独设置模型、人格（八个维度）、语言风格和头像
+- 「经历」——每个 AI 记住的短句事实，按重要度和时间衰减排序，越新越重要越容易想起来
+- 每日请求上限、暂停与恢复、实时状态（思考中 / 准备发送）
 
-## 本地运行
+**应用本身**
+
+- 无边框半透明窗口，自绘窗口按钮，系统托盘，关闭即隐藏，开机自启，单实例
+- 浅色 / 深色主题跟随系统
+- 数据目录可以迁移，设置页里能看清每样东西存在哪
+
+**可选的联网新闻**
+
+- 聊天需要的时候，AI 可以自己查一下。默认走免费公开来源，也可以填自己的 Tavily / Serper 密钥
+- 缓存时长、条数、代理都由你设置；密钥只进凭据库，不写配置文件
+
+## 下载
+
+到 **[Releases](https://github.com/MonoKelvin/sageroom/releases)** 下载最新版本。
+
+| 文件 | 说明 |
+| --- | --- |
+| `Sageroom-<版本>-setup.exe` | 安装版，约 8 MB。装到当前用户目录，不弹 UAC，带开始菜单快捷方式和卸载程序。 |
+| `Sageroom-<版本>-portable.exe` | 免安装版，约 8 MB。双击即用，不写注册表、不建快捷方式、没有卸载程序。 |
+
+**系统要求**：Windows 10 1809 及以上 / Windows 11，64 位。需要 Microsoft Edge WebView2 运行时——Windows 11 自带，Windows 10 如果缺失，安装程序会提示并打开下载页。
+
+> 免安装版的数据同样存在 `%LOCALAPPDATA%\app.sageroom.desktop`，和安装版共用一份。它是「不用安装」，不是「能揣在 U 盘里走」。
+
+目前只提供 Windows 安装包。
+
+## 数据存在哪
+
+- 聊天记录、设置、附件：`%LOCALAPPDATA%\app.sageroom.desktop`
+- 如果你迁移过数据目录，覆盖配置在：`%APPDATA%\app.sageroom.desktop\data-root.json`
+- API 密钥：Windows 凭据管理器
+
+没有任何埋点。另外提醒一句：即使某个 AI 最后决定不说话，它也可能已经调用过模型并产生费用；取消本地任务不一定能取消远端请求。
+
+## 还没做到的
+
+- 只有 Windows
+- 一个程序一个群，暂时没有多会话、消息导出、移动端
+- AI 偶尔还是会有机械感，这块一直在调
+
+## 从源码跑起来
+
+需要 Node.js 24、pnpm 11、Rust 1.90+，以及 Windows 上的 [Tauri 2 环境](https://tauri.app/start/prerequisites/)（WebView2 和 MSVC 构建工具）。
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm tauri dev
+pnpm install
+pnpm tauri dev        # 启动桌面应用
+pnpm check            # lint、类型检查、测试、合同校验
+pnpm package:win      # 生成安装版和免安装版
 ```
 
-`pnpm tauri dev` 启动真实桌面应用。`pnpm dev` 仅启动 Vite 前端服务；普通浏览器无法模拟 SQLite、IPC 和原生窗口。
+`pnpm dev` 只启动前端页面，适合调样式——普通浏览器里没有 SQLite、没有 IPC，也没有原生窗口。
 
-## 联网新闻
-
-在「智能体 → 全局配置 → 联网新闻」打开「联网搜索」并选择「搜索来源」。搜索词由成员自己的模型根据聊天决定，不再由用户设置；结果交回同一模型判断相关性、可信度与表达方式，每轮最多查询一次，搜索前后两次模型判断都计入额度。查询词不能包含私人信息，新闻渠道不接收整段聊天。
-
-代理默认关闭；开启后可跟随系统、直连或填写手动代理。点击「测试来源」只用固定探测词测试渠道，结果以列表展示，不调用模型，也不保存关键词。关闭联网搜索仍可测试。API密钥位于搜索来源下方，只存系统凭据库。
-
-Tavily 支持匿名限额与可选 Key，Serper 需要 Key。分别在 [Tavily](https://app.tavily.com/) 和 [Serper](https://serper.dev/) 申请；免费额度和超额收费以官方账户为准。Key 独立保存于系统凭据库，只有明确选中对应来源时才使用，自动回退不调用其他收费账户。
-
-来源选择与降级思路参考 [dsh-free-search](https://github.com/DDDMUC/dsh-free-search)，本项目直接用 Rust HTTP 客户端读取固定端点，不安装或执行其插件，也不要求额外 MCP / Node 服务。免费公共接口没有可用性承诺；来源摘要可能由其他模型生成，不能代替原文核验。
-
-若旧桌面进程提示 `news_configuration_get not allowed. Command not found`，需要退出包括托盘在内的旧实例，再通过 `pnpm tauri dev` 重新编译启动；刷新 Vite 前端不会更新 Rust 的命令权限。
-
-## 检查
-
-```bash
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm contracts:check
-cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
-```
-
-`pnpm contracts:generate` 重新生成 `src/contracts/generated` 下的 TypeScript 类型、JSON schema 与校验器。`pnpm test:desktop` 会构建隔离的桌面测试实例，并把证据写入 `.test-results/`，不会使用普通聊天数据目录。`pnpm build` 构建 Tauri 使用的前端产物。
-
-## 聊天风格校准
-
-普通闲聊的长度和话术由本地风格校准约束，而不是只靠提示词要求“像真人”：
-
-- `agent/train_chat_style.py` 从本地 `agent/chat_corpus_zh/` 的豆瓣、贴吧、微博、PTT、青云多来源流式抽样人类回复，清洗隐私、广告、机器人和低质内容后，训练一个只含数值参数的轻量判别器，并输出句长/句式画像；训练在本地完成，不联网，不上传语料或聊天记录。单来源超过读取预算会截断并在 `report.json` 标记。仅重训时需要 Python 3.10+，运行应用本身不依赖 Python。
-- 产物放在应用数据目录的 `chat-style/model.json`，只包含均值、权重、阈值和句长分位等数字，不含例句、词表或路径。模型缺失或损坏时退回内置的短回复与话术规则。运行时还会检测逻辑连接词、文艺腔、段落换行和重复开头，并在两轮递增改写后做确定性修剪：只保留合规短句，必要时改为 `observe`。
-- 运行时只把抽象的长度预算和“是否已决定发言”等状态放进提示词；语料原句、训练样本和模型权重不会发送给模型服务。
-- `--evaluate-db` 只在明确指定本地数据库时使用只读连接，只输出统计指标，不打印或导出用户与 AI 正文。
-
-这是可重复的离线重训流程，不是应用运行中自动吸收用户聊天或模型输出的持续训练；AI 自己的回复不能回灌成“真人样本”。本机 GTX 1060 6GB 暂不适合为这类风格问题先引入独立生成式模型，当前采用“本地判别与校准 + 外部模型生成”的轻量方案。校准只借鉴 [Imprint](https://pypi.org/project/imprint-layer/) 的稳定短画像与 [CPR](https://github.com/TheShadowRose/cpr) 的防讨好、防漂移思路，没有引入其 Python 依赖或复制代码；CPR 中会强化语气词和微型叙事的恢复模式没有整套采用。
-
-`agent/chat_corpus_zh/` 是用户自行下载的本地评测/训练目录，已在 `.gitignore` 中排除。其汇总项目许可证不能替代每条上游内容的授权，本仓库不复制、不提交、不分发原始语料或训练样本；使用前请自行确认来源条款。外部参考：[chinese-chatbot-corpus](https://github.com/codemayq/chinese-chatbot-corpus)（仅研究思路，未复制源码）。
-
-## 目录结构
-
-| 路径 | 用途 |
-|---|---|
-| `src/` | React 前端：应用壳、聊天、智能体、设置、用户页面与生成的合同类型 |
-| `src-tauri/` | Rust 宿主：Tauri command、SQLite 存储、凭据、模型、附件与应用生命周期 |
-| `src/contracts/generated/` | 由 Rust 侧合同单一来源生成的 DTO、JSON schema 与校验器 |
-| `scripts/` | 合同生成、桌面端测试、图标与 Windows 窗口辅助脚本 |
-| `docs/` | 产品需求、架构、设计、测试与交付路线文档 |
-| `tests/` / `vitest.*` | 前端单元测试与组件测试 |
-
-## 文档
-
-设计文档目前以中文维护：
-
-- [00 · 文档导航与确认清单](docs/00-文档导航与确认清单.md) — 确认状态、待确认问题与统一参数。
-- [02 · 用户需求与产品规格](docs/02-用户需求与产品规格.md) — 产品范围、用户旅程与需求编号。
-- [03 · 总体架构与模块合同](docs/03-总体架构与模块合同.md) — 模块边界、IPC 与事件。
-- [08 · 界面与交互详细设计](docs/08-界面与交互详细设计.md) — 信息架构与交互细节。
-- [10 · 测试验收与性能评估](docs/10-测试验收与性能评估.md) — 测试场景、指标口径与现有证据。
-- [11 · 实施路线与开发任务分解](docs/11-实施路线与开发任务分解.md) — 工作包、依赖与已验证范围。
-
-产品背景先看 `00`、`02`、`08`；架构、数据与安全看 `03`、`05`、`07`、`09`；实施状态看 `10`、`11`。
-
-## 隐私与费用
-
-- 数据默认本地保存，设计上不引入隐式遥测。
-- API 凭据保存在系统凭据库，不写入普通前端配置或默认备份。
-- 即使成员选择不回复，也可能已经调用模型并产生费用；连接测试与成员间消息同样可能计费。价格估算与服务商账单是两回事。
-- 取消本地任务不保证远端执行或费用同时取消。
-- 模型输出和网页内容均视为外部不可信输入；V1 不执行任意代码，也不自动打开文件与 URL。
+打包产物在 `build/windows/`。`pnpm package:win --skip-build` 会跳过 Rust 编译直接重新打包，几秒出结果。
 
 ## 许可
 
-[MIT](LICENSE) © 2026 MonoKelvin。
+[MIT](LICENSE) © 2026 MonoKelvin

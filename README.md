@@ -1,111 +1,108 @@
-# Sageroom
+<p align="center">
+  <img src="src-tauri/icons/icon.png" width="112" height="112" alt="Sageroom">
+</p>
 
-[简体中文](README.zh.md)
+<h1 align="center">Sageroom</h1>
 
-**Sageroom is a local-first desktop chatroom where a human and multiple AI agents share one room.** Under active development: the desktop shell and the local text-chat slice are implemented, but the full P0/P1 product is **not** delivered yet.
+<p align="center">One person. A few AI agents. One group chat.</p>
 
-The intended experience is a living group chat, not a dashboard that simply displays several model answers. Agents observe the room, decide whether to speak, stay silent, wait, or rest, and may talk to each other. Code enforces budgets, permissions, and consistency; whether a message is worth sending is meant to be decided by each agent's model.
+<p align="center">
+  <a href="https://github.com/MonoKelvin/sageroom/releases"><img src="https://img.shields.io/github/v/release/MonoKelvin/sageroom?style=flat-square&color=3b82f6" alt="Version"></a>
+  <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-0078d4?style=flat-square" alt="Windows 10 / 11">
+  <img src="https://img.shields.io/badge/Tauri-2-24c8db?style=flat-square" alt="Tauri 2">
+  <img src="https://img.shields.io/badge/React-19-61dafb?style=flat-square" alt="React 19">
+  <img src="https://img.shields.io/badge/Rust-1.90-dea584?style=flat-square" alt="Rust">
+  <img src="https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square" alt="MIT">
+</p>
 
-## Product baseline
+<p align="center"><a href="README.zh.md">简体中文</a> · <b>English</b></p>
 
-- One local human identity and one chatroom. No accounts, cloud sync, or online multiplayer.
-- Desktop first; Windows 10 19045 and Windows 11 are the target platforms. Mobile is out of scope for V1.
-- Built with Tauri 2, React, TypeScript, Tailwind, shadcn/ui, Tabler Icons, react-virtuoso, and Lenis for smooth in-app scrolling.
-- Built-in Sage plus independently configurable members: model, persona/SKILL, language style, and avatar.
-- Local history and user-controlled data; remote model calls are visible, bounded, and cancellable.
-- 可选的新闻读取与配置说明见 [联网新闻](README.zh.md#联网新闻)；实现参考 [dsh-free-search](https://github.com/DDDMUC/dsh-free-search) 的公开渠道与降级思路，不安装其插件或额外 MCP 服务。
-- 可选联网新闻：全局配置支持自动免费回退、AIHOT、Google 新闻 RSS、AnySearch、FreeNews、BBC 科技 RSS、GDELT 和可选 API Key 的 Tavily / Serper；代理默认关闭，开启后可选跟随系统、直连与手动模式；AI 自选查询词并筛选、整理结果；用户只设置缓存时间、条数与代理，测试结果以列表展示。密钥只存系统凭据库，其他收费账户不参与自动回退；外部摘要注入模型上下文，失败短暂缓存、旧结果最多保留 6 小时，不阻断聊天。
-- An agent group owner has only four group-management powers: rename the group, change allowed group metadata, `@all`, and post announcements. Chatting status stays equal to other members.
+Sageroom is a desktop chat app. You open it and there's a group chat with a few AI agents in it. You talk to them the way you'd talk in any group: send a message, @ someone, quote a line, drop a picture in. They read the room and decide for themselves whether to speak — sometimes they answer, sometimes they stay quiet, sometimes they start talking to each other.
 
-"Local-first" does not mean fully offline. When a remote provider, search, or image service is used, the relevant content leaves the device.
+Each agent is its own thing: a personality, a model of its own, and a set of memories it keeps. Two agents in the same room can disagree.
 
-## What works today
+Everything stays on your machine. Chats, settings and images live in a local database, and API keys live in the system credential store. Nothing leaves your computer except the messages you choose to send to your model provider.
 
-- **Native shell:** frameless translucent Tauri window with custom window controls, system tray, hide-on-close, explicit exit, and single-instance activation.
-- **Chat:** persistent text messages, stable ordering, paginated history, virtualized list, IME-safe composer, basic literal Chinese search, and group-name editing.
-- **Configuration:** four navigation areas (Chat, Agents, Settings, User); provider/model configuration and connection tests; local profile and avatar editing; settings apply immediately.
-- **Data and safety:** SQLite with WAL and schema-version checks, typed IPC contracts generated from one source, CSP and capability restrictions, bounded inputs, and a desktop end-to-end harness that writes only to an isolated test data directory.
+## What it feels like
 
-## What is not implemented yet
+- **Nobody is waiting for a turn.** Agents see new messages, decide whether this is their moment, and can say nothing at all. You're not driving a queue of prompts.
+- **They keep talking after you stop.** Two agents can pick up a thread between themselves while you go do something else.
+- **It's a chat, not a dashboard.** Short lines, one thought per message, no bullet points in the middle of a conversation.
 
-Autonomous agent actors and natural turn-taking, long-term memory and context compression, image/file/sticker exchange, tool agents and background tasks, full backup/restore and directory migration, notification policies, and final desktop acceptance are still work in progress. A successful model connection test does **not** mean these capabilities are complete.
+## What you can do
 
-Design documents describe targets and proposals. Items marked as suggestions or pending confirmation are not delivered features.
+**Chat**
 
-## Requirements
+- Messages persist across restarts, with history you can scroll back through
+- Type `@` to pick a member from a list with avatars; the mention turns into a colored pill inside your text
+- Quote a message, and click a quote to jump to what it points at
+- Send images and files, or paste a screenshot straight into the input box
+- Recall your own message within three minutes
+- Search the history with <kbd>Ctrl</kbd> + <kbd>F</kbd> and jump to any hit
+- Mute a conversation, see unread counts, jump to the first unread message
 
-| Component | Version / prerequisite |
-|---|---|
-| Node.js | `>=24.14.1 <25` |
-| pnpm | `>=11.9.0 <12` (`pnpm@11.9.0` in `packageManager`) |
-| Rust | `1.90` or newer (`rust-version` in `src-tauri/Cargo.toml`) |
-| Desktop | Tauri 2 prerequisites; on Windows, WebView2 and MSVC build tools |
+**Agents**
 
-Current validation covers Windows 10 with WebView2 at 100% DPI. Windows 11, other DPI settings, installed builds, and release performance remain unverified. Application bundles are not enabled (`bundle.active: false`).
+- Built-in Sage, plus members you add yourself
+- Per-agent model, persona (eight dimensions), language style and avatar
+- "Experiences" — short facts an agent keeps. They're scored and decay over time, so recent and important things surface first
+- Daily request budget, pause and resume, live status like *thinking* or *about to send*
 
-## Getting started
+**The app**
+
+- Frameless translucent window with its own controls, system tray, hide-on-close, launch at login, single instance
+- Light and dark themes that follow the system
+- Data directory you can move; a settings page that actually explains what's stored where
+
+**Optional web news**
+
+- When a conversation calls for it, an agent can look something up. Free public sources by default; Tavily or Serper if you add your own key
+- You set the cache window, item count and proxy. Keys go to the credential store, never to a config file
+
+## Download
+
+Grab the latest from **[Releases](https://github.com/MonoKelvin/sageroom/releases)**.
+
+| File | What it is |
+| --- | --- |
+| `Sageroom-<version>-setup.exe` | Installer, about 8 MB. Installs for the current user (no UAC prompt), adds Start Menu shortcuts and an uninstaller. |
+| `Sageroom-<version>-portable.exe` | Portable, about 8 MB. Double-click and it runs — no registry entries, no shortcuts, no uninstaller. |
+
+**Requirements:** Windows 10 1809 or newer / Windows 11, 64-bit. Sageroom needs the Microsoft Edge WebView2 runtime — Windows 11 ships with it, and on Windows 10 the installer will tell you and open the download page if it's missing.
+
+> The portable build still keeps its data in `%LOCALAPPDATA%\app.sageroom.desktop`, shared with the installed build. It's "no install", not "runs off a USB stick".
+
+Windows installers are the only builds published so far.
+
+## Where your data lives
+
+- Chats, settings and attachments: `%LOCALAPPDATA%\app.sageroom.desktop`
+- Data directory override, if you've moved it: `%APPDATA%\app.sageroom.desktop\data-root.json`
+- API keys: Windows Credential Manager
+
+There's no telemetry. A model may be called even when an agent decides not to reply, and that call still costs money — cancelling a local task doesn't necessarily cancel the remote request.
+
+## Not there yet
+
+- Windows only for now
+- One group chat per install; no multi-room, no export, no mobile
+- Agents still sound mechanical now and then. Making them read like people is the main thing being worked on
+
+## Building from source
+
+You'll need Node.js 24, pnpm 11, Rust 1.90+, and the [Tauri 2 prerequisites](https://tauri.app/start/prerequisites/) for Windows (WebView2 and the MSVC build tools).
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm tauri dev
+pnpm install
+pnpm tauri dev        # run the desktop app
+pnpm check            # lint, typecheck, tests, contract check
+pnpm package:win      # build the installer and the portable exe
 ```
 
-`pnpm tauri dev` starts the real desktop application. `pnpm dev` only starts the Vite frontend server; a plain browser cannot simulate SQLite, IPC, or the native window.
+`pnpm dev` starts the Vite frontend alone, which is only useful for quick style work — a plain browser has no SQLite, no IPC and no native window.
 
-## Checks
-
-```bash
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm contracts:check
-cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
-```
-
-`pnpm contracts:generate` regenerates the TypeScript types, JSON schema, and validators in `src/contracts/generated`. `pnpm test:desktop` builds an isolated desktop test instance and writes evidence under `.test-results/`; it does not use the normal chat data directory. `pnpm build` builds the frontend used by Tauri.
-
-## Chat-style calibration
-
-Everyday chat length and phrasing are constrained by a local style calibrator, not only by prompt instructions:
-
-- `agent/train_chat_style.py` streams human replies from the Douban, Tieba, Weibo, PTT, and Qingyun sources under `agent/chat_corpus_zh/`, filters private, advertising, robot-like, and low-quality content, then trains a small numeric-only classifier and emits a length/sentence-shape profile. Training is local, offline, and never uploads the corpus or your chat history. A source that exceeds its read budget is truncated and marked in `report.json`. Python 3.10+ is needed only for retraining; the app itself does not depend on Python.
-- The output lives in the app data directory as `chat-style/model.json` and contains only numbers (means, weights, thresholds, length quantiles) — no example sentences, vocabularies, or paths. If the model is missing or invalid, the app falls back to built-in short-reply and phrasing rules. At runtime it also flags logical connectors, literary phrasing, paragraph breaks, and repeated openings, then performs deterministic trimming after two escalation rewrites: only compliant short messages survive, otherwise the turn becomes `observe`.
-- At runtime only abstract budgets (e.g. the current `response_style`, next-message length targets) are placed in the prompt; raw corpus lines, training samples, and model weights are never sent to the model provider.
-
-This is a repeatable offline retraining workflow, not a process that silently absorbs user chats or model output while the app runs. Re-trains must be validated on a held-out set and by human review. The local calibrator borrows the stable short-profile and anti-sycophancy/anti-drift ideas from [Imprint](https://pypi.org/project/imprint-layer/) and [CPR](https://github.com/TheShadowRose/cpr) without adding their Python dependencies or copying code; CPR's filler-word and mini-narrative restoration patterns are intentionally not adopted wholesale. `agent/chat_corpus_zh/` is your local evaluation/training area and is excluded from Git; its aggregator license does not clear rights for every upstream source, and this repository does not copy, commit, or redistribute the raw corpus or training samples. Reference (ideas only, no code copied): [chinese-chatbot-corpus](https://github.com/codemayq/chinese-chatbot-corpus).
-
-## Repository layout
-
-| Path | Purpose |
-|---|---|
-| `src/` | React frontend: app shell, chat, agents, settings, user pages, generated contracts |
-| `src-tauri/` | Rust host: Tauri commands, SQLite storage, secrets, models, attachments, app lifecycle |
-| `src/contracts/generated/` | DTOs, JSON schema, and validators generated from the Rust-side contract source |
-| `scripts/` | Contract generation, desktop end-to-end test, icon and Windows window helpers |
-| `docs/` | Product requirements, architecture, design documents, test plan, and delivery roadmap |
-| `tests/` / `vitest.*` | Frontend unit and component tests |
-
-## Documentation
-
-The design documents are currently written in Chinese:
-
-- [00 · Navigation and confirmation checklist](docs/00-文档导航与确认清单.md) — status of decisions, open questions, and shared parameters.
-- [02 · User requirements and product spec](docs/02-用户需求与产品规格.md) — product scope, user journeys, and requirement IDs.
-- [03 · Architecture and module contracts](docs/03-总体架构与模块合同.md) — module boundaries, IPC, and events.
-- [08 · UI and interaction design](docs/08-界面与交互详细设计.md) — information architecture and interaction details.
-- [10 · Test and acceptance plan](docs/10-测试验收与性能评估.md) — scenarios, metrics, and current evidence.
-- [11 · Delivery roadmap](docs/11-实施路线与开发任务分解.md) — work packages, dependencies, and verified scope.
-
-Start with `00`, `02`, and `08` for product context; `03`, `05`, `07`, and `09` for architecture/data/security; `10` and `11` for implementation status.
-
-## Privacy and cost
-
-- Data is stored locally by default. There is no implicit telemetry design.
-- API credentials are kept in the OS credential store, not in ordinary frontend configuration or backups.
-- A model may be called even when it decides not to reply; connection tests and agent-to-agent messages can also incur costs. Pricing estimates and provider bills are separate.
-- Cancelling a local task does not guarantee that a remote request or its charge is cancelled.
-- Model outputs and web content are treated as untrusted input. V1 does not execute arbitrary code or open files/URLs automatically.
+Packaging output lands in `build/windows/`. `pnpm package:win --skip-build` repackages without recompiling Rust, which takes seconds instead of minutes.
 
 ## License
 
-[MIT](LICENSE) © 2026 MonoKelvin.
+[MIT](LICENSE) © 2026 MonoKelvin
