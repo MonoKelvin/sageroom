@@ -1,5 +1,5 @@
 * text=auto eol=lf
 *.png binary
 *.ico binary
-; Inno Setup 的语言文件按官方格式保留 CRLF，避免换行被归一化后解析出问题。
+# Inno Setup 的语言文件按官方格式保留 CRLF，避免换行被归一化后解析出问题。
 *.isl text eol=crlf
