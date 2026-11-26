@@ -35,9 +35,13 @@ sync("src-tauri/contracts/Cargo.toml", [
   [/^license\s*=\s*"[^"]*"/m, `license = "${metadata.license}"`],
 ])
 
-// contracts 子 crate 的 lockfile 同样带自身版本号；不同步会让 contracts:check 的 --locked 失败。
+// 两个 lockfile 都带各自 crate 的版本号；漏同步会让 `cargo build --locked` 直接失败。
 sync("src-tauri/contracts/Cargo.lock", [
   [/(name = "sageroom-contracts"\s*\nversion = ")[^"]*(")/, `$1${metadata.version}$2`],
+])
+
+sync("src-tauri/Cargo.lock", [
+  [/(\nname = "sageroom"\s*\nversion = ")[^"]*(")/, `$1${metadata.version}$2`],
 ])
 
 sync("src-tauri/tauri.conf.json", [
