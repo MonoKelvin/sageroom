@@ -32,6 +32,7 @@
     "sync:metadata": "node scripts/sync-metadata.mjs",
     "contracts:generate": "node scripts/contracts.mjs",
     "contracts:check": "node scripts/contracts.mjs --check",
+    "package:win": "node scripts/package-windows.mjs",
     "test:desktop": "node scripts/test-desktop.mjs"
   },
   "dependencies": {
