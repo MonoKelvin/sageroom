@@ -121,17 +121,17 @@ impl ModelGateway {
         context: String,
         cancellation: CancellationToken,
     ) -> AppResult<ChatReply> {
-        self.chat_with_reasoning(profile, api_key, system, context, ReasoningEffort::Zero, cancellation).await
+        self.chat_with_reasoning(profile, api_key, system, context, Some(ReasoningEffort::Zero), cancellation).await
     }
 
-    /// 按智能体类型决定是否开启思考：工具型开启，社交型关闭。
+    /// 工具助手不指定推理强度，使用模型服务的默认行为。
     pub async fn chat_with_reasoning(
         &self,
         profile: ModelProfile,
         api_key: String,
         system: String,
         context: String,
-        reasoning: ReasoningEffort,
+        reasoning: Option<ReasoningEffort>,
         cancellation: CancellationToken,
     ) -> AppResult<ChatReply> {
         if cancellation.is_cancelled() {

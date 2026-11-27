@@ -162,11 +162,8 @@ html[data-input-modality="keyboard"] :is(.chat-search-locate, .group-info-drawer
 .chat-message-quote strong { font-weight: 500; }
 .chat-message-quote > span, .chat-message-quote > strong { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-message-quote:disabled { cursor: default; }
-.chat-message-mentions { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); margin-top: var(--space-1); color: var(--semantic-accent); font-size: var(--font-caption); overflow-wrap: anywhere; }
 .chat-message-bubble-self .chat-message-quote { color: rgb(255 255 255 / 85%); }
 .chat-message-bubble-self .chat-message-quote::before { background: rgb(255 255 255 / 45%); }
-.chat-message-bubble-self .chat-message-mentions { color: #ffffff; }
-.chat-message-mentions > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-message-feedback, .chat-quote-feedback { margin: var(--space-1) 0 0; color: var(--status-danger); font-size: var(--font-caption); overflow-wrap: anywhere; }
 .chat-message-feedback[data-error="false"] { color: var(--semantic-accent); }
 .composer-context { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-3) 0; min-width: 0; }
@@ -216,7 +213,7 @@ html[data-input-modality="keyboard"] :is(.chat-search-locate, .group-info-drawer
 .composer-mention-capsule {
   border-radius: .45em;
   background: color-mix(in srgb, var(--semantic-accent) 15%, transparent);
-  box-shadow: 0 0 0 .18em color-mix(in srgb, var(--semantic-accent) 15%, transparent);
+  box-shadow: 0 0 0 .24em color-mix(in srgb, var(--semantic-accent) 15%, transparent);
   color: var(--semantic-accent);
 }
 

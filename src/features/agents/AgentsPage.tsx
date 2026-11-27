@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
-import { IconAdjustments, IconCopy, IconId, IconLoader2, IconPlayerPause, IconPlayerPlay, IconPlus, IconRobot, IconSearch, IconTrash } from "@tabler/icons-react"
+import { IconAdjustments, IconAlertTriangle, IconCopy, IconFolderOpen, IconId, IconLoader2, IconPlayerPause, IconPlayerPlay, IconPlus, IconRobot, IconSearch, IconTools, IconTrash } from "@tabler/icons-react"
 import type { ApplicationPageProps } from "@/app/navigation"
-import type { AgentConfiguration, AgentRuntimeStatus, GlobalConfiguration, Participant } from "@/contracts/generated"
+import type { AgentConfiguration, AgentRuntimeStatus, AgentType, GlobalConfiguration, Participant } from "@/contracts/generated"
 import type { AppliedResource } from "@/app/appliedResource"
 import { modelIsComplete } from "@/app/configurationStore"
 import { useAgentResources, useAppliedResource, useConfiguration, useConfigurationRuntime } from "@/app/configurationContext"
@@ -15,7 +15,8 @@ import { EditableTextarea } from "@/components/ui/editable-textarea"
 import { Disclosure } from "@/components/ui/disclosure"
 import { SegmentedControl } from "@/components/ui/segmented-control"
 import { SettingsSelect } from "@/components/ui/settings-select"
-import { validateDisplayName, validateText } from "@/features/settings/configurationDefaults"
+import { Switch } from "@/components/ui/switch"
+import { defaultDimensions, validateDisplayName, validateText } from "@/features/settings/configurationDefaults"
 import { DimensionsFields, Field, ModelNamePicker, ResourceFeedback } from "@/features/settings/ConfigurationFields"
 import { usePageActivation } from "@/features/settings/useLocalEditor"
 import { GLOBAL_CONFIG_ICON, GlobalConfiguration as GlobalConfigurationPanel } from "./GlobalConfiguration"
@@ -34,9 +35,63 @@ const runtimeStatusLabels: Record<AgentRuntimeStatus, string> = {
   offline: "离线",
 }
 
+const toolDimensions: AgentConfiguration["dimensions"] = {
+  professional: 100, direct: 100, formal: 65, casual: 10, humor: 0, empathy: 35, social_energy: 0, activity: 0,
+}
+const agentTypeLabels: Record<AgentType, string> = { social: "社交成员", tool: "工具助手" }
+
 function agentStatusLabel(agent: AgentConfiguration, participant?: Participant) {
   if (!agent.model) return "待配置"
-  return participant?.runtime ? runtimeStatusLabels[participant.runtime.status] : "正在启动"
+  const status = participant?.runtime?.status
+  if (!status) return "正在启动"
+  if (agent.agent_type === "tool") {
+    if (status === "observing") return "待命中"
+    if (status === "deciding") return "正在处理任务"
+  }
+  return runtimeStatusLabels[status]
+}
+
+function LocalToolsSettings({ agent, dataDirectory, generation, disabled, onChange }: {
+  agent: AgentConfiguration; dataDirectory: string; generation: string; disabled: boolean; onChange: (enabled: boolean) => Promise<void>
+}) {
+  const [confirm, setConfirm] = useState(false)
+  const [opening, setOpening] = useState(false)
+  const [openError, setOpenError] = useState<string | null>(null)
+  const base = dataDirectory || "<应用数据目录>/data"
+  const separator = /\\/.test(base) ? "\\" : "/"
+  const workspace = [base.replace(/[\\/]+$/, ""), "agents", agent.agent_id, "workspace", ""].join(separator)
+
+  async function openWorkspace() {
+    if (opening || disabled) return
+    setOpenError(null)
+    setOpening(true)
+    try { await ipc.openAgentWorkspace({ data_generation_id: generation, agent_id: agent.agent_id }) }
+    catch (cause) { setOpenError(errorMessage(cause)) }
+    finally { setOpening(false) }
+  }
+
+  return <div className="config-stack local-tools-settings">
+    <Field label="本地工具" caption="读取基本系统信息，管理工作区内的文本。">
+      <Switch label="本地工具" checked={agent.local_tools_enabled === true} disabled={disabled} onCheckedChange={(enabled) => {
+        if (enabled) setConfirm(true)
+        else return onChange(false)
+      }} />
+    </Field>
+    <div className="local-tools-workspace">
+      <Field label="工作区" caption={workspace}>
+        <Tooltip><TooltipTrigger asChild>
+          <Button type="button" size="icon-sm" variant="ghost" aria-label="打开工作区" disabled={disabled || opening} onClick={() => void openWorkspace()}><IconFolderOpen size={18} aria-hidden="true" /></Button>
+        </TooltipTrigger><TooltipContent>打开工作区</TooltipContent></Tooltip>
+      </Field>
+    </div>
+    {openError && <p className="settings-control-error" role="alert">{openError}</p>}
+    <AppDialog open={confirm} onOpenChange={setConfirm} title="启用本地工具？" className="local-tools-confirmation" showClose={false} actions={[
+      { label: "取消", variant: "ghost" },
+      { label: "启用", variant: "default", disabled, onClick: () => void onChange(true) },
+    ]}>
+      <div className="local-tools-warning"><IconAlertTriangle size={20} aria-hidden="true" /><p>启用后，此助手可读取基本系统信息或修改工作区文本，无需逐次确认。</p></div>
+    </AppDialog>
+  </div>
 }
 
 function AgentEditor({ resource, global, active, session, onCopy, onDelete }: {
@@ -61,7 +116,11 @@ function AgentEditor({ resource, global, active, session, onCopy, onDelete }: {
   const [operationError, setOperationError] = useState<string | null>(null)
   const [personaId, setPersonaId] = useState("")
   const [applyTarget, setApplyTarget] = useState<{ kind: "persona" | "model"; id: string } | null>(null)
-  const [section, setSection] = useState<"basic" | "persona" | "model">("basic")
+  const [expressionTarget, setExpressionTarget] = useState<{ type: AgentType; switching: boolean } | null>(null)
+  const [expressionVersion, setExpressionVersion] = useState(0)
+  const [section, setSection] = useState<"basic" | "persona" | "model" | "tools">("basic")
+  const isTool = agent.agent_type === "tool"
+  const visibleSection = section === "tools" && !isTool ? "basic" : section
   const avatarEpoch = useRef(0)
   const alive = useRef(false)
   useEffect(() => { alive.current = true; return () => { alive.current = false; avatarEpoch.current += 1 } }, [])
@@ -108,6 +167,31 @@ function AgentEditor({ resource, global, active, session, onCopy, onDelete }: {
     else setApplyTarget({ kind, id })
   }
 
+  async function updateLocalTools(enabled: boolean) {
+    if (runtime.exiting || resource.getSnapshot().value?.agent_type !== "tool") return
+    setOperationError(null)
+    try { await update({ local_tools_enabled: enabled }) }
+    catch (cause) { if (alive.current && resource.getSnapshot().status !== "error") setOperationError(errorMessage(cause)) }
+  }
+
+  async function resetExpression() {
+    if (!expressionTarget || runtime.exiting) return
+    const { type, switching } = expressionTarget
+    setExpressionTarget(null)
+    setOperationError(null)
+    setPersonaId("")
+    setExpressionVersion((version) => version + 1)
+    try {
+      await update({
+        agent_type: type,
+        ...(switching ? { local_tools_enabled: false } : {}),
+        language_style: type === "tool" ? "结论优先，专业直接；必要时先追问。" : "自然、清晰",
+        dimensions: { ...(type === "tool" ? toolDimensions : defaultDimensions) },
+        skill: "",
+      })
+    } catch (cause) { if (alive.current && resource.getSnapshot().status !== "error") setOperationError(errorMessage(cause)) }
+  }
+
   return <section className="surface-card">
     <header className="panel-heading"><div className="min-w-0 agent-title-group">
       <Tooltip disableHoverableContent><TooltipTrigger asChild>
@@ -125,37 +209,44 @@ function AgentEditor({ resource, global, active, session, onCopy, onDelete }: {
       {(agentRuntime || agent.agent_type === "tool" || runtimeError) && <div className="config-stack">
         {agentRuntime?.detail && agentRuntime.detail !== "观察期间有新消息或配置变化，重新判断。" && <p className="form-caption">{agentRuntime.detail}</p>}
         {agentRuntime?.next_wake_at != null && <p className="form-caption">下次唤醒：{new Date(agentRuntime.next_wake_at).toLocaleString("zh-CN", { hour12: false })}</p>}
-        {agent.agent_type === "tool" && <p className="form-caption">工具任务尚未启用，不参与闲聊。</p>}
+        {agent.agent_type === "tool" && <p className="form-caption">配置好模型和凭据后，只处理单独 @ 自己的任务，不参与闲聊，也不会因 @所有人或冷场主动发言。</p>}
         {runtimeError && <p role="alert">{runtimeError}</p>}
       </div>}
       <fieldset disabled={runtime.exiting} className="config-stack">
         {confirmRemoveAvatar && <div className="config-notice"><p>移除当前头像？历史消息也会改用默认头像。</p><div className="config-actions"><Button size="sm" onClick={() => void removeAvatar()}>确认移除头像</Button><Button variant="ghost" size="sm" onClick={() => setConfirmRemoveAvatar(false)}>保留头像</Button></div></div>}
-        <SegmentedControl className="agent-sections" label="智能体配置分类" value={section} onChange={setSection} items={[
+        <SegmentedControl<typeof section> className="agent-sections" label="智能体配置分类" value={visibleSection} onChange={setSection} items={[
           { value: "basic", label: "基本资料", icon: IconId },
           { value: "persona", label: "人格表达", icon: IconAdjustments },
           { value: "model", label: "模型配置", icon: IconRobot },
+          ...(isTool ? [{ value: "tools" as const, label: "工具", icon: IconTools }] : []),
         ]} />
-        <div hidden={section !== "basic"} inert={section !== "basic"}>
+        <div hidden={visibleSection !== "basic"} inert={visibleSection !== "basic"}>
           <Field label="名称"><EditableInput label="名称" active={active} maxLength={16} value={agent.display_name} normalize={(next) => next.trim()} validate={validateDisplayName} onApply={(display_name) => update({ display_name })} /></Field>
-          <Field label="智能体类型"><SettingsSelect label="智能体类型" value={agent.agent_type} options={[{ value: "social", label: "社交成员" }, { value: "tool", label: "工具助手" }]} onValueChange={(agent_type) => update({ agent_type: agent_type as AgentConfiguration["agent_type"] })} /></Field>
-          <ExperiencePanel store={store} agentId={agent.agent_id} active={active && section === "basic"} disabled={runtime.exiting || agent.revision === "0"} />
+          <Field label="智能体类型"><SettingsSelect label="智能体类型" value={agent.agent_type} options={[{ value: "social", label: agentTypeLabels.social }, { value: "tool", label: agentTypeLabels.tool }]} onValueChange={(type) => setExpressionTarget({ type: type as AgentType, switching: true })} /></Field>
+          <ExperiencePanel store={store} agentId={agent.agent_id} agentType={agent.agent_type} active={active && visibleSection === "basic"} disabled={runtime.exiting || agent.revision === "0"} />
         </div>
         <div hidden={section !== "persona"} inert={section !== "persona"}>
           <Field label="人格预设" caption="复制普通参数，之后与全局预设独立。"><SettingsSelect label="人格预设" value={personaId} options={[{ value: "", label: "独立编辑" }, ...global.persona_presets.map((persona) => ({ value: persona.id, label: persona.name }))]} onValueChange={(id) => selectTemplate("persona", id)} /></Field>
-          <Field label="个人介绍" caption="描述ta的性格、爱好、优缺点和讨厌的事。"><EditableTextarea label="个人介绍" active={active && section === "persona"} rows={2} maxLength={2000} value={agent.language_style} validate={(next) => validateText(next, 2000)} onApply={(language_style) => update({ language_style })} /></Field>
-          <Disclosure title="八个人格维度（0–100）"><DimensionsFields value={agent.dimensions} onChange={(key, next) => resource.change((current) => ({ ...current, dimensions: { ...current.dimensions, [key]: next } }))} /></Disclosure>
+          <Field label="个人介绍" caption={agent.agent_type === "tool" ? "描述处理委托时的回答风格和偏好。" : "描述ta的性格、爱好、优缺点和讨厌的事。"}><EditableTextarea key={expressionVersion} label="个人介绍" active={active && section === "persona"} rows={2} maxLength={2000} value={agent.language_style} validate={(next) => validateText(next, 2000)} onApply={(language_style) => update({ language_style })} /></Field>
+          <Disclosure title="八个人格维度（0–100）"><DimensionsFields key={expressionVersion} value={agent.dimensions} onChange={(key, next) => resource.change((current) => ({ ...current, dimensions: { ...current.dimensions, [key]: next } }))} /></Disclosure>
+          {agent.agent_type === "tool" && <Button type="button" variant="ghost" size="sm" onClick={() => setExpressionTarget({ type: "tool", switching: false })}>重置为工具助手默认表达</Button>}
         </div>
         <div hidden={section !== "model"} inert={section !== "model"}>
           <Field label="模型预设" caption="复用全局配置的预设模型，可单独调整模型名称。"><SettingsSelect label="模型预设" value={agent.model?.source_profile_id ?? ""} options={global.model_profiles.filter((profile) => modelIsComplete(profile)).map((profile) => ({ value: profile.id, label: profile.name }))} onValueChange={(id) => selectTemplate("model", id)} /></Field>
           {agent.model && <Field label="模型名称"><ModelNamePicker value={agent.model.profile.model_name} active={active && section === "model"} onChange={(model_name) => store.updateAgentModel(agent.agent_id, { model_name })} onListModels={() => store.listModelNames(agent.model!.source_profile_id).then((result) => result.models)} /></Field>}
           {!global.model_profiles.length && <p className="form-caption">请先在全局配置中添加模型预设。</p>}
         </div>
+        {active && isTool && section === "tools" && <LocalToolsSettings agent={agent} dataDirectory={session.snapshot!.data_directory} generation={generation} disabled={runtime.exiting} onChange={updateLocalTools} />}
       </fieldset>
       {operationError && state.status !== "error" && <p role="alert">{operationError}</p>}
       <AppDialog open={applyTarget !== null} onOpenChange={(open) => { if (!open) setApplyTarget(null) }} title="采用预设" actions={[
         { label: "确认采用", disabled: runtime.exiting, closeOnClick: false, onClick: () => { if (applyTarget) void applyTemplate(applyTarget.kind, applyTarget.id) } },
         { label: "保留当前参数", variant: "ghost" },
       ]}><p>{applyTarget?.kind === "model" ? "采用其他模型预设会替换当前模型名称，其他参数仍复用全局配置。" : "采用人格预设会替换当前语言风格和人格维度。"}</p></AppDialog>
+      <AppDialog open={active && expressionTarget !== null} onOpenChange={(open) => { if (!open) setExpressionTarget(null) }} title={expressionTarget?.switching ? `切换为${agentTypeLabels[expressionTarget.type]}` : "重置为工具助手默认表达"} actions={[
+        { label: expressionTarget?.switching ? "确认切换" : "确认重置", disabled: runtime.exiting, closeOnClick: false, onClick: () => void resetExpression() },
+        { label: "取消", variant: "ghost" },
+      ]}><p>{expressionTarget?.switching ? "切换类型" : "重置表达"}会将个人介绍（语言风格）和八个人格参数覆盖为{expressionTarget ? agentTypeLabels[expressionTarget.type] : ""}默认值，并清空继承的人设技能。名称、头像、模型和经历不变。</p>{expressionTarget?.switching && expressionTarget.type === "social" && agent.local_tools_enabled === true && <p>切换为社交成员会撤销本地工具权限。</p>}</AppDialog>
       <ResourceFeedback resource={resource} state={state} />
     </div>
   </section>
@@ -220,7 +311,13 @@ function AgentsWorkspace({ active, session }: ApplicationPageProps) {
       </div>
       <div className="config-list-scroll">
         {visibleAgents.length === 0 && keyword && <p className="agent-search-empty">没有匹配的智能体</p>}
-        {visibleAgents.map((resource) => { const agent = resource.getSnapshot().value!; const participant = participants.find((member) => member.kind === "agent" && member.id === agent.agent_id); return <button key={agent.agent_id} type="button" className="list-entry" data-active={selected === agent.agent_id} aria-current={selected === agent.agent_id ? "page" : undefined} onClick={() => setSelected(agent.agent_id)}><Avatar name={agent.display_name} avatarId={agent.avatar_id} colorId={agent.agent_id} generation={generation} size={44} /><span className="config-entry-text"><strong>{agent.display_name}</strong><span>{agent.model ? `已配置，${agentStatusLabel(agent, participant)}` : "待配置"}</span></span></button> })}
+        {visibleAgents.map((resource) => {
+          const agent = resource.getSnapshot().value!
+          const participant = participants.find((member) => member.kind === "agent" && member.id === agent.agent_id)
+          const status = agentStatusLabel(agent, participant)
+          const showConfigured = agent.model && !(agent.agent_type === "tool" && participant?.runtime?.status === "needs_configuration")
+          return <button key={agent.agent_id} type="button" className="list-entry" data-active={selected === agent.agent_id} aria-current={selected === agent.agent_id ? "page" : undefined} onClick={() => setSelected(agent.agent_id)}><Avatar name={agent.display_name} avatarId={agent.avatar_id} colorId={agent.agent_id} generation={generation} size={44} /><span className="config-entry-text"><strong>{agent.display_name}</strong><span>{showConfigured ? `已配置，${status}` : status}</span></span></button>
+        })}
       </div>
       {list.loading && <p className="form-caption p-3">正在读取智能体…</p>}
       {list.error && <div className="config-notice" role="alert"><p>{list.error}</p><Button variant="ghost" size="sm" onClick={() => void store.loadAgents()}>重试读取智能体</Button></div>}

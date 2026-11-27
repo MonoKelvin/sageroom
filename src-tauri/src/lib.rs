@@ -77,6 +77,7 @@ pub fn run() {
             app::commands::agent_delete,
             app::commands::agent_save,
             app::commands::agent_runtime_control,
+            app::commands::agent_workspace_open,
             app::commands::user_profile_get,
             app::commands::user_profile_save,
             app::commands::secret_set,

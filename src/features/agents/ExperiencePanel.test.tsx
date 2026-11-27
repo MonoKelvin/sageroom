@@ -14,7 +14,7 @@ const store = {
   pruneExperience: vi.fn(async () => [first]),
 }
 const failure = () => new IpcError({ code: "IO_ERROR", message: "文件暂不可写", retryability: "after_user_action", field_path: null, trace_id: "test", may_have_been_charged: false })
-function panel(active = true, agentId = "agent-one") { return <ExperiencePanel store={store} agentId={agentId} active={active} disabled={false} /> }
+function panel(active = true, agentId = "agent-one") { return <ExperiencePanel store={store} agentId={agentId} agentType="social" active={active} disabled={false} /> }
 async function open() {
   const toggle = screen.getByRole("button", { name: /经历（\d+条经历）/ })
   if (toggle.getAttribute("aria-expanded") === "false") await userEvent.click(toggle)

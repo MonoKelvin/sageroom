@@ -981,6 +981,9 @@ pub struct AgentConfiguration {
     pub dimensions: PersonaDimensions,
     pub avatar_id: Option<String>,
     pub agent_type: AgentType,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub local_tools_enabled: Option<bool>,
     pub model: Option<AgentModelSnapshot>,
 }
 

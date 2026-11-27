@@ -105,6 +105,61 @@ fn candidate(
     }
 }
 
+#[test]
+fn manual_workspace_open_only_resolves_a_tool_in_the_current_generation() {
+    let (_directory, mut database, mut agent) = fixture();
+    let generation = database.generation_id.clone();
+    assert!(database.ensure_tool_workspace(&generation, &agent.agent_id).is_err());
+    agent.agent_type = AgentType::Tool;
+    let agent = save_agent(&mut database, agent);
+    let workspace = database.root.join("agents").join(&agent.agent_id).join("workspace");
+    assert!(database.ensure_tool_workspace("old-generation", &agent.agent_id).is_err());
+    assert!(!workspace.exists());
+    assert_eq!(database.ensure_tool_workspace(&generation, &agent.agent_id).unwrap(), workspace);
+    assert!(workspace.is_dir());
+    std::fs::remove_dir(&workspace).unwrap();
+    std::fs::write(&workspace, "不能用文件替代工作区").unwrap();
+    assert!(database.ensure_tool_workspace(&generation, &agent.agent_id).is_err());
+    assert_eq!(std::fs::read_to_string(workspace).unwrap(), "不能用文件替代工作区");
+}
+
+#[test]
+fn tool_commit_requires_a_visible_direct_request_and_is_idempotent_per_target() {
+    let (_directory, mut database, mut agent) = fixture();
+    agent.agent_type = AgentType::Tool;
+    let agent = save_agent(&mut database, agent);
+    let generation = database.generation_id.clone();
+    let ordinary = human(&mut database);
+    let make_candidate = |request: &ChatSendResult, epoch: i64| {
+        let decision_id = tool_decision_id(&agent.agent_id, &request.message_seq);
+        let mut reply = candidate(&agent, request.message_seq.0.parse().unwrap(), &decision_id, 0, &request.message_id);
+        reply.quote_message_id = Some(request.message_id.clone());
+        reply.observed_content_epoch = epoch.into();
+        reply
+    };
+    assert!(database.commit_runtime_message(make_candidate(&ordinary, 0)).is_err());
+    let delegate = |database: &mut Database| database.send_message(ChatSendRequest {
+        data_generation_id: generation.clone(), client_request_id: Uuid::now_v7().to_string(),
+        parts: vec![MessagePart::Text { text: "请整理检查清单".into() }],
+        quote_message_id: None, mention_ids: vec![agent.agent_id.clone()], mention_all: false,
+    }).unwrap().0;
+    let request = delegate(&mut database);
+    human(&mut database);
+    let reply = make_candidate(&request, 0);
+    let (first, event) = database.commit_runtime_message(reply.clone()).unwrap();
+    assert!(event.is_some());
+    let (same, event) = database.commit_runtime_message(reply).unwrap();
+    assert_eq!(first.message_id, same.message_id);
+    assert!(event.is_none());
+
+    let recalled = delegate(&mut database);
+    database.recall_message(ChatRecallRequest {
+        data_generation_id: generation, client_request_id: Uuid::now_v7().to_string(), message_id: recalled.message_id.clone(),
+    }).unwrap();
+    assert!(database.runtime_input_for(&agent.agent_id, Some(recalled.message_seq.clone())).is_err());
+    assert!(database.commit_runtime_message(make_candidate(&recalled, 1)).is_err());
+}
+
 fn human(database: &mut Database) -> ChatSendResult {
     database
         .send_message(ChatSendRequest {
@@ -145,25 +200,25 @@ fn rows(conn: &Connection, table: &str) -> i64 {
 }
 
 #[test]
-fn input_uses_member_snapshot_current_credential_and_thirty_visible_messages() {
+fn input_uses_member_snapshot_current_credential_and_sixty_four_visible_messages() {
     let (_directory, mut database, agent) = fixture();
-    for _ in 0..35 {
+    for _ in 0..69 {
         human(&mut database);
     }
     database
         .conn
-        .execute("UPDATE messages SET state='recalled' WHERE seq=35", [])
+        .execute("UPDATE messages SET state='recalled' WHERE seq=69", [])
         .unwrap();
     database
         .conn
-        .execute("UPDATE messages SET state='deleted' WHERE seq=34", [])
+        .execute("UPDATE messages SET state='deleted' WHERE seq=68", [])
         .unwrap();
     let input = database.runtime_input(&agent.agent_id).unwrap();
     assert_eq!(input.agent, agent);
-    assert_eq!(input.messages.len(), 30);
+    assert_eq!(input.messages.len(), 64);
     assert_eq!(input.messages.first().unwrap().seq.0, "4");
-    assert_eq!(input.messages.last().unwrap().seq.0, "33");
-    assert_eq!(input.snapshot.latest_message_seq.0, "35");
+    assert_eq!(input.messages.last().unwrap().seq.0, "67");
+    assert_eq!(input.snapshot.latest_message_seq.0, "69");
     let global = database
         .get_global_configuration(&database.generation_id)
         .unwrap();
@@ -1266,7 +1321,7 @@ fn quoted_questions_remain_addressed_outside_the_recent_context_window() {
         parts: vec![MessagePart::Text { text: "你说的是哪件事？".into() }],
         quote_message_id: Some(own.message_id.clone()), mention_ids: vec![], mention_all: false,
     }).unwrap().0;
-    for _ in 0..35 { human(&mut database); }
+    for _ in 0..65 { human(&mut database); }
     assert!(!database.runtime_input(&agent.agent_id).unwrap().messages.iter().any(|message| message.id == question.message_id));
     assert_eq!(database.runtime_mention_seq(&agent.agent_id, own.message_seq).unwrap(), question.message_seq);
     database.conn.execute("UPDATE messages SET state='recalled' WHERE id=?1", [&own.message_id]).unwrap();
@@ -1467,7 +1522,7 @@ fn experience_change_invalidates_delayed_speech_and_external_messages_invalidate
 fn quote_context_loads_older_originals_and_excludes_recalled_originals() {
     let (_directory, mut database, agent) = fixture();
     let original = human(&mut database);
-    for _ in 0..31 { human(&mut database); }
+    for _ in 0..65 { human(&mut database); }
     database.send_message(ChatSendRequest {
         data_generation_id: database.generation_id.clone(), client_request_id: Uuid::now_v7().to_string(),
         parts: vec![MessagePart::Text { text: "引用分页外原文".into() }], quote_message_id: Some(original.message_id.clone()), mention_ids: vec![], mention_all: false,

@@ -192,6 +192,12 @@
           "language_style": {
             "type": "string"
           },
+          "local_tools_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "model": {
             "anyOf": [
               {
@@ -729,6 +735,12 @@
           "language_style": {
             "type": "string"
           },
+          "local_tools_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "model": {
             "anyOf": [
               {
@@ -958,6 +970,12 @@
           },
           "language_style": {
             "type": "string"
+          },
+          "local_tools_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "model": {
             "anyOf": [

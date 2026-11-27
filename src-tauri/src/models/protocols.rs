@@ -37,7 +37,7 @@ pub(super) fn prepare_chat(
     api_key: &str,
     system: &str,
     context: &str,
-    reasoning: ReasoningEffort,
+    reasoning: Option<ReasoningEffort>,
 ) -> AppResult<(String, ChatOptions)> {
     let endpoint = validate_common(profile, api_key)?;
     if system.trim().is_empty() || context.trim().is_empty() {
@@ -53,7 +53,12 @@ pub(super) fn prepare_chat(
     if context.len() > ceiling {
         return Err(AppError::invalid("context", "模型输入超过保守上下文预算。"));
     }
-    Ok((endpoint, options(MAX_CHAT_OUTPUT_TOKENS, reasoning)))
+    let mut options = options(MAX_CHAT_OUTPUT_TOKENS, ReasoningEffort::Zero);
+    if reasoning.is_none() {
+        options.extra_body = None;
+    }
+    options.reasoning_effort = reasoning;
+    Ok((endpoint, options))
 }
 
 fn validate_common(profile: &ModelProfile, api_key: &str) -> AppResult<String> {

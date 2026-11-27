@@ -63,12 +63,17 @@ fn empty(config: &NewsConfiguration) -> NewsPreviewResponse {
 /// 只执行模型明确给出的查询，不猜测关键词，也不在每轮聊天前自动抓新闻。
 pub async fn search(config: &NewsConfiguration, query: &str, secrets: Option<Arc<SecretStore>>) -> NewsPreviewResponse {
     if !config.enabled || validate_configuration(config).is_err() { return empty(config); }
-    read(config, query, secrets, false).await
+    read(config, query, secrets, false, false).await
+}
+
+pub(crate) async fn search_for_task(config: &NewsConfiguration, query: &str, secrets: Option<Arc<SecretStore>>) -> NewsPreviewResponse {
+    if !config.enabled || validate_configuration(config).is_err() { return empty(config); }
+    read(config, query, secrets, false, true).await
 }
 
 /// 设置页用固定探测词检查接口，不调用模型、不保存关键词。
 pub async fn preview(config: &NewsConfiguration, secrets: Option<Arc<SecretStore>>) -> NewsPreviewResponse {
-    read(config, "news", secrets, true).await
+    read(config, "news", secrets, true, false).await
 }
 
 fn cached_result(entry: &Cache, ttl: Duration) -> Option<NewsPreviewResponse> {
@@ -81,9 +86,9 @@ fn cached_result(entry: &Cache, ttl: Duration) -> Option<NewsPreviewResponse> {
     Some(result)
 }
 
-async fn read(config: &NewsConfiguration, query: &str, secrets: Option<Arc<SecretStore>>, force: bool) -> NewsPreviewResponse {
+async fn read(config: &NewsConfiguration, query: &str, secrets: Option<Arc<SecretStore>>, force: bool, query_only: bool) -> NewsPreviewResponse {
     let mut entries = CACHE.get_or_init(|| Mutex::new(VecDeque::new())).lock().await;
-    let key = config_key(config, query);
+    let key = format!("{query_only}:{}", config_key(config, query));
     let previous = entries.iter().position(|entry| entry.key == key).and_then(|index| entries.remove(index));
     if !force && let Some(entry) = previous.as_ref()
         && let Some(result) = cached_result(entry, Duration::from_secs(u64::from(config.refresh_minutes) * 60))
@@ -91,7 +96,7 @@ async fn read(config: &NewsConfiguration, query: &str, secrets: Option<Arc<Secre
         entries.push_back(previous.unwrap());
         return result;
     }
-    let mut result = fetch_with_fallback(config, query, secrets).await;
+    let mut result = fetch_with_fallback(config, query, secrets, query_only).await;
     let succeeded_at = if result.items.is_empty() {
         if let Some(entry) = previous.as_ref()
             && entry.succeeded_at.is_some_and(|at| at.elapsed() < STALE_LIMIT)
@@ -127,14 +132,24 @@ async fn provider_key(provider: &NewsProvider, secrets: Option<Arc<SecretStore>>
         .map_err(|_| "无法读取系统新闻凭据".to_owned())
 }
 
-async fn fetch_with_fallback(config: &NewsConfiguration, query: &str, secrets: Option<Arc<SecretStore>>) -> NewsPreviewResponse {
+fn task_source_order(preferred: &NewsProvider) -> Vec<NewsProvider> {
+    let mut sources = fallback_order(preferred);
+    sources.retain(|provider| !matches!(provider, NewsProvider::AiHot | NewsProvider::FreeNewsTrending | NewsProvider::BbcTechnology));
+    if *preferred == NewsProvider::Auto {
+        sources.swap(0, 1);
+    }
+    sources
+}
+
+async fn fetch_with_fallback(config: &NewsConfiguration, query: &str, secrets: Option<Arc<SecretStore>>, query_only: bool) -> NewsPreviewResponse {
     let mut result = empty(config);
     let client = match client(config) {
         Ok(client) => client,
         Err(message) => { result.diagnostics.push(NewsSourceDiagnostic { provider: config.provider.clone(), message }); return result; }
     };
     let started = Instant::now();
-    for provider in fallback_order(&config.provider) {
+    let sources = if query_only { task_source_order(&config.provider) } else { fallback_order(&config.provider) };
+    for provider in sources {
         let remaining = FETCH_BUDGET.saturating_sub(started.elapsed());
         if remaining.is_zero() {
             result.diagnostics.push(NewsSourceDiagnostic { provider, message: "本次抓取已达到 20 秒上限，未继续请求".into() });
@@ -728,6 +743,14 @@ mod tests {
             assert!(!result.items.is_empty());
             assert!(!result.cached);
         }
+    }
+
+    #[test]
+    fn direct_task_search_never_replaces_the_query_with_trending_feeds() {
+        let auto = task_source_order(&NewsProvider::Auto);
+        assert_eq!(auto, vec![NewsProvider::AnySearch, NewsProvider::GoogleNewsRss, NewsProvider::Gdelt]);
+        assert_eq!(task_source_order(&NewsProvider::Serper).first(), Some(&NewsProvider::Serper));
+        assert!(!task_source_order(&NewsProvider::AiHot).contains(&NewsProvider::AiHot));
     }
 
     #[test]

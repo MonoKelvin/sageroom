@@ -250,8 +250,41 @@ fn cancelled(token: &CancellationToken) -> AppResult<()> {
     Ok(())
 }
 
+fn tool_decision_prefix(id: &str) -> String {
+    format!("tool-{}-", fingerprint(id.as_bytes()))
+}
+
+pub(crate) fn tool_decision_id(id: &str, seq: &DecimalString) -> String {
+    format!("{}{seq}", tool_decision_prefix(id), seq = seq.0)
+}
+
+fn tool_origin(conn: &Connection, room: &str, id: &str, seq: i64) -> AppResult<Option<String>> {
+    Ok(conn.query_row(
+        "SELECT m.id FROM messages m JOIN mentions n ON n.message_id=m.id
+         WHERE m.room_id=?1 AND m.seq=?2 AND m.sender_id<>?3 AND m.state='visible' AND m.mention_all=0 AND n.target_participant_id=?3",
+        params![room, seq, id], |row| row.get(0),
+    ).optional()?)
+}
+
 impl Database {
+    pub(crate) fn ensure_tool_workspace(&self, generation: &str, id: &str) -> AppResult<std::path::PathBuf> {
+        self.check_generation(generation)?;
+        if read_agent(&self.conn, id)?.agent_type != AgentType::Tool {
+            return Err(AppError::invalid("agent_id", "只有工具助手拥有独立工作区。"));
+        }
+        let path = crate::runtime::local_tools::workspace_directory(&self.root, id, true)?;
+        Ok(path.expect("创建工作区成功时必须返回目录"))
+    }
+
     pub fn runtime_input(&mut self, id: &str) -> AppResult<RuntimeInput> {
+        self.runtime_input_for(id, None)
+    }
+
+    pub(crate) fn runtime_credential_reference(&self, id: &str) -> AppResult<Option<String>> {
+        credential_reference(&self.conn, &read_agent(&self.conn, id)?)
+    }
+
+    pub(crate) fn runtime_input_for(&mut self, id: &str, task: Option<DecimalString>) -> AppResult<RuntimeInput> {
         let room = self.room_id.clone();
         let root = self.root.clone();
         let (snapshot, (agent, credential_ref, messages, quoted_messages, experiences, experience_revision)) = self.snapshot_with(
@@ -261,13 +294,20 @@ impl Database {
                 let credential_ref = credential_reference(conn, &agent)?.ok_or_else(|| {
                     AppError::new(ErrorCode::InvalidInput, "智能体缺少有效模型或当前来源凭据，请重新配置。")
                 })?;
-                let mut sequences = conn.prepare(
-                    "SELECT seq FROM messages WHERE room_id=?1 AND state='visible' ORDER BY seq DESC LIMIT 30",
-                )?.query_map([&room], |row| row.get(0))?
-                    .collect::<rusqlite::Result<Vec<i64>>>()?;
+                let mut sequences = if let Some(task) = &task {
+                    let seq = parse_counter(task, "tool_request_seq")?;
+                    if agent.agent_type != AgentType::Tool || tool_origin(conn, &room, id, seq)?.is_none() {
+                        return Err(AppError::new(ErrorCode::ConfigConflict, "原委托已不可用。"));
+                    }
+                    vec![seq]
+                } else {
+                    conn.prepare(
+                        "SELECT seq FROM messages WHERE room_id=?1 AND state='visible' ORDER BY seq DESC LIMIT 64",
+                    )?.query_map([&room], |row| row.get(0))?.collect::<rusqlite::Result<Vec<i64>>>()?
+                };
                 sequences.reverse();
                 let messages = load_messages(conn, &sequences)?;
-                let quote_ids: Vec<_> = messages.iter().filter_map(|message| message.quote_message_id.clone()).collect();
+                let quote_ids: Vec<_> = messages.iter().rev().filter_map(|message| message.quote_message_id.clone()).take(32).collect();
                 let quoted_messages = super::chat::resolve_quotes(conn, &room, &quote_ids)?;
                 let (entries, experience_revision) = super::experience::read_snapshot(&root, id)?;
                 let experiences = super::experience::context_entries(entries);
@@ -349,13 +389,18 @@ impl Database {
                 "SELECT EXISTS(SELECT 1 FROM runtime_messages WHERE decision_id=?1 AND agent_id=?2 AND config_revision=?3 AND observed_through_seq=?4 AND ordinal=0)",
                 params![decision_id, experience.agent_id, revision, observed], |row| row.get(0),
             )?;
-            let external: bool = transaction.query_row(
-                "SELECT EXISTS(SELECT 1 FROM runtime_message_activity WHERE message_seq>?1 AND (decision_id IS NULL OR decision_id<>?2 OR sender_id<>?3))",
-                params![observed, decision_id, experience.agent_id], |row| row.get(0),
-            )?;
-            !committed || observed > latest || external
+            let origin_changed = if agent.agent_type == AgentType::Tool {
+                *decision_id != tool_decision_id(&agent.agent_id, &experience.observed_through_seq)
+                    || tool_origin(&transaction, &self.room_id, &agent.agent_id, observed)?.is_none()
+            } else {
+                transaction.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM runtime_message_activity WHERE message_seq>?1 AND (decision_id IS NULL OR decision_id<>?2 OR sender_id<>?3))",
+                    params![observed, decision_id, experience.agent_id], |row| row.get(0),
+                )?
+            };
+            !committed || observed > latest || origin_changed
         } else {
-            observed != latest
+            agent.agent_type == AgentType::Tool || observed != latest
         };
         let (_, current_revision) = super::experience::read_snapshot(&root, &experience.agent_id)?;
         if stale || current_revision != experience.experience_revision {
@@ -389,6 +434,17 @@ impl Database {
             params![self.room_id, after, id], |row| row.get(0),
         )?;
         Ok(seq.into())
+    }
+
+    pub(crate) fn next_tool_request(&self, id: &str, after: i64, through: i64) -> AppResult<Option<DecimalString>> {
+        Ok(self.conn.query_row(
+            "SELECT m.seq FROM messages m JOIN mentions n ON n.message_id=m.id
+             WHERE m.room_id=?1 AND m.seq>?2 AND m.seq<=?3 AND m.sender_id<>?4 AND m.state='visible' AND m.mention_all=0
+               AND n.target_participant_id=?4
+               AND NOT EXISTS(SELECT 1 FROM runtime_messages r WHERE r.decision_id=(?5 || m.seq) AND r.ordinal=0)
+             ORDER BY m.seq LIMIT 1",
+            params![self.room_id, after, through, id, tool_decision_prefix(id)], |row| row.get::<_, i64>(0),
+        ).optional()?.map(Into::into))
     }
 
     pub fn runtime_is_paused(&self, id: &str) -> AppResult<bool> {
@@ -743,17 +799,22 @@ impl Database {
                 "观察消息序号超出当前历史。",
             ));
         }
-        // Only this decision's own already-committed parts are exempt. A user,
-        // another agent, or even another decision by this agent invalidates it.
-        let external_message: bool = transaction.query_row(
-            "SELECT EXISTS(SELECT 1 FROM runtime_message_activity WHERE message_seq>?1 AND (decision_id IS NULL OR decision_id<>?2 OR sender_id<>?3))",
-            params![observed,message.decision_id,message.agent_id], |row| row.get(0),
-        )?;
-        if external_message {
-            return Err(AppError::new(
-                ErrorCode::ConfigConflict,
-                "有新的外部消息，旧候选已丢弃。",
-            ));
+        if agent.agent_type == AgentType::Tool {
+            let origin = tool_origin(&transaction, &room_id, &message.agent_id, observed)?;
+            if origin.is_none() || origin != message.quote_message_id || message.ordinal != 0
+                || message.decision_id != tool_decision_id(&message.agent_id, &message.observed_through_seq)
+                || !message.mention_ids.is_empty() || message.mention_all
+            {
+                return Err(AppError::new(ErrorCode::ConfigConflict, "工具答复只能绑定有效的原委托。"));
+            }
+        } else {
+            let external_message: bool = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM runtime_message_activity WHERE message_seq>?1 AND (decision_id IS NULL OR decision_id<>?2 OR sender_id<>?3))",
+                params![observed,message.decision_id,message.agent_id], |row| row.get(0),
+            )?;
+            if external_message {
+                return Err(AppError::new(ErrorCode::ConfigConflict, "有新的外部消息，旧候选已丢弃。"));
+            }
         }
         if let Some(quote) = &message.quote_message_id {
             let visible: bool = transaction.query_row(

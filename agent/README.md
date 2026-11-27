@@ -4,8 +4,9 @@
 
 | 文件 | 用途 | 消费方 |
 | --- | --- | --- |
-| `SKILL.md` | 通用角色指令与决策协议：定位、聊天、语气节奏、@ 回应、JSON 输出字段、经历维护。**强制注入**每次模型请求的 system prompt 最前，不对外展示、不可编辑，优先级高于智能体自身 `skill`。 | `src-tauri/src/storage/configuration.rs`（`BASE_SKILL`） |
-| `hints.json` | 少量短提示词：`repair`（格式不合规重试）、`split`（过长候选的精简提示）。 | `src-tauri/src/runtime/decision.rs`（`hints()`） |
+| `SKILL.md` | 社交成员的角色指令、聊天节奏和决策协议。 | `src-tauri/src/storage/configuration.rs`（`BASE_SKILL`） |
+| `TOOL_SKILL.md` | 工具助手的委托、答复和任务经历协议。只响应单独 @，不参与自主闲聊。 | `src-tauri/src/runtime/decision.rs`（`TOOL_SKILL`） |
+| `hints.json` | 决策格式修复、社交改写和工具委托澄清提示。 | `src-tauri/src/runtime/decision.rs`（`hints()`） |
 | `agents.json` | 两个内置默认智能体（小墨、云深不知处）的结构化人设：姓名、性别、语言风格（含完整人设描述）、八个人格维度。 | `src-tauri/src/storage/configuration.rs`（新建数据库时种子写入） |
 | `experience.template.md` | 经历文件的格式、评分规则与示例模板。 | 文档；运行时由经历模块按此格式生成 |
 | `chat_corpus_zh/`（本地目录，不入源码） | 用户自行下载的中文聊天语料，仅用于本地训练与评估；不随应用分发、不上传。 | `agent/train_chat_style.py`（手动运行） |
@@ -19,24 +20,45 @@
 ```bash
 python -I agent/train_chat_style.py \
   --corpus agent/chat_corpus_zh \
-  --output "<应用数据目录>/chat-style/model.json" \
+  --output "<应用数据目录>/chat-style/v3/model.json" \
   --samples 20000 \
   --evaluate-db "<应用数据目录>/chat.sqlite3"
 ```
 
-`--sources douban,tieba` 可只跑部分来源。单来源读取超过 400MB 或 50 万条去重正例时会停止并截断，`report.json` 的 `sources.<name>.truncated` 会标记为 true。应用每次决策读取 model.json：长度预算由语料分位数派生（每条上限约为 p90 的 70%，再夹在 18–32 字），缺失或损坏时退回内置 28 字/36 字上限。模型只用于本地判断候选是否需要精简，不把语料原句或训练样本放进提示词，也不上传到模型服务。
+`--sources douban,tieba` 可只跑部分来源。单来源读取超过 400MB 或 50 万条去重正例时会截断，报告会标出。v3 加入长度相近的短负例与自然对照，区分空泛附和与真实简答；报告分别给出自然留出集误报率和独立手写短候选的检出率。`--evaluate-db` 只读评估可见的智能体消息，不参与训练，也不输出消息正文。
 
-运行时是三层防线：提示词（`SKILL.md`）→ 本地判别（model.json + 套话/连接词/文艺腔/点评与附和/段落/重复开头规则）→ 两轮递增改写与确定性修剪（仍不合规则只保留合规短句，必要时改为 `observe`）。判别器 `feature_version: 2`，共 12 维；新增的两维统计「评价对方措辞」（绝了、这比喻、说得对）和「无主观附和」（确实、真的假的、哈哈哈）。`enforce` 也会用同一判定拦截这类输出，避免判别器只打分不拦截。
+应用只读取 `chat-style/v3/model.json` 中的长度画像，用来推荐句长，不用词表给候选打分。语气、是否值得接话、是否重复话题由对话模型根据原始消息与角色说明判断。宿主保留消息条数、字数、发送节奏和调用次数限制。
 
-话题疲劳由模型在决策 JSON 里自评 `topic_fatigue`（0–100），代码按阈值收敛：≥80 且未被 @ 时改为 `observe`，≥60 时最多发一条；本地不做字符串相似度算法。空闲节奏同样由人格活跃度驱动，冷场目标不会再随一次长假一路拉长到 45 分钟。
+冷场没有跳过概率，也不会因几次观察都没发言而累积延迟。活跃度影响首次尝试的时间，单房间的主动尝试串行，间隔至少 75 秒。一次冷场没有合适的开场时，可换切入角度尝试一次；找不到内容仍然可以不说话，不发程序预设的填充消息。
 
-**为什么不做离线生成大模型：** 主回复由远端模型生成，本地再训 0.5B–1.5B 模型，质量、硬件占用与多语言稳定性都不划算；真正的短板是“说太长、太像说明文”，用统计校准 + 硬约束 + 改写更直接。若未来要做，必须满足：只用授权清晰的语料、训练集不上传、只分发量化后的模型权重，并在 README 标注来源与许可证。
+**为什么不做离线生成大模型：** 主回复仍由远端模型生成，这里的数值校准器只负责识别一部分句式问题，不判断事实、相关性或语义复读。重复需要与上下文对照，不应把语料例句放进提示词或把历史 AI 消息回灌为真人正例。
 
 **“持续训练”的边界：** 这是可重复的离线重训流程，不是应用运行中自动吸收用户聊天或模型输出。不要把 AI 自己的文艺回复回灌为“真人样本”；重训后应以独立留出集和人工抽检确认没有把正常短句误判为 AI 味。
 
 **语料与许可：** `chat_corpus_zh/` 来自 [chinese-chatbot-corpus](https://github.com/codemayq/chinese-chatbot-corpus)（Apache-2.0）的汇总，但其许可证不替代每条被爬取内容的授权；各来源（豆瓣、贴吧、微博、PTT、青云、字幕、合成数据）的许可与隐私风险不一致。本仓库不复制、不提交、不分发原始语料或训练样本，`agent/chat_corpus_zh/` 已被 `.gitignore` 排除；是否用于本地研究请自行确认来源条款。`chatterbot`（问答）、`xiaohuangji`（机器人）、`subtitle`（影视对白）、`sms`（隐私风险）、`synthesized`（合成数据）未用作人类正例。
 
 **外部参考（仅研究思路，未复制源码）：** Imprint（人格校准层，把偏好转成纯文本注入系统提示词）、CPR / Conversational Pattern Restoration（用短句节奏、轻度幽默、简短确认等模式修复 RLHF 造成的平直腔）、[chinese-chatbot-corpus](https://github.com/codemayq/chinese-chatbot-corpus)。
+
+工具助手根据原委托选择工具，宿主校验开关、调用者、参数和步骤额度，再把调用结果交回模型。普通问答不依赖工具；联网检索沿用已启用的来源。没有内置的时钟、计算或 JSON 校验命令。
+
+## 本机只读 MCP 工具
+
+在当前助手的 `data/agents/<agent_id>/mcp-tools.json` 登记可信工具；这个文件在 `workspace/` 之外，模型不能修改。只连接已由用户启动、通过回环地址提供 `/mcp` 的 Streamable HTTP 服务，当前只接受 JSON 响应。目录中的端口、名称和参数需与实际服务一致，例如：
+
+```json
+{
+  "port": 43123,
+  "tools": [
+    {
+      "name": "inventory",
+      "description": "按程序名查询本机程序路径",
+      "arguments": { "program": { "type": "identifier" } }
+    }
+  ]
+}
+```
+
+`inventory` 仅是示例，不随应用提供。参数支持标识符 `identifier`、布尔值 `boolean`、有上限的非负整数 `unsigned`（`max`）及配置内的固定选项 `choice`（`values`），不接受自由文本命令或脚本。服务也必须声明 `annotations.readOnlyHint: true` 和 `annotations.openWorldHint: false`。只登记自己信任并已审查的只读服务；只读声明不是操作系统沙箱。未登记时不连接，程序不启动任何外部进程。
 
 ## 与运行时目录的区别
 
@@ -45,7 +67,7 @@ python -I agent/train_chat_style.py \
 
 ## 约束
 
-1. 通用 SKILL 与智能体自身 `skill` 是两层：前者由后端强制注入且不可被覆盖，后者仅作为人格补充，不得包含与前者冲突的指令。
+1. 后端按成员类型使用内置 SKILL。社交成员只偶尔获得一组可提及的同伴：向社交成员问观点，向工具助手交代任务。工具答复与原委托绑定；「本地工具」默认关闭，由本地用户确认开启后，直接委托可读取基本系统信息、列出 `data/agents/<id>/workspace/` 内的文本文件，或在该目录创建、覆盖受限文本，无需逐次确认。脚本可作为草稿保存，应用不会执行任意 Shell 或脚本。已启用的新闻检索才可联网。
 2. `agents.json` 只影响**新建数据库**。已有本地数据库不会重新种子化，避免覆盖用户数据。
 3. 人设一旦确定，后续应持续维护一致性；如需调整，改本文件而非散落在代码里的字符串。
 4. **提示词一律写在本目录**，不要硬编码进 Rust 源码。长文本用 `.md`，几条短提示用 `hints.json`。

@@ -19,6 +19,7 @@ var schema43 = {
 		},
 		"gender_description": { "type": ["string", "null"] },
 		"language_style": { "type": "string" },
+		"local_tools_enabled": { "type": ["boolean", "null"] },
 		"model": { "anyOf": [{ "$ref": "#/$defs/AgentModelSnapshot" }, { "type": "null" }] },
 		"revision": { "$ref": "#/$defs/DecimalString" },
 		"skill": { "type": "string" }
@@ -906,114 +907,131 @@ function validate31(data, { instancePath = "", parentData, parentDataProperty, r
 												var valid0 = _errs33 === errors;
 											} else var valid0 = true;
 											if (valid0) {
-												if (data.model !== void 0) {
-													let data15 = data.model;
+												if (data.local_tools_enabled !== void 0) {
+													let data15 = data.local_tools_enabled;
 													const _errs35 = errors;
-													const _errs36 = errors;
-													let valid4 = false;
-													const _errs37 = errors;
-													if (!validate32(data15, {
-														instancePath: instancePath + "/model",
-														parentData: data,
-														parentDataProperty: "model",
-														rootData,
-														dynamicAnchors
-													})) {
-														vErrors = vErrors === null ? validate32.errors : vErrors.concat(validate32.errors);
-														errors = vErrors.length;
-													}
-													var _valid0 = _errs37 === errors;
-													valid4 = valid4 || _valid0;
-													const _errs38 = errors;
-													if (data15 !== null) {
-														const err0 = {
-															instancePath: instancePath + "/model",
-															schemaPath: "#/properties/model/anyOf/1/type",
+													if (typeof data15 !== "boolean" && data15 !== null) {
+														validate31.errors = [{
+															instancePath: instancePath + "/local_tools_enabled",
+															schemaPath: "#/properties/local_tools_enabled/type",
 															keyword: "type",
-															params: { type: "null" },
-															message: "must be null"
-														};
-														if (vErrors === null) vErrors = [err0];
-														else vErrors.push(err0);
-														errors++;
-													}
-													var _valid0 = _errs38 === errors;
-													valid4 = valid4 || _valid0;
-													if (!valid4) {
-														const err1 = {
-															instancePath: instancePath + "/model",
-															schemaPath: "#/properties/model/anyOf",
-															keyword: "anyOf",
-															params: {},
-															message: "must match a schema in anyOf"
-														};
-														if (vErrors === null) vErrors = [err1];
-														else vErrors.push(err1);
-														errors++;
-														validate31.errors = vErrors;
+															params: { type: schema43.properties.local_tools_enabled.type },
+															message: "must be boolean,null"
+														}];
 														return false;
-													} else {
-														errors = _errs36;
-														if (vErrors !== null) {
-															if (_errs36) vErrors.length = _errs36;
-															else vErrors = null;
-														}
 													}
 													var valid0 = _errs35 === errors;
 												} else var valid0 = true;
 												if (valid0) {
-													if (data.revision !== void 0) {
-														let data16 = data.revision;
+													if (data.model !== void 0) {
+														let data16 = data.model;
+														const _errs37 = errors;
+														const _errs38 = errors;
+														let valid4 = false;
+														const _errs39 = errors;
+														if (!validate32(data16, {
+															instancePath: instancePath + "/model",
+															parentData: data,
+															parentDataProperty: "model",
+															rootData,
+															dynamicAnchors
+														})) {
+															vErrors = vErrors === null ? validate32.errors : vErrors.concat(validate32.errors);
+															errors = vErrors.length;
+														}
+														var _valid0 = _errs39 === errors;
+														valid4 = valid4 || _valid0;
 														const _errs40 = errors;
-														if (errors === errors) {
-															if (typeof data16 === "string") {
-																if (func2(data16) > 19) {
+														if (data16 !== null) {
+															const err0 = {
+																instancePath: instancePath + "/model",
+																schemaPath: "#/properties/model/anyOf/1/type",
+																keyword: "type",
+																params: { type: "null" },
+																message: "must be null"
+															};
+															if (vErrors === null) vErrors = [err0];
+															else vErrors.push(err0);
+															errors++;
+														}
+														var _valid0 = _errs40 === errors;
+														valid4 = valid4 || _valid0;
+														if (!valid4) {
+															const err1 = {
+																instancePath: instancePath + "/model",
+																schemaPath: "#/properties/model/anyOf",
+																keyword: "anyOf",
+																params: {},
+																message: "must match a schema in anyOf"
+															};
+															if (vErrors === null) vErrors = [err1];
+															else vErrors.push(err1);
+															errors++;
+															validate31.errors = vErrors;
+															return false;
+														} else {
+															errors = _errs38;
+															if (vErrors !== null) {
+																if (_errs38) vErrors.length = _errs38;
+																else vErrors = null;
+															}
+														}
+														var valid0 = _errs37 === errors;
+													} else var valid0 = true;
+													if (valid0) {
+														if (data.revision !== void 0) {
+															let data17 = data.revision;
+															const _errs42 = errors;
+															if (errors === errors) {
+																if (typeof data17 === "string") {
+																	if (func2(data17) > 19) {
+																		validate31.errors = [{
+																			instancePath: instancePath + "/revision",
+																			schemaPath: "#/$defs/DecimalString/maxLength",
+																			keyword: "maxLength",
+																			params: { limit: 19 },
+																			message: "must NOT have more than 19 characters"
+																		}];
+																		return false;
+																	} else if (!pattern4.test(data17)) {
+																		validate31.errors = [{
+																			instancePath: instancePath + "/revision",
+																			schemaPath: "#/$defs/DecimalString/pattern",
+																			keyword: "pattern",
+																			params: { pattern: "^(0|[1-9][0-9]*)$" },
+																			message: "must match pattern \"^(0|[1-9][0-9]*)$\""
+																		}];
+																		return false;
+																	}
+																} else {
 																	validate31.errors = [{
 																		instancePath: instancePath + "/revision",
-																		schemaPath: "#/$defs/DecimalString/maxLength",
-																		keyword: "maxLength",
-																		params: { limit: 19 },
-																		message: "must NOT have more than 19 characters"
-																	}];
-																	return false;
-																} else if (!pattern4.test(data16)) {
-																	validate31.errors = [{
-																		instancePath: instancePath + "/revision",
-																		schemaPath: "#/$defs/DecimalString/pattern",
-																		keyword: "pattern",
-																		params: { pattern: "^(0|[1-9][0-9]*)$" },
-																		message: "must match pattern \"^(0|[1-9][0-9]*)$\""
+																		schemaPath: "#/$defs/DecimalString/type",
+																		keyword: "type",
+																		params: { type: "string" },
+																		message: "must be string"
 																	}];
 																	return false;
 																}
-															} else {
-																validate31.errors = [{
-																	instancePath: instancePath + "/revision",
-																	schemaPath: "#/$defs/DecimalString/type",
-																	keyword: "type",
-																	params: { type: "string" },
-																	message: "must be string"
-																}];
-																return false;
 															}
-														}
-														var valid0 = _errs40 === errors;
-													} else var valid0 = true;
-													if (valid0) {
-														if (data.skill !== void 0) {
-															const _errs43 = errors;
-															if (typeof data.skill !== "string") {
-																validate31.errors = [{
-																	instancePath: instancePath + "/skill",
-																	schemaPath: "#/properties/skill/type",
-																	keyword: "type",
-																	params: { type: "string" },
-																	message: "must be string"
-																}];
-																return false;
-															}
-															var valid0 = _errs43 === errors;
+															var valid0 = _errs42 === errors;
 														} else var valid0 = true;
+														if (valid0) {
+															if (data.skill !== void 0) {
+																const _errs45 = errors;
+																if (typeof data.skill !== "string") {
+																	validate31.errors = [{
+																		instancePath: instancePath + "/skill",
+																		schemaPath: "#/properties/skill/type",
+																		keyword: "type",
+																		params: { type: "string" },
+																		message: "must be string"
+																	}];
+																	return false;
+																}
+																var valid0 = _errs45 === errors;
+															} else var valid0 = true;
+														}
 													}
 												}
 											}

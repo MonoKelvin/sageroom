@@ -20,6 +20,11 @@
 }
 .config-notice { padding: var(--space-3); border: 0; border-radius: var(--radius); background: var(--control-bg); color: var(--text-primary); overflow-wrap: anywhere; }
 .config-notice p { margin: 0 0 var(--space-2); }
+.local-tools-settings { gap: var(--space-3); }
+.local-tools-workspace .setting-row { grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); }
+.app-dialog-content.local-tools-confirmation { width: min(calc(100% - var(--space-6) * 2), calc(var(--size-unit) * 84)); }
+.local-tools-warning { display: flex; align-items: flex-start; gap: var(--space-3); }
+.local-tools-warning svg { flex: none; margin-top: 2px; color: var(--status-warning); }
 .config-entry-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .config-entry-text > strong { font-size: var(--font-body); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .config-entry-text > span { font-size: var(--font-caption); color: var(--text-secondary); }

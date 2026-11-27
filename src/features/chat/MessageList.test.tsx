@@ -59,6 +59,15 @@ async function openMessageMenu(container: HTMLElement, seq = "1") {
   await act(async () => { fireEvent.contextMenu(bubble, { clientX: 12, clientY: 12 }) })
 }
 
+it.each([[false, "@Sage"], [true, "@所有人"]])("提及仅随正文显示（全体=%s）", (mentionAll, mention) => {
+  const text = `${mention} 看一下这里`
+  const item = { ...message(1, text), mention_ids: mentionAll ? [] : ["sage-test"], mention_all: mentionAll }
+  const { container } = mount(propsFor([item]))
+  expect(screen.getByText(text)).toBeVisible()
+  expect(screen.queryByText(mention, { exact: true })).not.toBeInTheDocument()
+  expect(container.querySelector(".chat-message-bubble")?.textContent).toBe(text)
+})
+
 describe("消息撤回菜单与系统 Tag", () => {
   it("未满三分钟可撤回，菜单保持打开时到期只移除撤回", async () => {
     const { container } = mount(propsFor([recent(1, 179_999)]))

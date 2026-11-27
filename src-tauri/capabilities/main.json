@@ -16,6 +16,7 @@
     "core:window:allow-scale-factor",
     "configuration-read",
     "configuration-write",
+    "agent-workspace-open",
     "credentials-manage",
     "model-test",
     "news-preview",

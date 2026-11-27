@@ -19,6 +19,7 @@ fn main() {
             "agent_list",
             "agent_save",
             "agent_runtime_control",
+            "agent_workspace_open",
             "user_profile_get",
             "user_profile_save",
             "secret_set",

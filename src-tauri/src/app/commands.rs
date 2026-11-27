@@ -587,6 +587,26 @@ pub async fn agent_save(
 }
 
 #[tauri::command]
+pub async fn agent_workspace_open(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+    request: Value,
+) -> Result<ApiResponse<()>, AppError> {
+    let result = async {
+        trusted_window(&window)?;
+        let request: ExperienceAgentRequest = decode(request)?;
+        let path = state.worker()?.call(move |database| {
+            database.ensure_tool_workspace(&request.data_generation_id, &request.agent_id)
+        }).await?;
+        if !crate::app::external_links::open_path(&path) {
+            return Err(AppError::new(ErrorCode::IoError, "无法打开工作区，请检查系统文件管理器。"));
+        }
+        Ok(())
+    }.await;
+    Ok(result.into())
+}
+
+#[tauri::command]
 pub async fn agent_runtime_control(
     window: WebviewWindow,
     state: State<'_, AppState>,

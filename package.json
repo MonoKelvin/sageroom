@@ -1,7 +1,7 @@
 {
   "name": "sageroom",
-  "version": "0.2.4",
-  "releaseDate": "2026-11-26",
+  "version": "0.2.5",
+  "releaseDate": "2026-11-27",
   "private": true,
   "productName": "Sageroom",
   "description": "一个桌面 AI 群聊应用：用户与多个具备独立性格、模型和记忆的智能体，共同生活在一个聊天室中。",

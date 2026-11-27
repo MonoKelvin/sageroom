@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { IconCheck, IconChevronDown, IconEdit, IconPlus, IconRefresh, IconScissors, IconStarFilled, IconTrash, IconX } from "@tabler/icons-react"
-import type { ExperienceEntry } from "@/contracts/generated"
+import type { AgentType, ExperienceEntry } from "@/contracts/generated"
 import type { ConfigurationStore } from "@/app/configurationStore"
 import { errorMessage } from "@/app/ipc"
 import { AppDialog } from "@/components/ui/app-dialog"
@@ -11,6 +11,7 @@ import { SearchDatePicker } from "@/features/chat/SearchDatePicker"
 type Props = {
   store: Pick<ConfigurationStore, "listExperience" | "addExperience" | "updateExperience" | "deleteExperience" | "pruneExperience">
   agentId: string
+  agentType: AgentType
   active: boolean
   disabled: boolean
 }
@@ -41,7 +42,7 @@ function IconAction({ label, hint, icon: Icon, onClick, disabled, danger }: {
   </TooltipTrigger><TooltipContent>{hint ?? label}</TooltipContent></Tooltip>
 }
 
-export function ExperiencePanel({ store, agentId, active, disabled }: Props) {
+export function ExperiencePanel({ store, agentId, agentType, active, disabled }: Props) {
   const [open, setOpen] = useState(false)
   const [entries, setEntries] = useState<ExperienceEntry[]>([])
   const [content, setContent] = useState("")
@@ -184,7 +185,7 @@ export function ExperiencePanel({ store, agentId, active, disabled }: Props) {
                 <IconAction label="添加经历" icon={IconPlus} onClick={() => void add()} disabled={disabled || pending || loading || !content.trim()} />
               </div>
             </div>
-            <textarea className="settings-control experience-input" aria-label="经历内容" placeholder="记下值得保留的事……" value={content} rows={2} maxLength={10000} disabled={disabled || pending} onChange={(event) => { revision.current += 1; setContent(event.target.value); setError(null) }} />
+            <textarea className="settings-control experience-input" aria-label="经历内容" placeholder={agentType === "tool" ? "记录重要事务、已验证的结论或解决方案……" : "记下值得保留的事……"} value={content} rows={2} maxLength={10000} disabled={disabled || pending} onChange={(event) => { revision.current += 1; setContent(event.target.value); setError(null) }} />
           </form>
           {error && <p role="alert" className="settings-control-error">{error}</p>}
           {/* 默认折叠时不渲染读取状态，避免隐藏区域留下多余的 role=status。 */}

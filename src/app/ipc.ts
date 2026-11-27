@@ -334,6 +334,8 @@ export const ipc = {
     request("agent_save", input, validateAgentSaveRequest, validateAgentSaveResponse),
   controlAgentRuntime: (input: AgentRuntimeControlRequest): Promise<AgentRuntimeState> =>
     request("agent_runtime_control", input, validateAgentRuntimeControlRequest, validateAgentRuntimeControlResponse),
+  openAgentWorkspace: (input: ExperienceAgentRequest): Promise<void> =>
+    request("agent_workspace_open", input, validateExperienceAgentRequest, validateOpenExternalLinkResponse),
   getUserProfile: (input: UserProfileGetRequest): Promise<UserProfile> =>
     request("user_profile_get", input, validateUserProfileGetRequest, validateUserProfileGetResponse),
   saveUserProfile: (input: UserProfileSaveRequest): Promise<UserProfile> =>

@@ -54,6 +54,11 @@ description = "保存绑定世代和版本的本地配置与资料"
 commands.allow = ["global_configuration_save", "news_configuration_save", "agent_save", "agent_delete", "agent_runtime_control", "user_profile_save"]
 
 [[permission]]
+identifier = "agent-workspace-open"
+description = "在系统文件管理器中打开指定工具助手的工作区"
+commands.allow = ["agent_workspace_open"]
+
+[[permission]]
 identifier = "credentials-manage"
 description = "写入模型凭据，只返回是否配置"
 commands.allow = ["secret_set", "secret_status", "news_secret_set", "news_secret_status"]

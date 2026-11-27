@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-agent-workspace-open"
+description = "Enables the agent_workspace_open command without any pre-configured scope."
+commands.allow = ["agent_workspace_open"]
+
+[[permission]]
+identifier = "deny-agent-workspace-open"
+description = "Denies the agent_workspace_open command without any pre-configured scope."
+commands.deny = ["agent_workspace_open"]

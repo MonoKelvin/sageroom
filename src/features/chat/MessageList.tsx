@@ -141,7 +141,6 @@ const MessageRow = memo(function MessageRow({ message, participant, participants
               {message.state === "visible" && message.quote_message_id && <button type="button" className="chat-message-quote" disabled={!original || !onLocateQuote} aria-label={original ? `定位引用 ${quoteName ?? "成员"}的消息` : "原消息不可用"} onClick={() => void locateQuote()}><strong>{quoteName ?? "引用"}</strong><span>{original?.state === "visible" ? messageText(original).slice(0, 120) : "原消息不可用"}</span></button>}
               {attachments.length > 0 && <MessageAttachments generation={generation ?? null} attachments={attachments} />}
               {message.state === "visible" ? (text && <span className="chat-message-text">{text}</span>) : "消息已删除"}
-              {message.state === "visible" && (message.mention_all || message.mention_ids.length > 0) && <div className="chat-message-mentions">{message.mention_all ? <span>@所有人</span> : message.mention_ids.map((id) => <span key={id}>@{participants.get(id)?.display_name ?? "已离开成员"}</span>)}</div>}
             </div>
           </ContextMenu>
           {feedback && <p className="chat-message-feedback" data-error={feedback.error} role={feedback.error ? "alert" : "status"}>{feedback.text}</p>}

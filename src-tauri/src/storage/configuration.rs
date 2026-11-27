@@ -92,6 +92,7 @@ pub fn seed_configuration(conn: &Connection) -> AppResult<()> {
             skill: String::new(),
             avatar_id,
             agent_type: AgentType::Social,
+            local_tools_enabled: None,
             model: None,
         };
         conn.execute(
@@ -660,6 +661,9 @@ impl Database {
         self.check_generation(&request.data_generation_id)?;
         validate_id(&request.client_request_id, "client_request_id")?;
         let mut config = request.configuration;
+        if config.agent_type != AgentType::Tool {
+            config.local_tools_enabled = None;
+        }
         validate_id(&config.agent_id, "agent_id")?;
         bounded_display_name(&config.display_name, "display_name")?;
         bounded(&config.language_style, "language_style", 2000, false)?;
