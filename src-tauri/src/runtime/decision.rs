@@ -46,6 +46,9 @@ pub(super) fn refinement_hint(assessment: &style::Assessment, policy: &style::Po
     if assessment.literary_style { reasons.push("有堆砌的比喻或文艺腔"); }
     if assessment.paragraph_style { reasons.push("有换行或过长从句"); }
     if assessment.formulaic_style { reasons.push("整句在点评别人的措辞或只有附和、没有你自己的信息"); }
+    if assessment.twin_clause_style {
+        reasons.push("每条都是「复述半句，逗号，再接一句评价」的同一种句式");
+    }
     let strict = if attempt >= 1 {
         "这次最多只写一条，只留一个信息点；宁可 observe，也不要写成段落。"
     } else {
@@ -168,8 +171,34 @@ pub(super) fn assessment(decision: &Decision, policy: &style::Policy) -> Option<
     policy.assess(decision)
 }
 
+/// 没有结构化 @，但话明显是冲着某人或整个群说的。
+/// 用户说「下班」「没人和我说话吗」「梨花觉得呢」时，期望的是有人接话，
+/// 只认 mention_ids 会让成员一律沉默。
+fn direct_engagement(text: &str, name: &str) -> bool {
+    // 直呼其名，即使前端没带上结构化提及。
+    if !name.is_empty() && text.contains(name) {
+        return true
+    }
+    // 冲着群里所有人的问候或直接招呼。
+    const GREETINGS: [&str; 14] = [
+        "你好", "早上好", "中午好", "晚上好", "下班", "在吗", "嗨", "哈喽",
+        "各位", "大家", "有没有人", "没人", "有人吗", "谁在",
+    ];
+    if GREETINGS.iter().any(|phrase| text.contains(phrase)) {
+        return true
+    }
+    // 中文问句常常不写问号：「你们谁去」「吃了吗」都算冲着群里来的。
+    const ADDRESSEE: [&str; 7] = ["你们", "大家", "各位", "谁", "有没有人", "有人", "哪位"];
+    if ADDRESSEE.iter().any(|phrase| text.contains(phrase)) {
+        return true
+    }
+    text.chars().count() <= 16
+        && (text.contains('?') || text.contains('？') || text.ends_with("吗") || text.ends_with("呢"))
+}
+
 pub(super) fn addressed_since(input: &RuntimeInput, observed: &DecimalString) -> bool {
     let agent_id = &input.agent.agent_id;
+    let name = input.agent.display_name.trim();
     input.messages.iter().any(|message| {
         message.state == MessageState::Visible
             && &message.sender_id != agent_id
@@ -179,7 +208,11 @@ pub(super) fn addressed_since(input: &RuntimeInput, observed: &DecimalString) ->
                     input.messages.iter().chain(&input.quoted_messages).any(|quote| {
                         &quote.id == id && &quote.sender_id == agent_id && quote.state == MessageState::Visible
                     })
-                }))
+                })
+                || message.parts.iter().filter_map(|part| match part {
+                    MessagePart::Text { text } => Some(text.as_str()),
+                    _ => None,
+                }).any(|text| direct_engagement(text, name)))
     })
 }
 
@@ -769,6 +802,34 @@ mod tests {
         assert!(addressed_since(&input, &1.into()));
         input.messages[1].state = MessageState::Recalled;
         assert!(!addressed_since(&input, &1.into()));
+    }
+
+    #[test]
+    fn plain_greetings_and_direct_questions_count_as_addressed() {
+        let (_dir, mut input) = input();
+        let agent_id = input.agent.agent_id.clone();
+        let name = input.agent.display_name.clone();
+        let message = |seq: i64, text: &str| ChatMessage {
+            id: format!("message-{seq}"), seq: seq.into(), sender_id: "other".into(),
+            created_at: now_ms(), state: MessageState::Visible,
+            parts: vec![MessagePart::Text { text: text.into() }],
+            quote_message_id: None, mention_ids: vec![], mention_all: false,
+        };
+        for (seq, text) in [
+            (2, format!("{name}，你觉得呢")),
+            (3, "下班".into()),
+            (4, "没人和我说话吗".into()),
+            (5, "你们谁去".into()),
+        ] {
+            input.messages = vec![message(seq, &text)];
+            assert!(addressed_since(&input, &1.into()), "应算被点到：{text}");
+            assert_eq!(participation_chance(&input, addressed_since(&input, &1.into()), now_ms()), 100);
+        }
+        // 自言自语不算冲着群里谁说话，否则所有成员每次都会被叫醒。
+        input.messages = vec![message(6, "今天代码写了八百行")];
+        assert!(!addressed_since(&input, &1.into()));
+        assert!(participation_chance(&input, false, now_ms()) < 100);
+        drop(agent_id);
     }
 
     #[test]

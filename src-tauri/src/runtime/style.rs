@@ -28,7 +28,9 @@ const EMPATHY: [&str; 8] = [
 ];
 const METAPHORS: [&str; 7] = ["仿佛", "宛如", "犹如", "就像", "简直是", "不只是", "更像是"];
 // 点评式发言与无主观附和：真人闲聊里偶尔有，整轮都在评价对方措辞就是机器特征。
-const COMMENTARY: [&str; 18] = ["绝了", "这个比喻", "这个形容", "你这配置", "有画面感", "体验感拉满", "说得对", "确实很", "挺合理", "属实是", "太文艺", "不愧是", "好家伙", "妙啊", "太浪漫", "好有意思", "有意思的", "含金量拉满"];
+const COMMENTARY: [&str; 25] = ["绝了", "这个比喻", "这个形容", "你这配置", "有画面感", "画面感", "氛围组", "到位了", "这搭配我懂", "体验感拉满", "说得对", "确实很", "挺合理", "属实是", "太文艺", "不愧是", "好家伙", "妙啊", "太浪漫", "好有意思", "有意思的", "含金量拉满", "讲究", "信息量", "热场"];
+// 聊天里被整群互相复制的句式模板。真正的问题是「大家都这么说」，不是这句话本身。
+const TEMPLATE_FOLLOW: [&str; 4] = ["我负责", "我替", "我猜个", "我蹲个"];
 // 真实聊天里「算我一个」「给我留一罐」这类排队报名是零信息附和，
 // 和老词表里的「确实/哈哈哈」一样会把对话拖成复读。
 const HOLLOW: [&str; 20] = ["哈哈哈哈", "哈哈哈", "确实", "对啊", "对对", "真的假的", "是吗", "然后呢", "我超", "超好奇", "不是吧", "啊这", "哈哈", "算我一个", "我也来", "给我留", "留一罐", "留点呀", "先吃饭", "正等我"];
@@ -75,6 +77,8 @@ pub(super) struct Assessment {
     pub literary_style: bool,
     pub paragraph_style: bool,
     pub formulaic_style: bool,
+    /// 「复述半句 + 逗号 + 评价半句」。只用于请求改写，不作为最终删消息的依据。
+    pub twin_clause_style: bool,
     pub local_style_score: Option<f64>,
 }
 
@@ -195,6 +199,7 @@ impl Policy {
             literary_style: false,
             paragraph_style: false,
             formulaic_style: false,
+            twin_clause_style: texts.iter().any(|text| twin_clause_style(text)),
             local_style_score: None,
         };
         if self.mode != "detail" {
@@ -215,7 +220,8 @@ impl Policy {
         }
         (assessment.over_message_limit || assessment.over_total_limit || assessment.too_many_messages
             || assessment.repeated_opening || assessment.lecture_style || assessment.literary_style
-            || assessment.paragraph_style || assessment.formulaic_style).then_some(assessment)
+            || assessment.paragraph_style || assessment.formulaic_style
+            || assessment.twin_clause_style).then_some(assessment)
     }
 
     /// 改写重试后仍不合规时的确定性兜底：只保留明确合规的短消息；
@@ -399,9 +405,26 @@ fn features(text: &str) -> [f64; 12] {
     ]
 }
 
+/// 最近对话里最常见的机器句式：复述半句，然后用逗号接一句评价。
+/// 真人偶尔也这么说，所以它只触发「换一种写法」的改写；
+/// 两轮改写还这样就放过，不在兜底阶段删消息，免得把本就不热闹的群聊压得更沉默。
+fn twin_clause_style(text: &str) -> bool {
+    if text.chars().filter(|character| matches!(character, '，' | ',')).count() != 1 {
+        return false
+    }
+    let Some((left, right)) = text.split_once(['，', ',']) else {
+        return false
+    };
+    let right = right.trim_end_matches(['。', '！', '？', '!', '?', ' ']);
+    let left_length = left.chars().count();
+    let right_length = right.chars().count();
+    left_length >= 4 && (4..=14).contains(&right_length)
+}
+
 fn fallback_formulaic(text: &str) -> bool {
     EVALUATIONS[..6].iter().any(|phrase| text.contains(phrase))
-        || occurrences(text, &COMMENTARY) >= 1.0
+        || COMMENTARY.iter().any(|phrase| text.contains(phrase))
+        || TEMPLATE_FOLLOW.iter().any(|phrase| text.contains(phrase))
         || occurrences(text, &HOLLOW) >= 2.0
         || (text.chars().count() >= 20 && (
             occurrences(text, &EMPATHY) >= 2.0
@@ -519,6 +542,31 @@ mod tests {
         assert!(model.score(large) >= 0.999999999);
         model.bias = -1000.0;
         assert!(model.score(large) < 1e-20);
+    }
+
+    #[test]
+    fn twin_clause_shape_triggers_rewriting_without_forcing_silence() {
+        let policy = Policy::default();
+        let shape = "包间抢到了，你们快点。";
+        let assessment = policy.assess(&decision(&[shape])).unwrap();
+        assert!(assessment.twin_clause_style);
+        // 只要求换个写法，不在兜底阶段把人逼成 observe。
+        let mut rewritten = decision(&[shape]);
+        policy.enforce(&mut rewritten);
+        assert_eq!(rewritten.participation, Participation::Speak);
+        assert_eq!(body(&rewritten.messages[0].parts), shape);
+
+        // 从最近聊天里挑出来的几种一眼 AI 的说法，都必须进改写流程。
+        for text in [
+            "《安静》配打灯，画面感来了。",
+            "半糖还得防抢杯，这奶茶讲究。",
+            "我负责打灯。",
+        ] {
+            assert!(policy.assess(&decision(&[text])).is_some(), "{text}");
+        }
+        // 省略主语、没有标点的短句不该被当成病句删掉。
+        assert!(policy.assess(&decision(&["刚抢到包间"])).is_none());
+        assert!(policy.assess(&decision(&["谁点的珍珠"])).is_none());
     }
 
     #[test]
