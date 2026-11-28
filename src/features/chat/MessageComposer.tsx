@@ -1,5 +1,5 @@
 import { sendOnEnter } from "@/app/uiPreferences"
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react"
 import { createPortal } from "react-dom"
 import { IconClipboard, IconCopy, IconCut, IconFile, IconMoodSmile, IconPaperclip, IconPhoto, IconSelectAll, IconSendFilled, IconTrash, IconUsers, IconX } from "@tabler/icons-react"
 import type { AttachmentObject, ChatMessage, Participant } from "@/contracts/generated"
@@ -39,14 +39,10 @@ type Props = {
   onSend: (text: string, requestId: string, options: SendOptions) => Promise<unknown>
 }
 
-type FloatingAnchor = { top: number; left: number; width: number; height?: number }
+type FloatingAnchor = { top: number; left: number; width: number }
 
 /** 提及列表除了名字还要头像，所以比纯逻辑层的 MentionTarget 多带一点展示信息。 */
 type MentionOption = MentionTarget & { avatarId?: string | null; colorId?: string; kind: "user" | "agent" | "all" }
-
-/** 表情面板固定 3:2，这里与 chat.css 里的尺寸保持一致。 */
-const EMOJI_PANEL_WIDTH = 360
-const EMOJI_PANEL_HEIGHT = 240
 
 function AttachmentPreview({ generation, attachment, onRemove }: { generation: string | null; attachment: AttachmentObject; onRemove: () => void }) {
   const source = useAttachmentSource(generation, attachment.id, attachment.kind === "image")
@@ -73,36 +69,66 @@ const EMOJI_TABS = [
   { name: "字符", kaomoji: true, items: KAOMOJI },
 ]
 
-function EmojiPanel({ anchor, onPick, onClose }: { anchor: FloatingAnchor; onPick: (emoji: string) => void; onClose: () => void }) {
+function EmojiPanel({ id, anchor, trigger, onPick, onClose, onEscape }: {
+  id: string; anchor: RefObject<HTMLFormElement | null>; trigger: RefObject<HTMLButtonElement | null>
+  onPick: (emoji: string) => void; onClose: () => void; onEscape: () => void
+}) {
   const [tab, setTab] = useState(0)
   const panel = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const form = anchor.current
+    const node = panel.current
+    if (!form || !node) return
+    const position = () => {
+      const box = form.getBoundingClientRect()
+      node.style.left = `${Math.max(8, Math.min(box.left, window.innerWidth - node.offsetWidth - 8))}px`
+      node.style.bottom = `${window.innerHeight - box.top + 8}px`
+      node.style.maxHeight = `${Math.max(0, box.top - 16)}px`
+    }
+    position()
+    if (document.activeElement === trigger.current) node.querySelector<HTMLElement>('[role="tab"]')?.focus({ preventScroll: true })
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(position)
+    observer?.observe(form)
+    window.addEventListener("resize", position)
+    return () => { observer?.disconnect(); window.removeEventListener("resize", position) }
+  }, [anchor, trigger])
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
-      if (panel.current?.contains(event.target as Node)) return
-      onClose()
+      const target = event.target as Node
+      if (!panel.current?.contains(target) && !trigger.current?.contains(target)) onClose()
     }
-    const onKeyDown = (event: globalThis.KeyboardEvent) => { if (event.key === "Escape") onClose() }
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return
+      event.preventDefault()
+      onEscape()
+    }
     document.addEventListener("pointerdown", onPointerDown)
     document.addEventListener("keydown", onKeyDown)
     return () => { document.removeEventListener("pointerdown", onPointerDown); document.removeEventListener("keydown", onKeyDown) }
-  }, [onClose])
-  // 默认浮在按钮上方；窗口太矮放不下时翻到下方，避免被窗口顶边裁掉。
-  const left = Math.max(8, Math.min(anchor.left, window.innerWidth - EMOJI_PANEL_WIDTH - 8))
-  const style = anchor.top >= EMOJI_PANEL_HEIGHT + 16
-    ? { position: "fixed" as const, left, bottom: window.innerHeight - anchor.top + 8 }
-    : { position: "fixed" as const, left, top: anchor.top + (anchor.height ?? 0) + 8 }
-  const active = EMOJI_TABS[tab]
-  return createPortal(<div ref={panel} className="composer-emoji-panel" style={style} role="dialog" aria-label="选择表情">
-    <div className="composer-emoji-tabs" role="tablist">
-      {EMOJI_TABS.map((item, index) => <button key={item.name} type="button" role="tab" aria-selected={index === tab} className="composer-emoji-tab" onClick={() => setTab(index)}>{item.name}</button>)}
+  }, [onClose, onEscape, trigger])
+
+  function navigateTabs(event: KeyboardEvent<HTMLDivElement>) {
+    const count = EMOJI_TABS.length
+    const next = event.key === "Home" ? 0 : event.key === "End" ? count - 1
+      : event.key === "ArrowLeft" ? (tab + count - 1) % count
+      : event.key === "ArrowRight" ? (tab + 1) % count : null
+    if (next === null) return
+    event.preventDefault()
+    setTab(next)
+    event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next].focus()
+  }
+
+  return createPortal(<div id={id} ref={panel} className="composer-emoji-panel" role="dialog" aria-label="选择表情">
+    <div className="composer-emoji-tabs" role="tablist" aria-label="表情分类" onKeyDown={navigateTabs}>
+      {EMOJI_TABS.map((item, index) => <button key={item.name} id={`${id}-tab-${index}`} type="button" role="tab" aria-selected={index === tab} aria-controls={`${id}-page-${index}`} tabIndex={index === tab ? 0 : -1} className="composer-emoji-tab" onClick={() => setTab(index)}>{item.name}</button>)}
     </div>
-    {active.kaomoji
-      ? <div className="composer-emoji-body"><div className="composer-kaomoji-grid">
-        {active.items.map((item, index) => <button key={`${item}-${index}`} type="button" className="composer-kaomoji" onClick={() => onPick(item)}>{item}</button>)}
-      </div></div>
-      : <div className="composer-emoji-body"><div className="composer-emoji-grid">
-        {active.items.map((item, index) => <button key={`${item}-${index}`} type="button" className="composer-emoji" onClick={() => onPick(item)}>{item}</button>)}
-      </div></div>}
+    <div className="composer-emoji-pages">
+      {EMOJI_TABS.map((group, index) => <div key={group.name} id={`${id}-page-${index}`} role="tabpanel" aria-labelledby={`${id}-tab-${index}`} inert={index !== tab} className="composer-emoji-body" data-position={index === tab ? "current" : index < tab ? "before" : "after"}>
+        <div className="composer-emoji-grid">
+          {group.items.map((item, index) => <button key={`${item}-${index}`} type="button" className="composer-emoji" data-kind={group.kaomoji ? "text" : undefined} data-wide={group.kaomoji && item.length > 9 ? "" : undefined} title={group.kaomoji ? item : undefined} onClick={() => onPick(item)}>{item}</button>)}
+        </div>
+      </div>)}
+    </div>
   </div>, document.body)
 }
 
@@ -149,7 +175,11 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
   const [composing, setComposing] = useState(false)
   // 只有真正的输入动作才允许呼出成员列表：点进已经 @ 好的名字里不该再弹一次。
   const [inputting, setInputting] = useState(false)
-  const [emojiAnchor, setEmojiAnchor] = useState<FloatingAnchor | null>(null)
+  const [emojiOpen, setEmojiOpen] = useState(false)
+  const emojiPanelId = useId()
+  const formRef = useRef<HTMLFormElement>(null)
+  const emojiTrigger = useRef<HTMLButtonElement>(null)
+  const closeEmoji = useCallback(() => setEmojiOpen(false), [])
   const [mentionAnchor, setMentionAnchor] = useState<FloatingAnchor | null>(null)
   const [mentionIndex, setMentionIndex] = useState(0)
   const composingRef = useRef(false)
@@ -192,7 +222,7 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
       .filter((target) => !keyword || target.name.toLowerCase().includes(keyword))
       .slice(0, 8)
   }, [mentionTargets, query])
-  const mentionOpen = mentionMatches.length > 0 && inputting && !emojiAnchor
+  const mentionOpen = mentionMatches.length > 0 && inputting && !emojiOpen
 
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
 
@@ -622,8 +652,13 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
     return () => textarea.removeEventListener("wheel", onWheel)
   }, [])
 
+  const dismissEmoji = useCallback(() => {
+    closeEmoji()
+    requestAnimationFrame(() => input.current?.focus({ preventScroll: true }))
+  }, [closeEmoji])
+
   return (
-    <form onSubmit={(event) => void submit(event)} className="message-composer">
+    <form ref={formRef} onSubmit={(event) => void submit(event)} className="message-composer">
       <div className="composer-field">
         <div className="composer-resize-handle" role="separator" aria-orientation="horizontal" aria-label="拖动上边界调整输入框高度" tabIndex={0}
           onDoubleClick={resetHeight} onPointerDown={startResize} onPointerMove={resize} onPointerUp={endResize} onPointerCancel={endResize}
@@ -671,12 +706,9 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
         </ContextMenu>
         <div className="composer-actions">
           <div className="composer-tools">
-            <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label="表情" aria-expanded={Boolean(emojiAnchor)} disabled={disabled}
-              onClick={(event) => {
-                if (emojiAnchor) { setEmojiAnchor(null); return }
-                const box = event.currentTarget.getBoundingClientRect()
-                setEmojiAnchor({ top: box.top, left: box.left, width: box.width, height: box.height })
-              }}><IconMoodSmile size={18} stroke={1.6} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>表情</TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild><Button ref={emojiTrigger} type="button" variant="ghost" size="icon" aria-label="表情" aria-haspopup="dialog" aria-expanded={active && emojiOpen} aria-controls={active && emojiOpen ? emojiPanelId : undefined} disabled={disabled}
+              onMouseDown={(event) => { if (document.activeElement === input.current) event.preventDefault() }}
+              onClick={() => { if (emojiOpen) dismissEmoji(); else setEmojiOpen(true) }}><IconMoodSmile size={18} stroke={1.6} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>表情</TooltipContent></Tooltip>
             <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label="发送图片" disabled={disabled || uploading} onClick={() => void pickAttachments(true)}><IconPhoto size={18} stroke={1.6} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>发送图片</TooltipContent></Tooltip>
             <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label="发送文件" disabled={disabled || uploading} onClick={() => void pickAttachments(false)}><IconPaperclip size={18} stroke={1.6} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>发送文件</TooltipContent></Tooltip>
             {uploading && <span className="composer-uploading" role="status">上传中…</span>}
@@ -685,12 +717,8 @@ export function MessageComposer({ active = true, dataGenerationId, disabled, par
         </div>
       </div>
       {mentionOpen && mentionAnchor && <MentionPanel anchor={mentionAnchor} items={mentionMatches} active={mentionIndex} generation={dataGenerationId} onPick={pickMention} />}
-      {emojiAnchor && <EmojiPanel anchor={emojiAnchor} onPick={(emoji) => { insertText(emoji) }} onClose={() => { setEmojiAnchor(null); returnFocus() }} />}
+      {active && emojiOpen && <EmojiPanel id={emojiPanelId} anchor={formRef} trigger={emojiTrigger} onPick={insertText} onClose={closeEmoji} onEscape={dismissEmoji} />}
       <p id="composer-error" role={visibleError ? "alert" : undefined} className="composer-error">{visibleError ?? ""}</p>
     </form>
   )
-
-  function returnFocus() {
-    requestAnimationFrame(() => input.current?.focus({ preventScroll: true }))
-  }
 }

@@ -93,6 +93,8 @@ pub fn seed_configuration(conn: &Connection) -> AppResult<()> {
             avatar_id,
             agent_type: AgentType::Social,
             local_tools_enabled: None,
+            script_execution_enabled: None,
+            windows_inventory_enabled: None,
             model: None,
         };
         conn.execute(
@@ -663,6 +665,10 @@ impl Database {
         let mut config = request.configuration;
         if config.agent_type != AgentType::Tool {
             config.local_tools_enabled = None;
+            config.script_execution_enabled = None;
+        }
+        if config.script_execution_enabled != Some(true) {
+            config.windows_inventory_enabled = None;
         }
         validate_id(&config.agent_id, "agent_id")?;
         bounded_display_name(&config.display_name, "display_name")?;

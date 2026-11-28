@@ -9,10 +9,10 @@ use crate::{
         contracts::*,
         error::{AppResult, now_ms},
     },
-    storage::{configuration::BASE_SKILL, runtime::RuntimeInput},
+    storage::{configuration::BASE_SKILL, runtime::{RuntimeInput, ToolAddress}},
 };
 
-use super::{local_tools::LocalAction, mcp_tools::ToolCall, peers::Peer, style};
+use super::{local_tools::LocalAction, mcp_tools::ToolCall, peers::Peer, script_sandbox, style};
 
 const TOOL_SKILL: &str = include_str!("../../../agent/TOOL_SKILL.md");
 const TOOL_ANSWER_CHARS: usize = 3600;
@@ -120,6 +120,8 @@ pub struct Decision {
     pub local_action: Option<LocalAction>,
     #[serde(default)]
     pub mcp_tool: Option<ToolCall>,
+    #[serde(default)]
+    pub script: Option<script_sandbox::Script>,
     #[serde(default)]
     pub messages: Vec<PlannedMessage>,
     #[serde(default)]
@@ -258,17 +260,20 @@ pub fn parse(text: &str, input: &RuntimeInput) -> AppResult<Decision> {
     {
         return Err(invalid());
     }
-    if (decision.local_action.is_some() || decision.mcp_tool.is_some())
-        && (input.agent.agent_type != AgentType::Tool
-            || !input.messages.first().is_some_and(|message| message.sender_id == input.snapshot.local_user.id)
-            || (decision.local_action.is_some() && decision.mcp_tool.is_some())
+    let local_actions = usize::from(decision.local_action.is_some())
+        + usize::from(decision.mcp_tool.is_some()) + usize::from(decision.script.is_some());
+    if local_actions > 0
+        && (input.agent.agent_type != AgentType::Tool || local_actions > 1
+            || (decision.script.is_none() && !input.local_user_delegated_tool())
+            || decision.script.as_ref().is_some_and(|script| !input.is_local_tool_request() || !script.valid())
             || decision.participation != Participation::Observe || decision.news_search.is_some()
             || !decision.recalls.is_empty() || decision.wake_plan.is_some() || decision.experience.is_some())
     {
         return Err(invalid());
     }
     if let Some(search) = &decision.news_search {
-        if search.query.trim().is_empty() || search.query.chars().count() > 80 || search.query.chars().any(char::is_control)
+        if input.tool_turn.as_ref().is_some_and(|turn| turn.address != ToolAddress::Mention)
+            || search.query.trim().is_empty() || search.query.chars().count() > 80 || search.query.chars().any(char::is_control)
             || decision.participation != Participation::Observe || !decision.recalls.is_empty()
             || decision.wake_plan.is_some() || decision.experience.is_some()
         {
@@ -340,6 +345,7 @@ pub fn parse(text: &str, input: &RuntimeInput) -> AppResult<Decision> {
                     .messages
                     .iter()
                     .chain(&input.quoted_messages)
+                    .chain(input.tool_turn.iter().map(|turn| &turn.request))
                     .any(|m| &m.id == id && m.state == MessageState::Visible)
             })
         {
@@ -371,7 +377,9 @@ pub(super) fn local_tool_context(input: &RuntimeInput, used: bool, remaining: us
     let enabled = input.agent.local_tools_enabled == Some(true);
     let state = if !enabled {
         "disabled"
-    } else if input.messages[0].sender_id != input.snapshot.local_user.id {
+    } else if input.tool_turn().address != ToolAddress::Mention {
+        "requires_explicit_mention"
+    } else if !input.local_user_delegated_tool() {
         "requires_local_user"
     } else if used {
         "already_used"
@@ -397,22 +405,34 @@ pub(super) fn tool_context(input: &RuntimeInput) -> AppResult<(String, String)> 
     let message = |message: &ChatMessage, limit| {
         let body = style::body(&message.parts);
         let text: String = body.chars().take(limit).collect();
-        json!({"text":text,"text_truncated":text.len() < body.len(),
+        json!({"id":message.id,"seq":message.seq,"quote_message_id":message.quote_message_id,
+            "created_at":message.created_at,"text":text,"text_truncated":text.len() < body.len(),
             "has_attachment":message.parts.iter().any(|part| !matches!(part, MessagePart::Text { .. }))})
     };
-    let request = message(&input.messages[0], 4800);
+    let turn = input.tool_turn();
+    let request = message(&turn.request, 4800);
     let mut quote = input.quoted_messages.first().map(|item| message(item, 1600));
+    let mut history: Vec<_> = input.messages.iter().map(|item| {
+        let mut entry = message(item, 1000);
+        entry["role"] = json!(if item.sender_id == input.agent.agent_id { "assistant" } else { "requester" });
+        entry
+    }).collect();
     let mut experiences: Vec<_> = input.experiences.iter().take(6).map(|entry| {
         json!({"content":entry.content.chars().take(400).collect::<String>(),"score":entry.score})
     }).collect();
     let budget = MODEL_INPUT_BUDGET as usize * 2 - 8_000;
     loop {
-        let context = json!({"request":request,"quoted_message":quote,"experiences":experiences,
+        let context = json!({"request":request,"request_address":turn.address,"quoted_message":quote,
+            "history":history,"experiences":experiences,"utc_millis":now_ms(),
             "max_answer_chars":TOOL_ANSWER_CHARS,"news_search_available":false}).to_string();
         if context.len() <= budget {
             return Ok((system, context));
         }
         if experiences.pop().is_some() {
+            continue;
+        }
+        if !history.is_empty() {
+            history.remove(0);
             continue;
         }
         if quote.take().is_none() {
@@ -584,6 +604,7 @@ mod tests {
                 snapshot,
                 messages: vec![],
                 quoted_messages: vec![],
+                tool_turn: None,
                 experiences: vec![],
                 experience_revision: crate::storage::database::fingerprint(&[]),
             },
@@ -604,12 +625,12 @@ mod tests {
             created_at: now_ms(), state: MessageState::Visible, parts: vec![MessagePart::Text { text: text.into() }],
             quote_message_id: None, mention_ids: vec![], mention_all: false,
         };
-        input.messages = vec![message("有哪些可用工具？")];
+        input.tool_turn = Some(crate::storage::runtime::ToolTurn { address: ToolAddress::Mention, request: message("有哪些可用工具？") });
         let allowed = local_tool_context(&input, false, 1);
         assert_eq!(allowed["enabled"], true);
         assert_eq!(allowed["turn_state"], "ready");
         assert_eq!(allowed["allowed_operations"], json!(["system_info", "list_workspace", "write_text"]));
-        input.messages[0].parts = vec![MessagePart::Text { text: "请列出当前工作区的文件。".into() }];
+        input.tool_turn.as_mut().unwrap().request.parts = vec![MessagePart::Text { text: "请列出当前工作区的文件。".into() }];
         assert_eq!(local_tool_context(&input, false, 1), allowed);
         assert_eq!(local_tool_context(&input, false, 0)["turn_state"], "step_limit");
         assert_eq!(local_tool_context(&input, true, 1)["turn_state"], "already_used");
@@ -617,7 +638,14 @@ mod tests {
         let context: Value = serde_json::from_str(&encoded).unwrap();
         assert_eq!(context["request"]["text"], "请列出当前工作区的文件。");
         assert!(context.get("local_reference").is_none());
-        input.messages[0].sender_id = "another-agent".into();
+        let turn = input.tool_turn.as_mut().unwrap();
+        turn.address = ToolAddress::FollowUp;
+        assert!(local_tool_context(&input, false, 1)["allowed_operations"].as_array().unwrap().is_empty());
+        assert!(parse(r#"{"participation":"observe","local_action":{"operation":"list_workspace"}}"#, &input).is_err());
+        assert!(parse(r#"{"participation":"observe","news_search":{"query":"公开资料"}}"#, &input).is_err());
+        let turn = input.tool_turn.as_mut().unwrap();
+        turn.address = ToolAddress::Mention;
+        turn.request.sender_id = "another-agent".into();
         assert_eq!(local_tool_context(&input, false, 1)["enabled"], true);
         assert_eq!(local_tool_context(&input, false, 1)["turn_state"], "requires_local_user");
         assert!(local_tool_context(&input, false, 1)["allowed_operations"].as_array().unwrap().is_empty());

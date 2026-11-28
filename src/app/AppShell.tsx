@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react"
 import { IconX } from "@tabler/icons-react"
 import { ipc } from "@/app/ipc"
-import { loadUiPreferences } from "./uiPreferences"
+import { loadUiPreferences, useTrayFlashOnMessage } from "./uiPreferences"
 import { useChatSession } from "@/features/chat/useChatSession"
 import { useInbox } from "@/features/chat/useInbox"
 import { useAppearance } from "./useAppearance"
@@ -52,7 +52,8 @@ function ApplicationShell({ session }: { session: ReturnType<typeof useChatSessi
   const unreadTotal = inbox.summary?.unread_total ?? 0
   // 托盘只在有未读会话时弹出面板；空房间列表不该让 hover 出一块空面板。
   const conversationCount = inbox.summary?.conversations.filter((item) => item.unread_count > 0).length ?? 0
-  const trayFlashing = unreadTotal > 0 && (!focused || currentPage !== "chat")
+  const trayFlashOnMessage = useTrayFlashOnMessage()
+  const trayFlashing = trayFlashOnMessage && unreadTotal > 0 && (!focused || currentPage !== "chat")
   useEffect(() => {
     if (!generation) return
     void ipc.traySync({ data_generation_id: generation, flashing: trayFlashing, conversation_count: conversationCount }).catch(() => {})

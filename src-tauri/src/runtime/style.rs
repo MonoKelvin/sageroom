@@ -245,6 +245,7 @@ mod tests {
                 credential_ref: String::new(),
                 messages: vec![],
                 quoted_messages: vec![],
+                tool_turn: None,
                 experiences: vec![],
                 experience_revision: crate::storage::database::fingerprint(&[]),
             },

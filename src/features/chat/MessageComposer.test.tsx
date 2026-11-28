@@ -19,6 +19,28 @@ beforeAll(() => {
 afterAll(() => { for (const method of addedMethods) Reflect.deleteProperty(HTMLElement.prototype, method); vi.unstubAllGlobals() })
 
 describe("消息输入", () => {
+  it("表情分类支持方向键切换，选中后插回草稿，按钮可关闭面板", async () => {
+    const user = userEvent.setup()
+    render(<MessageComposer dataGenerationId="generation" disabled={false} onSend={vi.fn()} />)
+    const input = screen.getByRole("textbox", { name: "消息输入" })
+    const trigger = screen.getByRole("button", { name: "表情" })
+    await user.type(input, "草稿")
+    await user.click(trigger)
+    expect(input).toHaveFocus()
+    const dialog = screen.getByRole("dialog", { name: "选择表情" })
+    const common = screen.getByRole("tab", { name: "常用" })
+    expect(common).toHaveAttribute("aria-selected", "true")
+    await user.click(common)
+    await user.keyboard("{ArrowRight}")
+    const gestures = screen.getByRole("tab", { name: "手势" })
+    expect(gestures).toHaveFocus()
+    expect(gestures).toHaveAttribute("aria-selected", "true")
+    expect(dialog.querySelector('[data-position="before"]')).toHaveAttribute("inert")
+    await user.click(screen.getByRole("button", { name: "\u{1F44D}" }))
+    expect(input).toHaveValue("草稿\u{1F44D}")
+    await user.click(trigger)
+    expect(screen.queryByRole("dialog", { name: "选择表情" })).not.toBeInTheDocument()
+  })
   it("引用和成员 ID 随草稿保留，失败重试完整复用提交", async () => {
     const onSend = vi.fn().mockRejectedValueOnce(new Error("数据库忙碌")).mockResolvedValue(undefined)
     const onRemoveQuote = vi.fn()

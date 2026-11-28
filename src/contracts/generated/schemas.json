@@ -211,8 +211,20 @@
           "revision": {
             "$ref": "#/$defs/DecimalString"
           },
+          "script_execution_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "skill": {
             "type": "string"
+          },
+          "windows_inventory_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         },
         "required": [
@@ -754,8 +766,20 @@
           "revision": {
             "$ref": "#/$defs/DecimalString"
           },
+          "script_execution_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "skill": {
             "type": "string"
+          },
+          "windows_inventory_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         },
         "required": [
@@ -990,8 +1014,20 @@
           "revision": {
             "$ref": "#/$defs/DecimalString"
           },
+          "script_execution_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "skill": {
             "type": "string"
+          },
+          "windows_inventory_enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         },
         "required": [
@@ -12308,6 +12344,10 @@
         "$ref": "#/$defs/SendKey",
         "default": "enter",
         "description": "聊天发送键：Enter 直接发送 / Ctrl+Enter 发送。"
+      },
+      "tray_flash_on_message": {
+        "default": true,
+        "type": "boolean"
       }
     },
     "title": "UiPreferences",
@@ -12469,11 +12509,16 @@
             "$ref": "#/$defs/SendKey",
             "default": "enter",
             "description": "聊天发送键：Enter 直接发送 / Ctrl+Enter 发送。"
+          },
+          "tray_flash_on_message": {
+            "default": true,
+            "type": "boolean"
           }
         },
         "required": [
           "close_action",
-          "send_key"
+          "send_key",
+          "tray_flash_on_message"
         ],
         "type": "object"
       }
@@ -12518,6 +12563,10 @@
             "$ref": "#/$defs/SendKey",
             "default": "enter",
             "description": "聊天发送键：Enter 直接发送 / Ctrl+Enter 发送。"
+          },
+          "tray_flash_on_message": {
+            "default": true,
+            "type": "boolean"
           }
         },
         "type": "object"

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { AppSnapshot, Appearance, ChatMessage, ChatRecallResult, ChatSendRequest, ChatSendResult, DomainEvent, MessagePage, Room } from "@/contracts/generated"
 import { errorMessage, ipc, IpcError } from "@/app/ipc"
-import { compareSequence, INITIAL_ITEM_INDEX, mergePage, PAGE_SIZE } from "./timeline"
+import { compareSequence, INITIAL_ITEM_INDEX, mergePage, PAGE_SIZE, type TimelineMessage } from "./timeline"
 
 export type ScrollAnchor = { id: string; seq: string; offset: number }
 export type SendOptions = Pick<ChatSendRequest, "quote_message_id" | "mention_ids" | "mention_all"> & {
@@ -40,13 +40,11 @@ export function useChatSession() {
   const [windowRevision, setWindowRevision] = useState(0)
   const [targetMessageId, setTargetMessageId] = useState<string | null>(null)
   const [restoreAnchor, setRestoreAnchor] = useState<ScrollAnchor | null>(null)
-  // 刚增量到达的消息，用于一次性冒出动画；不影响既有条目。
-  const [enteringIds, setEnteringIds] = useState<ReadonlySet<string>>(() => new Set())
-  // 发送中的本地占位消息：先冒泡再对齐服务端回执，避免「点了发送却没反应」。
+  const [scrollToBottomSignal, setScrollToBottomSignal] = useState(0)
   const [pending, setPending] = useState<readonly ChatMessage[]>([])
   const pendingRef = useRef<readonly ChatMessage[]>([])
   const resolvedPending = useRef(new Map<string, string>())
-  const enteringTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingRestore = useRef(false)
   const chatActive = useRef(true)
   const navigationEpoch = useRef(0)
   const snapshotRef = useRef<AppSnapshot | null>(null)
@@ -68,39 +66,36 @@ export function useChatSession() {
     setSnapshot(next)
   }, [])
 
-  /** 服务端消息已经进列表后，把对应的本地占位撤掉；否则两条会并存一下。 */
-  const settlePending = useCallback((items: readonly ChatMessage[]) => {
-    if (!pendingRef.current.length || !resolvedPending.current.size) return
-    const present = new Set(items.map((item) => item.id))
-    const kept = pendingRef.current.filter((item) => {
-      const realId = resolvedPending.current.get(item.id)
-      if (!realId) return true
-      if (!present.has(realId)) return true
-      resolvedPending.current.delete(item.id)
-      return false
-    })
-    if (kept.length === pendingRef.current.length) return
-    pendingRef.current = kept
-    setPending(kept)
+  const assignPage = useCallback((next: MessagePage, index: number) => {
+    let items: TimelineMessage[] = next.items
+    if (resolvedPending.current.size) {
+      const kept = pendingRef.current.filter((item) => {
+        const realId = resolvedPending.current.get(item.id)
+        if (!realId) return true
+        const index = items.findIndex((message) => message.id === realId)
+        if (index < 0) return true
+        if (items === next.items) items = items.slice()
+        items[index] = { ...items[index], renderKey: item.id }
+        resolvedPending.current.delete(item.id)
+        return false
+      })
+      if (kept.length !== pendingRef.current.length) {
+        pendingRef.current = kept
+        setPending(kept)
+      }
+    }
+    const applied = items === next.items ? next : { ...next, items }
+    pageRef.current = applied
+    firstIndexRef.current = index
+    setPage(applied)
+    setFirstItemIndex(index)
   }, [])
 
-  const assignPage = useCallback((next: MessagePage, index: number) => {
-    pageRef.current = next
-    firstIndexRef.current = index
-    setPage(next)
-    setFirstItemIndex(index)
-    settlePending(next.items)
-  }, [settlePending])
-
-  /** 标记增量到达的消息，短暂持有后释放，驱动一次性冒出动画。 */
-  const markEntering = useCallback((incoming: ChatMessage[], knownSeq: string | null) => {
-    const fresh = incoming
-      .filter((item) => !knownSeq || compareSequence(item.seq, knownSeq) > 0)
-      .map((item) => item.id)
-    if (!fresh.length) return
-    setEnteringIds((previous) => new Set([...previous, ...fresh]))
-    if (enteringTimer.current) clearTimeout(enteringTimer.current)
-    enteringTimer.current = setTimeout(() => setEnteringIds(new Set()), 600)
+  const moveToBottom = useCallback(() => {
+    atBottomRef.current = true
+    setAtBottom(true)
+    setHasNewMessages(false)
+    setScrollToBottomSignal((value) => value + 1)
   }, [])
 
   const report = useCallback((cause: unknown) => {
@@ -138,6 +133,7 @@ export function useChatSession() {
     assignPage(next, INITIAL_ITEM_INDEX)
     setWindowRevision(epoch)
     setTargetMessageId(targetId ?? null)
+    pendingRestore.current = Boolean(anchor)
     setRestoreAnchor(anchor ?? null)
     setHasNewMessages(false)
     atBottomRef.current = !aroundSeq
@@ -174,11 +170,14 @@ export function useChatSession() {
   const synchronizeMessages = useCallback(async () => {
     const currentSnapshot = snapshotRef.current
     const currentPage = pageRef.current
-    if (!currentSnapshot || !currentPage) return
+    if (!currentSnapshot || !currentPage || compareSequence(currentSnapshot.latest_message_seq, currentPage.last_seq ?? "0") <= 0) return
     if (!chatActive.current || !atBottomRef.current || currentPage.has_more_after) {
-      if (compareSequence(currentSnapshot.latest_message_seq, currentPage.last_seq ?? "0") > 0) markNewMessages()
+      markNewMessages()
       return
     }
+    // 提交事件可能先于发送回执到达；拿到正式 ID 后再合并，同一条消息才不会显示两次。
+    const awaitingReceipt = () => pendingRef.current.some((item) => !resolvedPending.current.has(item.id))
+    if (awaitingReceipt()) return
     const token = lifecycle.current
     const epoch = viewEpoch.current
     const navigation = navigationEpoch.current
@@ -190,9 +189,9 @@ export function useChatSession() {
       limit: PAGE_SIZE,
     })
     if (token !== lifecycle.current || epoch !== viewEpoch.current) return
-    if (next.data_generation_id !== snapshotRef.current?.data_generation_id) return
-    if (!chatActive.current || navigation !== navigationEpoch.current || !atBottomRef.current) {
-      if (next.items.length) markNewMessages()
+    if (next.data_generation_id !== snapshotRef.current?.data_generation_id || awaitingReceipt() || !next.items.length) return
+    if (!chatActive.current || navigation !== navigationEpoch.current || !atBottomRef.current || pageRef.current?.has_more_after) {
+      markNewMessages()
       return
     }
     if (next.has_more_after) {
@@ -203,10 +202,9 @@ export function useChatSession() {
     }
     const visible = pageRef.current
     if (!visible) return
-    markEntering(next.items, visible.last_seq)
     const merged = mergePage(visible, next, "after", firstIndexRef.current)
     assignPage(merged.page, merged.firstItemIndex)
-  }, [assignPage, markEntering, markNewMessages, replaceWindow])
+  }, [assignPage, markNewMessages, replaceWindow])
 
   const synchronize = useCallback(async (reset = false) => {
     const token = lifecycle.current
@@ -345,7 +343,6 @@ export function useChatSession() {
       unsubscribe?.()
       window.removeEventListener("focus", onFocus)
       if (highlightTimer.current) clearTimeout(highlightTimer.current)
-      if (enteringTimer.current) clearTimeout(enteringTimer.current)
     }
   }, [activateEvents, enqueue, processEvent, report, synchronize])
 
@@ -384,7 +381,6 @@ export function useChatSession() {
       if (!chatActive.current || navigation !== navigationEpoch.current) return
       const visible = pageRef.current
       if (!visible) return
-      if (direction === "after") markEntering(next.items, visible.last_seq)
       const merged = mergePage(visible, next, direction, firstIndexRef.current)
       assignPage(merged.page, merged.firstItemIndex)
       if (!merged.page.has_more_after && atBottomRef.current) setHasNewMessages(false)
@@ -394,7 +390,50 @@ export function useChatSession() {
       paginationBusy.current = false
       if (token === lifecycle.current) setLoadingMore(false)
     }
-  }, [assignPage, markEntering, report])
+  }, [assignPage, report])
+
+  const loadOlder = useCallback(() => loadPage("before"), [loadPage])
+  const loadNewer = useCallback(() => loadPage("after"), [loadPage])
+
+  const goToLatest = useCallback(async () => {
+    if (!chatActive.current) return
+    const visible = pageRef.current
+    if (visible && !visible.has_more_after && compareSequence(snapshotRef.current?.latest_message_seq ?? "0", visible.last_seq ?? "0") <= 0) {
+      moveToBottom()
+      return
+    }
+    const token = lifecycle.current
+    const navigation = navigationEpoch.current
+    const epoch = viewEpoch.current
+    const isCurrent = () => token === lifecycle.current && chatActive.current && navigation === navigationEpoch.current && epoch === viewEpoch.current
+    try {
+      await enqueue(async () => {
+        if (!isCurrent()) return
+        const current = pageRef.current
+        const snapshot = snapshotRef.current
+        if (!current || !snapshot) return
+        const after = current.last_seq ?? "0"
+        const latest = compareSequence(snapshot.latest_message_seq, current.latest_message_seq) >= 0 ? snapshot.latest_message_seq : current.latest_message_seq
+        if (!current.has_more_after && compareSequence(latest, after) <= 0) {
+          moveToBottom()
+          return
+        }
+        if (BigInt(latest) - BigInt(after) <= BigInt(PAGE_SIZE)) {
+          const next = await ipc.list({ data_generation_id: snapshot.data_generation_id, before_seq: null, after_seq: after, around_seq: null, limit: PAGE_SIZE })
+          if (!isCurrent() || next.data_generation_id !== snapshotRef.current?.data_generation_id) return
+          if (!next.has_more_after && pageRef.current) {
+            const merged = mergePage(pageRef.current, next, "after", firstIndexRef.current)
+            assignPage(merged.page, merged.firstItemIndex)
+            moveToBottom()
+            return
+          }
+        }
+        await replaceWindow(undefined, undefined, undefined, { epoch: navigation })
+      })
+    } catch (cause) {
+      if (token === lifecycle.current) report(cause)
+    }
+  }, [assignPage, enqueue, moveToBottom, replaceWindow, report])
 
   const send = useCallback(async (text: string, requestId: string, options: SendOptions = EMPTY_SEND_OPTIONS): Promise<ChatSendResult> => {
     const current = snapshotRef.current
@@ -412,8 +451,11 @@ export function useChatSession() {
       mention_ids: options.mention_ids,
       mention_all: options.mention_all,
     }
+    const navigation = navigationEpoch.current
+    const fromHistory = Boolean(pageRef.current?.has_more_after)
     pendingRef.current = [...pendingRef.current, placeholder]
     setPending(pendingRef.current)
+    if (chatActive.current && !fromHistory) moveToBottom()
     try {
       const result = await ipc.send({
         data_generation_id: current.data_generation_id,
@@ -438,15 +480,17 @@ export function useChatSession() {
         pendingRef.current = kept
         setPending(kept)
       }, 8000)
-      void enqueue(() => synchronizeMessages()).catch(report)
+      if (fromHistory && navigation === navigationEpoch.current && chatActive.current) void goToLatest()
+      else void enqueue(synchronizeMessages).catch(report)
       return result
     } catch (cause) {
       pendingRef.current = pendingRef.current.filter((item) => item.id !== placeholderId)
       resolvedPending.current.delete(placeholderId)
       setPending(pendingRef.current)
+      void enqueue(synchronizeMessages).catch(report)
       throw cause
     }
-  }, [assignSnapshot, enqueue, report, synchronizeMessages])
+  }, [assignSnapshot, enqueue, goToLatest, moveToBottom, report, synchronizeMessages])
 
   const recall = useCallback(async (messageId: string, requestId: string): Promise<ChatRecallResult> => {
     const current = snapshotRef.current
@@ -472,24 +516,6 @@ export function useChatSession() {
     }
   }, [assignSnapshot])
 
-  const goToLatest = useCallback(async () => {
-    if (!chatActive.current) return
-    const current = pageRef.current
-    // 后面没有更多分页时（最常见情况）只要滚到底，不必重建窗口——
-    // 重建会重挂虚拟列表，看起来就是一次闪烁 + 位置跳变。
-    if (current && !current.has_more_after) {
-      atBottomRef.current = true
-      setAtBottom(true)
-      setHasNewMessages(false)
-      return
-    }
-    try {
-      await replaceWindow(undefined, undefined, undefined, { epoch: navigationEpoch.current })
-    } catch (cause) {
-      report(cause)
-    }
-  }, [replaceWindow, report])
-
   const jumpTo = useCallback(async (seq: string, id: string) => {
     if (!chatActive.current) return
     try {
@@ -502,9 +528,10 @@ export function useChatSession() {
 
   const updateRenderedAnchor = useCallback((anchor: ScrollAnchor) => {
     renderedAnchor.current = anchor
-    // 视口已经自己报了位置，说明一次性跳转锚点用完了；清掉它，
-    // 免得之后切换页签回来又被拉回旧的跳转目标。
-    setRestoreAnchor((current) => (current ? null : current))
+    if (pendingRestore.current) {
+      pendingRestore.current = false
+      setRestoreAnchor(null)
+    }
   }, [])
 
   /** 当前视口顶部锚点。切换页签导致列表重挂时用它恢复位置。 */
@@ -520,10 +547,9 @@ export function useChatSession() {
 
   return {
     snapshot, page, loading, loadingMore, error, hasNewMessages, atBottom,
-    firstItemIndex, windowRevision, targetMessageId, restoreAnchor, enteringIds,
+    firstItemIndex, windowRevision, targetMessageId, restoreAnchor, scrollToBottomSignal,
     pendingMessages: pending, liveAnchor,
     reload, send, recall, goToLatest, jumpTo, updateAtBottom, updateRenderedAnchor, setChatActive, applyRoom, applyAppearance,
-    loadOlder: () => loadPage("before"),
-    loadNewer: () => loadPage("after"),
+    loadOlder, loadNewer,
   }
 }

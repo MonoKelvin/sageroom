@@ -242,6 +242,7 @@ mod tests {
             },
             messages: vec![message("human", 1_000, &[])],
             quoted_messages: vec![],
+            tool_turn: None,
             experiences: vec![],
             experience_revision: String::new(),
         };

@@ -46,6 +46,56 @@ describe("聊天室数据与事件", () => {
     expect(result.current.pendingMessages).toHaveLength(1)
   })
 
+  it("提交事件比回执先到时，只增量读取一次并沿用发送气泡的 key", async () => {
+    vi.mocked(ipc.snapshot).mockResolvedValue(snapshot({ latest_message_seq: "1", latest_event_seq: "1" }))
+    vi.mocked(ipc.list).mockResolvedValueOnce(page([1])).mockResolvedValueOnce(page([2]))
+    const { result } = renderHook(() => useChatSession())
+    await waitFor(() => expect(result.current.page?.items).toHaveLength(1))
+    const older = result.current.page?.items[0]
+    const revision = result.current.windowRevision
+    let complete!: (value: Awaited<ReturnType<typeof ipc.send>>) => void
+    vi.mocked(ipc.send).mockReturnValueOnce(new Promise((resolve) => { complete = resolve }))
+    let sending!: Promise<unknown>
+    act(() => { sending = result.current.send("立即显示", "request-2") })
+    const pending = result.current.pendingMessages[0]
+    expect(result.current.scrollToBottomSignal).toBe(1)
+    act(() => receiveEvent(event(2)))
+    await waitFor(() => expect(result.current.snapshot?.latest_event_seq).toBe("2"))
+    expect(ipc.list).toHaveBeenCalledOnce()
+
+    await act(async () => {
+      complete({ data_generation_id: GENERATION, message_id: "message-2", message_seq: "2", event_seq: "2" })
+      await sending
+    })
+    await waitFor(() => expect(result.current.pendingMessages).toHaveLength(0))
+    expect(result.current.page?.items[0]).toBe(older)
+    expect(result.current.page?.items[1]).toMatchObject({ id: "message-2", renderKey: pending.id })
+    expect(result.current.windowRevision).toBe(revision)
+    expect(ipc.list).toHaveBeenCalledTimes(2)
+    expect(ipc.list).toHaveBeenLastCalledWith(expect.objectContaining({ after_seq: "1", around_seq: null }))
+  })
+
+  it("点击新消息提示时只补齐尾页，不重建当前窗口", async () => {
+    vi.mocked(ipc.snapshot).mockResolvedValue(snapshot({ latest_message_seq: "2", latest_event_seq: "2" }))
+    vi.mocked(ipc.list).mockResolvedValueOnce(page([1, 2])).mockResolvedValueOnce(page([3]))
+    const { result } = renderHook(() => useChatSession())
+    await waitFor(() => expect(result.current.page?.items).toHaveLength(2))
+    const older = result.current.page?.items[0]
+    const revision = result.current.windowRevision
+    act(() => result.current.updateAtBottom(false))
+    act(() => receiveEvent(event(3)))
+    await waitFor(() => expect(result.current.hasNewMessages).toBe(true))
+    expect(ipc.list).toHaveBeenCalledOnce()
+
+    await act(async () => result.current.goToLatest())
+    expect(result.current.page?.items[0]).toBe(older)
+    expect(result.current.page?.items.map(({ seq }) => seq)).toEqual(["1", "2", "3"])
+    expect(result.current.windowRevision).toBe(revision)
+    expect(result.current.scrollToBottomSignal).toBe(1)
+    expect(result.current.hasNewMessages).toBe(false)
+    expect(ipc.list).toHaveBeenLastCalledWith(expect.objectContaining({ after_seq: "2", before_seq: null }))
+  })
+
   it("发送失败时撤回本地占位", async () => {
     const { result } = renderHook(() => useChatSession())
     await waitFor(() => expect(result.current.page).not.toBeNull())

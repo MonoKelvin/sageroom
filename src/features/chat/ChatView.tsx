@@ -20,7 +20,6 @@ import "./chat.css"
 export function ChatView({ session, inbox, active, onNavigate }: ApplicationPageProps) {
   const [panel, setPanel] = useState<"search" | "members" | null>(null)
   const [chatCard, setChatCard] = useState<HTMLElement | null>(null)
-  const [scrollToBottomSignal, setScrollToBottomSignal] = useState(0)
   const [selectedQuote, setSelectedQuote] = useState<{ generation: string; epoch: string; message: ChatMessage } | null>(null)
   const [resolvedQuotes, setResolvedQuotes] = useState<{ identity: string; items: ChatMessage[]; error: string | null } | null>(null)
   const snapshot = session.snapshot
@@ -29,29 +28,35 @@ export function ChatView({ session, inbox, active, onNavigate }: ApplicationPage
   // 发送中的本地占位挂在窗口末尾，等回执落地后由会话层移除，用户点完立刻能看见气泡。
   const page = useMemo(() => {
     if (!session.page) return null
+    if (session.page.has_more_after) return session.page
     const pending = session.pendingMessages
     return pending.length ? { ...session.page, items: [...session.page.items, ...pending] } : session.page
   }, [session.page, session.pendingMessages])
-  // 图片字节按窗口批量预取，滚动到位时才不会先闪一格空白。
+  const items = page?.items
   useEffect(() => {
-    if (!generation || !page) return
-    const ids = page.items.flatMap((item) => item.parts.flatMap((part) => part.kind === "attachment" && part.attachment.kind === "image" ? [part.attachment.id] : []))
+    if (!generation || !items) return
+    const ids = items.flatMap((item) => item.parts.flatMap((part) => part.kind === "attachment" && part.attachment.kind === "image" ? [part.attachment.id] : []))
     prefetchAttachments(generation, ids.slice(0, 48))
-  }, [generation, page])
+  }, [generation, items])
   const quoteId = selectedQuote?.generation === generation ? selectedQuote.message.id : null
-  const loadedMessages = useMemo(() => new Map(session.page?.items.filter((message) => message.state === "visible").map((message) => [message.id, message])), [session.page])
-  const externalQuoteIds = useMemo(() => [...new Set([quoteId, ...(session.page?.items.filter((message) => message.state === "visible").map((message) => message.quote_message_id) ?? [])].filter((id): id is string => Boolean(id)))].filter((id) => !loadedMessages.has(id)).slice(0, 32), [quoteId, session.page, loadedMessages])
-  const quotesIdentity = JSON.stringify([generation, contentEpoch, externalQuoteIds])
+  const committedItems = session.page?.items
+  const loadedMessages = useMemo(() => new Map(committedItems?.filter((message) => message.state === "visible").map((message) => [message.id, message])), [committedItems])
+  const quotesIdentity = useMemo(() => {
+    const ids = [quoteId, ...(items?.filter((message) => message.state === "visible").map((message) => message.quote_message_id) ?? [])]
+    const externalIds = [...new Set(ids.filter((id): id is string => Boolean(id)))].filter((id) => !loadedMessages.has(id)).slice(0, 32)
+    return JSON.stringify([generation, contentEpoch, externalIds])
+  }, [contentEpoch, generation, items, loadedMessages, quoteId])
   useEffect(() => {
-    if (!active || !generation || !externalQuoteIds.length) return
+    const [generation, , ids] = JSON.parse(quotesIdentity) as [string | null, string, string[]]
+    if (!active || !generation || !ids.length) return
     let cancelled = false
-    void ipc.resolveQuotes({ data_generation_id: generation, message_ids: externalQuoteIds }).then((items) => {
+    void ipc.resolveQuotes({ data_generation_id: generation, message_ids: ids }).then((items) => {
       if (!cancelled) setResolvedQuotes({ identity: quotesIdentity, items, error: null })
     }).catch((cause: unknown) => {
       if (!cancelled) setResolvedQuotes({ identity: quotesIdentity, items: [], error: errorMessage(cause) })
     })
     return () => { cancelled = true }
-  }, [active, generation, externalQuoteIds, quotesIdentity])
+  }, [active, quotesIdentity])
   const quotes = useMemo(() => {
     const available = new Map(loadedMessages)
     if (resolvedQuotes?.identity === quotesIdentity) for (const message of resolvedQuotes.items) if (message.state === "visible") available.set(message.id, message)
@@ -66,8 +71,7 @@ export function ChatView({ session, inbox, active, onNavigate }: ApplicationPage
     [snapshot?.participants],
   )
   const visible = useRef(active)
-  const navigationEpoch = useRef(0)
-  useLayoutEffect(() => { visible.current = active; navigationEpoch.current += 1 }, [active])
+  useLayoutEffect(() => { visible.current = active }, [active])
   const scenes = snapshot ? availableScenes(snapshot) : []
   const scene = scenes[0]
   const [focused, setFocused] = useState(() => document.hasFocus())
@@ -150,13 +154,20 @@ export function ChatView({ session, inbox, active, onNavigate }: ApplicationPage
     if (!active || !chatCard || !targetId) return
     const scroller = chatCard.querySelector<HTMLElement>(".chat-list-scroller")
     if (!scroller) return
+    let frame = 0
+    let lastVisible: boolean | undefined
     const check = () => {
-      const visible = isFirstUnreadVisible(targetId)
-      setFirstUnreadVisible(visible)
-      // 滚到第一条未读就收起入口，不依赖定时器或另一个 effect。
-      if (visible) setUnreadNotice(null)
+      if (frame) return
+      frame = requestAnimationFrame(() => {
+        frame = 0
+        const visible = isFirstUnreadVisible(targetId)
+        if (visible === lastVisible) return
+        lastVisible = visible
+        setFirstUnreadVisible(visible)
+        if (visible) setUnreadNotice(null)
+      })
     }
-    const frame = requestAnimationFrame(check)
+    check()
     scroller.addEventListener("scroll", check, { passive: true })
     window.addEventListener("resize", check)
     return () => {
@@ -164,7 +175,7 @@ export function ChatView({ session, inbox, active, onNavigate }: ApplicationPage
       scroller.removeEventListener("scroll", check)
       window.removeEventListener("resize", check)
     }
-  }, [active, chatCard, unreadNotice, inboxSummary, isFirstUnreadVisible])
+  }, [active, chatCard, unreadNotice, inboxSummary, isFirstUnreadVisible, session.windowRevision])
 
   // 已经在底部就等于看到最新：把停留期间累积的未读收回，避免底部还在提示“新消息”。
   const unreadCount = inbox.conversation(sceneId ?? "")?.unread_count ?? 0
@@ -179,24 +190,11 @@ export function ChatView({ session, inbox, active, onNavigate }: ApplicationPage
   // 顶部未读入口优先；它存在或第一条未读已可见时，底部不再出现任何跳转胶囊。
   const hideLatestNotice = Boolean(unreadNotice) || firstUnreadVisible
 
-  async function handleSend(text: string, requestId: string, options: SendOptions) {
+  function handleSend(text: string, requestId: string, options: SendOptions) {
     const adapter = sceneAdapters[scene?.kind ?? "group"]
     if (!adapter) throw new Error("当前聊天对象不可用。")
-    const navigation = navigationEpoch.current
-    const result = await adapter.send(session, text, requestId, options)
-    if (!visible.current || navigation !== navigationEpoch.current) return result
-    if (session.page?.has_more_after || !session.atBottom) await session.goToLatest()
-    else session.updateAtBottom(true)
-    if (!visible.current || navigation !== navigationEpoch.current) return result
-    setScrollToBottomSignal((value) => value + 1)
-    return result
+    return adapter.send(session, text, requestId, options)
   }
-
-  // 回到最新：多数情况只是滚到底（会话层不会重建窗口），滚动信号统一在这里发。
-  const goToLatest = useCallback(async () => {
-    await session.goToLatest()
-    if (visible.current) setScrollToBottomSignal((value) => value + 1)
-  }, [session])
 
   const selectQuote = useCallback((message: ChatMessage) => {
     if (!generation) return
@@ -282,7 +280,7 @@ export function ChatView({ session, inbox, active, onNavigate }: ApplicationPage
           {unreadNotice && <div className="chat-unread-notice" role="status">
             <button type="button" className="chat-latest-button" onClick={() => { const target = unreadNotice; setUnreadNotice(null); void session.jumpTo(target.seq, target.id) }}>{unreadNotice.count} 条未读消息</button>
           </div>}
-          {page && snapshot ? <MessageList key={session.windowRevision} active={active} page={page} participants={participants} restoreAnchor={session.restoreAnchor ?? session.liveAnchor()} enteringIds={session.enteringIds} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !page.has_more_after} hasNewMessages={session.hasNewMessages} newMessageCount={hideLatestNotice ? 0 : unreadCount} hideLatestNotice={hideLatestNotice} scrollToBottomSignal={scrollToBottomSignal} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={goToLatest} quotes={quotes} onQuote={selectQuote} onRecall={session.recall} onLocateQuote={session.jumpTo} onMentionParticipant={mentionParticipant} onInspectParticipant={inspectParticipant} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}
+          {page && snapshot ? <MessageList key={session.windowRevision} active={active} page={page} participants={participants} restoreAnchor={session.restoreAnchor} getRenderedAnchor={session.liveAnchor} localUserId={snapshot.local_user.id} generation={snapshot.data_generation_id} firstItemIndex={session.firstItemIndex} targetMessageId={session.targetMessageId} followLatest={session.atBottom && !page.has_more_after} hasNewMessages={session.hasNewMessages} newMessageCount={hideLatestNotice ? 0 : unreadCount} hideLatestNotice={hideLatestNotice} scrollToBottomSignal={session.scrollToBottomSignal} loadingMore={session.loadingMore} onLoadOlder={session.loadOlder} onLoadNewer={session.loadNewer} onAtBottomChange={session.updateAtBottom} onRenderedAnchorChange={session.updateRenderedAnchor} onGoToLatest={session.goToLatest} quotes={quotes} onQuote={selectQuote} onRecall={session.recall} onLocateQuote={session.jumpTo} onMentionParticipant={mentionParticipant} onInspectParticipant={inspectParticipant} /> : <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-text-secondary" role="status"><IconMessageCircle size={32} stroke={1.3} aria-hidden="true" /><p>{session.loading ? "正在读取本地聊天…" : "聊天数据尚未就绪，原始数据不会被覆盖。"}</p></div>}
           {resolvedQuotes?.identity === quotesIdentity && resolvedQuotes.error && <p className="chat-quote-feedback" role="alert">{resolvedQuotes.error}</p>}
           <MessageComposer active={active} dataGenerationId={generation} disabled={!snapshot} participants={snapshot?.participants} localUserId={snapshot?.local_user.id ?? null} canMentionAll={snapshot?.room.owner_participant_id === snapshot?.local_user.id} mentionRequest={mentionRequest} quoteMessageId={quoteId} quote={quote} onRemoveQuote={() => setSelectedQuote(null)} onSend={handleSend} />
         </div>

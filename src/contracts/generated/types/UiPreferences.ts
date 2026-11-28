@@ -15,4 +15,4 @@ close_action: CloseAction,
 /**
  * 聊天发送键：Enter 直接发送 / Ctrl+Enter 发送。
  */
-send_key: SendKey, };
+send_key: SendKey, tray_flash_on_message: boolean, };

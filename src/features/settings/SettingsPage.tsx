@@ -225,12 +225,18 @@ function UiPreferencesCard({ generation }: { generation: string }) {
   function update(next: UiPreferences) {
     setPreferences(next)
     setError(null)
-    void saveUiPreferences(generation, next).catch((cause) => setError(String(cause)))
+    void saveUiPreferences(generation, next).catch((cause) => {
+      setPreferences((current) => current === next ? preferences : current)
+      setError(String(cause))
+    })
   }
 
   return <div className="config-stack settings-tight">
     <Field label="关闭窗口" caption="关闭主窗口时直接退出，或隐藏到托盘继续接收消息。"><SettingsSelect label="关闭窗口" value={preferences?.close_action ?? "hide"} options={[{ value: "hide", label: "隐藏到托盘" }, { value: "exit", label: "退出应用" }]} onValueChange={(close_action) => { if (preferences) update({ ...preferences, close_action: close_action as UiPreferences["close_action"] }) }} /></Field>
     <Field label="发送消息" caption="选择输入框里用哪个组合键发送，另一个用于换行。"><SettingsSelect label="发送消息" value={preferences?.send_key ?? "enter"} options={[{ value: "enter", label: "Enter 发送，Shift+Enter 换行" }, { value: "ctrl_enter", label: "Ctrl+Enter 发送，Enter 换行" }]} onValueChange={(send_key) => { if (preferences) update({ ...preferences, send_key: send_key as UiPreferences["send_key"] }) }} /></Field>
+    <Field label="消息来时托盘图标闪烁" caption="关闭后图标不再闪烁，悬停在托盘图标上仍可查看未读消息。">
+      <Switch label="消息来时托盘图标闪烁" checked={preferences?.tray_flash_on_message ?? true} disabled={!preferences} onCheckedChange={(tray_flash_on_message) => { if (preferences) update({ ...preferences, tray_flash_on_message }) }} />
+    </Field>
     <AutostartField />
     {error && <p role="alert" className="form-caption">保存失败：{error}</p>}
   </div>

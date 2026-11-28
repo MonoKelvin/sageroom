@@ -14,7 +14,7 @@ function validate591(data, { instancePath = "", parentData, parentDataProperty, 
 	if (evaluated0.dynamicProps) evaluated0.props = void 0;
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
-		for (const key0 in data) if (!(key0 === "close_action" || key0 === "send_key")) {
+		for (const key0 in data) if (!(key0 === "close_action" || key0 === "send_key" || key0 === "tray_flash_on_message")) {
 			validate591.errors = [{
 				instancePath,
 				schemaPath: "#/additionalProperties",
@@ -73,6 +73,21 @@ function validate591(data, { instancePath = "", parentData, parentDataProperty, 
 				}
 				var valid0 = true;
 			} else var valid0 = true;
+			if (valid0) {
+				if (data.tray_flash_on_message !== void 0) {
+					if (typeof data.tray_flash_on_message !== "boolean") {
+						validate591.errors = [{
+							instancePath: instancePath + "/tray_flash_on_message",
+							schemaPath: "#/properties/tray_flash_on_message/type",
+							keyword: "type",
+							params: { type: "boolean" },
+							message: "must be boolean"
+						}];
+						return false;
+					}
+					var valid0 = true;
+				} else var valid0 = true;
+			}
 		}
 	} else {
 		validate591.errors = [{

@@ -51,7 +51,7 @@ function agentStatusLabel(agent: AgentConfiguration, participant?: Participant) 
   return runtimeStatusLabels[status]
 }
 
-function LocalToolsSettings({ agent, dataDirectory, generation, disabled, onChange }: {
+function ScriptExecutionSettings({ agent, dataDirectory, generation, disabled, onChange }: {
   agent: AgentConfiguration; dataDirectory: string; generation: string; disabled: boolean; onChange: (enabled: boolean) => Promise<void>
 }) {
   const [confirm, setConfirm] = useState(false)
@@ -71,12 +71,14 @@ function LocalToolsSettings({ agent, dataDirectory, generation, disabled, onChan
   }
 
   return <div className="config-stack local-tools-settings">
-    <Field label="本地工具" caption="读取基本系统信息，管理工作区内的文本。">
-      <Switch label="本地工具" checked={agent.local_tools_enabled === true} disabled={disabled} onCheckedChange={(enabled) => {
+    <Field label="脚本执行权限" caption="Windows 设备和磁盘可用只读 SQL 查询；Shell 或 Python 仍在 Docker 中运行。">
+      <Switch label="脚本执行权限" checked={agent.script_execution_enabled === true} disabled={disabled} onCheckedChange={(enabled) => {
         if (enabled) setConfirm(true)
         else return onChange(false)
       }} />
     </Field>
+    {agent.script_execution_enabled === true && agent.windows_inventory_enabled !== true &&
+      <Button type="button" size="sm" variant="secondary" disabled={disabled} onClick={() => setConfirm(true)}>授权 Windows 数据</Button>}
     <div className="local-tools-workspace">
       <Field label="工作区" caption={workspace}>
         <Tooltip><TooltipTrigger asChild>
@@ -85,11 +87,11 @@ function LocalToolsSettings({ agent, dataDirectory, generation, disabled, onChan
       </Field>
     </div>
     {openError && <p className="settings-control-error" role="alert">{openError}</p>}
-    <AppDialog open={confirm} onOpenChange={setConfirm} title="启用本地工具？" className="local-tools-confirmation" showClose={false} actions={[
+    <AppDialog open={confirm} onOpenChange={setConfirm} title="启用脚本执行权限？" className="local-tools-confirmation" showClose={false} actions={[
       { label: "取消", variant: "ghost" },
       { label: "启用", variant: "default", disabled, onClick: () => void onChange(true) },
     ]}>
-      <div className="local-tools-warning"><IconAlertTriangle size={20} aria-hidden="true" /><p>启用后，此助手可读取基本系统信息或修改工作区文本，无需逐次确认。</p></div>
+      <div className="local-tools-warning"><IconAlertTriangle size={20} aria-hidden="true" /><p>仅对当前助手授权。Windows 只读 SQL 可将设备名称、类别与固定磁盘容量交给所选模型，无需 Docker。Shell 或 Python 必须在不联网、不挂载宿主机目录的 Docker 容器中运行。无需逐次确认，随时可以关闭。</p></div>
     </AppDialog>
   </div>
 }
@@ -167,10 +169,10 @@ function AgentEditor({ resource, global, active, session, onCopy, onDelete }: {
     else setApplyTarget({ kind, id })
   }
 
-  async function updateLocalTools(enabled: boolean) {
+  async function updateScriptExecution(enabled: boolean) {
     if (runtime.exiting || resource.getSnapshot().value?.agent_type !== "tool") return
     setOperationError(null)
-    try { await update({ local_tools_enabled: enabled }) }
+    try { await update({ script_execution_enabled: enabled, windows_inventory_enabled: enabled, local_tools_enabled: false }) }
     catch (cause) { if (alive.current && resource.getSnapshot().status !== "error") setOperationError(errorMessage(cause)) }
   }
 
@@ -184,7 +186,7 @@ function AgentEditor({ resource, global, active, session, onCopy, onDelete }: {
     try {
       await update({
         agent_type: type,
-        ...(switching ? { local_tools_enabled: false } : {}),
+        ...(switching ? { local_tools_enabled: false, script_execution_enabled: false, windows_inventory_enabled: false } : {}),
         language_style: type === "tool" ? "结论优先，专业直接；必要时先追问。" : "自然、清晰",
         dimensions: { ...(type === "tool" ? toolDimensions : defaultDimensions) },
         skill: "",
@@ -209,7 +211,7 @@ function AgentEditor({ resource, global, active, session, onCopy, onDelete }: {
       {(agentRuntime || agent.agent_type === "tool" || runtimeError) && <div className="config-stack">
         {agentRuntime?.detail && agentRuntime.detail !== "观察期间有新消息或配置变化，重新判断。" && <p className="form-caption">{agentRuntime.detail}</p>}
         {agentRuntime?.next_wake_at != null && <p className="form-caption">下次唤醒：{new Date(agentRuntime.next_wake_at).toLocaleString("zh-CN", { hour12: false })}</p>}
-        {agent.agent_type === "tool" && <p className="form-caption">配置好模型和凭据后，只处理单独 @ 自己的任务，不参与闲聊，也不会因 @所有人或冷场主动发言。</p>}
+        {agent.agent_type === "tool" && <p className="form-caption">配置好模型和凭据后，会处理明确交给自己的任务和相关追问，不会因 @所有人或冷场主动发言。</p>}
         {runtimeError && <p role="alert">{runtimeError}</p>}
       </div>}
       <fieldset disabled={runtime.exiting} className="config-stack">
@@ -236,7 +238,7 @@ function AgentEditor({ resource, global, active, session, onCopy, onDelete }: {
           {agent.model && <Field label="模型名称"><ModelNamePicker value={agent.model.profile.model_name} active={active && section === "model"} onChange={(model_name) => store.updateAgentModel(agent.agent_id, { model_name })} onListModels={() => store.listModelNames(agent.model!.source_profile_id).then((result) => result.models)} /></Field>}
           {!global.model_profiles.length && <p className="form-caption">请先在全局配置中添加模型预设。</p>}
         </div>
-        {active && isTool && section === "tools" && <LocalToolsSettings agent={agent} dataDirectory={session.snapshot!.data_directory} generation={generation} disabled={runtime.exiting} onChange={updateLocalTools} />}
+        {active && isTool && section === "tools" && <ScriptExecutionSettings agent={agent} dataDirectory={session.snapshot!.data_directory} generation={generation} disabled={runtime.exiting} onChange={updateScriptExecution} />}
       </fieldset>
       {operationError && state.status !== "error" && <p role="alert">{operationError}</p>}
       <AppDialog open={applyTarget !== null} onOpenChange={(open) => { if (!open) setApplyTarget(null) }} title="采用预设" actions={[
@@ -246,7 +248,7 @@ function AgentEditor({ resource, global, active, session, onCopy, onDelete }: {
       <AppDialog open={active && expressionTarget !== null} onOpenChange={(open) => { if (!open) setExpressionTarget(null) }} title={expressionTarget?.switching ? `切换为${agentTypeLabels[expressionTarget.type]}` : "重置为工具助手默认表达"} actions={[
         { label: expressionTarget?.switching ? "确认切换" : "确认重置", disabled: runtime.exiting, closeOnClick: false, onClick: () => void resetExpression() },
         { label: "取消", variant: "ghost" },
-      ]}><p>{expressionTarget?.switching ? "切换类型" : "重置表达"}会将个人介绍（语言风格）和八个人格参数覆盖为{expressionTarget ? agentTypeLabels[expressionTarget.type] : ""}默认值，并清空继承的人设技能。名称、头像、模型和经历不变。</p>{expressionTarget?.switching && expressionTarget.type === "social" && agent.local_tools_enabled === true && <p>切换为社交成员会撤销本地工具权限。</p>}</AppDialog>
+      ]}><p>{expressionTarget?.switching ? "切换类型" : "重置表达"}会将个人介绍（语言风格）和八个人格参数覆盖为{expressionTarget ? agentTypeLabels[expressionTarget.type] : ""}默认值，并清空继承的人设技能。名称、头像、模型和经历不变。</p>{expressionTarget?.switching && expressionTarget.type === "social" && (agent.script_execution_enabled === true || agent.local_tools_enabled === true) && <p>切换为社交成员会撤销执行权限。</p>}</AppDialog>
       <ResourceFeedback resource={resource} state={state} />
     </div>
   </section>

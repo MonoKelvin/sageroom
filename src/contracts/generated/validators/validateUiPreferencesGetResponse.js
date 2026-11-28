@@ -19,7 +19,7 @@ function validate583(data, { instancePath = "", parentData, parentDataProperty, 
 	if (evaluated0.dynamicItems) evaluated0.items = void 0;
 	if (data && typeof data == "object" && !Array.isArray(data)) {
 		let missing0;
-		if (data.close_action === void 0 && (missing0 = "close_action") || data.send_key === void 0 && (missing0 = "send_key")) {
+		if (data.close_action === void 0 && (missing0 = "close_action") || data.send_key === void 0 && (missing0 = "send_key") || data.tray_flash_on_message === void 0 && (missing0 = "tray_flash_on_message")) {
 			validate583.errors = [{
 				instancePath,
 				schemaPath: "#/required",
@@ -29,7 +29,7 @@ function validate583(data, { instancePath = "", parentData, parentDataProperty, 
 			}];
 			return false;
 		} else {
-			for (const key0 in data) if (!(key0 === "close_action" || key0 === "send_key")) {
+			for (const key0 in data) if (!(key0 === "close_action" || key0 === "send_key" || key0 === "tray_flash_on_message")) {
 				validate583.errors = [{
 					instancePath,
 					schemaPath: "#/additionalProperties",
@@ -88,6 +88,21 @@ function validate583(data, { instancePath = "", parentData, parentDataProperty, 
 					}
 					var valid0 = true;
 				} else var valid0 = true;
+				if (valid0) {
+					if (data.tray_flash_on_message !== void 0) {
+						if (typeof data.tray_flash_on_message !== "boolean") {
+							validate583.errors = [{
+								instancePath: instancePath + "/tray_flash_on_message",
+								schemaPath: "#/properties/tray_flash_on_message/type",
+								keyword: "type",
+								params: { type: "boolean" },
+								message: "must be boolean"
+							}];
+							return false;
+						}
+						var valid0 = true;
+					} else var valid0 = true;
+				}
 			}
 		}
 	} else {

@@ -38,7 +38,7 @@ html[data-input-modality="keyboard"] .composer-field { transition-duration: 0ms 
 .chat-heading .panel-description { color: var(--text-secondary); font-size: var(--font-caption); }
 .chat-scene-meta { color: var(--text-secondary); font-size: var(--font-body); }
 .chat-error { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-5); background: var(--control-bg); color: var(--status-danger); font-size: var(--font-body); }
-.chat-list-scroller { overscroll-behavior-y: contain; scrollbar-gutter: stable; overflow-anchor: none; scroll-behavior: auto; contain: layout paint style; touch-action: pan-y; }
+.chat-list-scroller { height: 100%; overscroll-behavior-y: contain; scrollbar-gutter: stable; overflow-anchor: none; scroll-behavior: auto; contain: layout paint style; touch-action: pan-y; }
 .chat-latest-position { position: absolute; inset: auto 0 var(--space-3); display: flex; justify-content: center; pointer-events: none; }
 .chat-latest-button { pointer-events: auto; display: inline-flex; align-items: center; justify-content: center; padding: var(--space-2) var(--space-4); border: var(--stroke-width) solid var(--floating-border); border-radius: var(--radius-pill); background: var(--surface-chrome); color: var(--semantic-accent); font-size: var(--font-body); font-weight: 500; -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 1.5)) saturate(140%); backdrop-filter: blur(calc(var(--glass-blur) * 1.5)) saturate(140%); box-shadow: var(--floating-shadow); }
 .chat-latest-position .chat-latest-button:is(:hover, :active) { transform: none; }
@@ -46,11 +46,6 @@ html[data-input-modality="keyboard"] .composer-field { transition-duration: 0ms 
 .chat-list-footer { height: var(--space-3); }
 .chat-message { position: relative; padding: var(--space-2) var(--space-4); border-radius: calc(var(--radius) * 1.2); transition: background-color var(--motion-duration) ease; }
 .chat-message-highlight { border-radius: 0; background: var(--accent); }
-/* 只有新到达的条目冒出，既有消息不受影响 */
-.chat-message-enter { animation: chat-message-emerge calc(var(--motion-duration) * 2.25) var(--motion-ease) both; }
-@keyframes chat-message-emerge { from { opacity: 0; transform: translateY(calc(var(--space-2) * -1)) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
-html[data-reduced-motion="true"] .chat-message-enter { animation: none; }
-@media (prefers-reduced-motion: reduce) { .chat-message-enter { animation: none; } }
 /* 发送中：浅一点表示还没落地，回执一到就恢复常态 */
 .chat-message[data-pending] { opacity: .62; }
 .chat-message[data-pending] .chat-message-bubble { cursor: progress; }
@@ -229,9 +224,15 @@ html[data-input-modality="keyboard"] :is(.chat-search-locate, .group-info-drawer
   backdrop-filter: blur(var(--glass-blur)) saturate(140%);
 }
 .composer-mention-panel { display: flex; flex-direction: column; max-height: calc(var(--control-height) * 8); padding: var(--space-1); overflow-y: auto; }
-/* 固定 3:2，切换分类时面板尺寸不变；内容区独立滚动，且只允许纵向滚动。 */
-.composer-emoji-panel { display: flex; flex-direction: column; width: 360px; height: 240px; padding: var(--space-2); overflow: hidden; }
-.composer-emoji-body { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+.composer-emoji-panel { position: fixed; display: flex; flex-direction: column; width: min(360px, calc(100vw - 16px)); height: 240px; padding: var(--space-2); overflow: hidden; }
+.composer-emoji-pages { position: relative; flex: 1; min-height: 0; overflow: clip; }
+.composer-emoji-body { position: absolute; inset: 0; overflow: hidden auto; scrollbar-gutter: stable; overscroll-behavior: contain; opacity: 0; transition: transform var(--motion-duration-medium) var(--motion-ease), opacity var(--motion-duration) ease; }
+.composer-emoji-body[data-position="before"] { transform: translateX(-6%); }
+.composer-emoji-body[data-position="after"] { transform: translateX(6%); }
+.composer-emoji-body[data-position="current"] { opacity: 1; }
+html[data-input-modality="keyboard"] .composer-emoji-body { transition: none; }
+html[data-reduced-motion="true"] .composer-emoji-body { transform: none; }
+@media (prefers-reduced-motion: reduce) { .composer-emoji-body { transform: none; } }
 .composer-mention-option { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-1) var(--space-2); border: 0; border-radius: calc(var(--radius) * .7); background: transparent; color: var(--text-primary); font-size: var(--font-body); text-align: left; cursor: pointer; }
 .composer-mention-option[data-active="true"], .composer-mention-option:hover { background: var(--control-hover-bg); }
 .composer-mention-avatar { display: grid; flex: none; place-items: center; width: 18px; height: 18px; color: var(--text-secondary); }
@@ -239,14 +240,11 @@ html[data-input-modality="keyboard"] :is(.chat-search-locate, .group-info-drawer
 .composer-emoji-tabs { display: flex; flex: none; gap: var(--space-1); margin-bottom: var(--space-2); }
 .composer-emoji-tab { flex: 1; min-width: 0; padding: var(--space-1) var(--space-2); border: 0; border-radius: calc(var(--radius) * .7); background: transparent; color: var(--text-secondary); font-size: var(--font-caption); white-space: nowrap; cursor: pointer; }
 .composer-emoji-tab[aria-selected="true"] { background: var(--control-active-bg); color: var(--text-primary); }
-/* minmax(0, 1fr)：默认的 minmax(auto, 1fr) 会被宽字形撑开格子，撑出横向滚动条。 */
-.composer-emoji-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: var(--space-1); }
-.composer-emoji { display: grid; place-items: center; aspect-ratio: 1; min-width: 0; padding: 0; overflow: hidden; border: 0; border-radius: calc(var(--radius) * .6); background: transparent; font-size: calc(var(--size-unit) * 8); line-height: 1; cursor: pointer; }
-.composer-emoji:hover { background: var(--control-hover-bg); }
-/* 字符表情（颜文字）宽度差别大，单独用流式排布，不塞进正方形格子。 */
-.composer-kaomoji-grid { display: flex; flex-wrap: wrap; align-content: flex-start; gap: var(--space-1); }
-.composer-kaomoji { padding: var(--space-1) var(--space-2); border: 0; border-radius: calc(var(--radius) * .6); background: transparent; color: var(--text-primary); font-size: var(--font-body); white-space: nowrap; cursor: pointer; }
-.composer-kaomoji:hover { background: var(--control-hover-bg); }
+.composer-emoji-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); grid-auto-rows: calc(var(--size-unit) * 9); gap: var(--space-1); }
+.composer-emoji { min-width: 0; padding: 0; overflow: hidden; border: 0; border-radius: calc(var(--radius) * .6); background: transparent; color: var(--text-primary); font-size: calc(var(--size-unit) * 7); line-height: 1; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.composer-emoji[data-kind="text"] { grid-column: span 2; font-size: var(--font-caption); }
+.composer-emoji[data-wide] { grid-column: span 4; }
+.composer-emoji:is(:hover, :focus-visible) { background: var(--control-hover-bg); }
 
 /* ---- 输入框里的待发送附件 ---- */
 .composer-attachments { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-3) 0; }

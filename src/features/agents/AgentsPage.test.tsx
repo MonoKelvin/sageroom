@@ -215,13 +215,13 @@ describe("持久资源智能体页面", () => {
     await select("智能体类型", to)
     await userEvent.click(getDialog().getByRole("button", { name: "确认切换" }))
     await waitFor(() => expect(ipc.saveAgent).toHaveBeenCalledTimes(1))
-    expect(vi.mocked(ipc.saveAgent).mock.lastCall?.[0].configuration).toEqual({ ...original, ...expression, local_tools_enabled: false })
+    expect(vi.mocked(ipc.saveAgent).mock.lastCall?.[0].configuration).toEqual({ ...original, ...expression, local_tools_enabled: false, script_execution_enabled: false, windows_inventory_enabled: false })
     expect(sage.getByRole("combobox", { name: "智能体类型" })).toHaveTextContent(to)
     expect(sage.getByText(entry.content)).toBeInTheDocument()
     expect(listExperience).toHaveBeenCalledTimes(1)
     if (to === "工具助手") {
       expect(sage.getByRole("tab", { name: "工具" })).toBeInTheDocument()
-      expect(sage.getByText(/只处理单独 @ 自己的任务/)).toBeInTheDocument()
+      expect(sage.getByText(/处理明确交给自己的任务和相关追问/)).toBeInTheDocument()
       expect(sage.getByRole("textbox", { name: "经历内容" })).toHaveAttribute("placeholder", "记录重要事务、已验证的结论或解决方案……")
     } else {
       expect(sage.queryByRole("tab", { name: "工具" })).not.toBeInTheDocument()
@@ -253,16 +253,16 @@ describe("持久资源智能体页面", () => {
   })
 })
 
-describe("工具助手本地工具", () => {
-  it("未授权时关闭，取消不写入，确认才启用，关闭无需确认", async () => {
+describe("工具助手脚本执行权限", () => {
+  it("旧授权不迁移，取消不写入，确认才启用，关闭无需确认", async () => {
     const data = mockConfigurationIpc()
-    Object.assign(data.agents[0], { agent_type: "tool", local_tools_enabled: undefined })
+    Object.assign(data.agents[0], { agent_type: "tool", local_tools_enabled: true })
     render(page())
     await openSage()
     const sage = detail("Sage")
     await section("工具", sage)
-    const toggle = () => sage.getByRole("switch", { name: "本地工具" })
-    const confirmation = () => within(screen.getByRole("dialog", { name: "启用本地工具？" }))
+    const toggle = () => sage.getByRole("switch", { name: "脚本执行权限" })
+    const confirmation = () => within(screen.getByRole("dialog", { name: "启用脚本执行权限？" }))
     expect(toggle()).not.toBeChecked()
     await userEvent.click(toggle())
     expect(confirmation().getByText(/无需逐次确认/)).toBeVisible()
@@ -275,13 +275,29 @@ describe("工具助手本地工具", () => {
     await userEvent.click(toggle())
     await userEvent.click(confirmation().getByRole("button", { name: "启用" }))
     await waitFor(() => expect(ipc.saveAgent).toHaveBeenCalledTimes(1))
-    expect(vi.mocked(ipc.saveAgent).mock.lastCall?.[0].configuration).toMatchObject({ agent_id: "sage-test", local_tools_enabled: true })
+    expect(vi.mocked(ipc.saveAgent).mock.lastCall?.[0].configuration).toMatchObject({ agent_id: "sage-test", local_tools_enabled: false, script_execution_enabled: true, windows_inventory_enabled: true })
     expect(toggle()).toBeChecked()
     await userEvent.click(toggle())
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     await waitFor(() => expect(ipc.saveAgent).toHaveBeenCalledTimes(2))
-    expect(vi.mocked(ipc.saveAgent).mock.lastCall?.[0].configuration).toMatchObject({ agent_id: "sage-test", local_tools_enabled: false })
+    expect(vi.mocked(ipc.saveAgent).mock.lastCall?.[0].configuration).toMatchObject({ agent_id: "sage-test", local_tools_enabled: false, script_execution_enabled: false, windows_inventory_enabled: false })
     expect(toggle()).not.toBeChecked()
+  })
+
+  it("仅有容器权限的助手需要确认才可查询 Windows 数据", async () => {
+    const data = mockConfigurationIpc()
+    Object.assign(data.agents[0], { agent_type: "tool", script_execution_enabled: true })
+    render(page())
+    await openSage()
+    const sage = detail("Sage")
+    await section("工具", sage)
+    await userEvent.click(sage.getByRole("button", { name: "授权 Windows 数据" }))
+    const dialog = within(screen.getByRole("dialog", { name: "启用脚本执行权限？" }))
+    expect(dialog.getByText(/固定磁盘容量交给所选模型/)).toBeVisible()
+    expect(ipc.saveAgent).not.toHaveBeenCalled()
+    await userEvent.click(dialog.getByRole("button", { name: "启用" }))
+    await waitFor(() => expect(ipc.saveAgent).toHaveBeenCalledOnce())
+    expect(vi.mocked(ipc.saveAgent).mock.lastCall?.[0].configuration).toMatchObject({ script_execution_enabled: true, windows_inventory_enabled: true })
   })
 
   it.each([
@@ -315,24 +331,24 @@ describe("工具助手本地工具", () => {
     expect(await sage.findByRole("alert")).toHaveTextContent("操作未完成，请重试。")
   })
 
-  it("复制工具助手不会继承原智能体的本地工具授权", async () => {
+  it("复制工具助手不会继承原智能体的脚本执行权限", async () => {
     const data = mockConfigurationIpc()
-    Object.assign(data.agents[0], { agent_type: "tool", local_tools_enabled: true })
+    Object.assign(data.agents[0], { agent_type: "tool", local_tools_enabled: true, script_execution_enabled: true })
     render(page())
     await openSage()
     const sage = detail("Sage")
     await section("工具", sage)
-    expect(sage.getByRole("switch", { name: "本地工具" })).toBeChecked()
+    expect(sage.getByRole("switch", { name: "脚本执行权限" })).toBeChecked()
     await userEvent.click(sage.getByRole("button", { name: "复制智能体" }))
     await screen.findByRole("heading", { name: "Sage 副本", level: 2 })
     await waitFor(() => expect(ipc.saveAgent).toHaveBeenCalledTimes(1))
     const request = vi.mocked(ipc.saveAgent).mock.calls[0][0]
     expect(request.expected_revision).toBeNull()
     expect(request.configuration.agent_id).not.toBe("sage-test")
-    expect(request.configuration).toMatchObject({ agent_type: "tool", local_tools_enabled: false })
+    expect(request.configuration).toMatchObject({ agent_type: "tool", local_tools_enabled: false, script_execution_enabled: false, windows_inventory_enabled: false })
     const copy = detail("Sage 副本")
     await section("工具", copy)
-    expect(copy.getByRole("switch", { name: "本地工具" })).not.toBeChecked()
+    expect(copy.getByRole("switch", { name: "脚本执行权限" })).not.toBeChecked()
   })
 })
 

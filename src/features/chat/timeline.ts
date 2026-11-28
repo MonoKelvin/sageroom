@@ -4,6 +4,8 @@ export const PAGE_SIZE = 50
 export const MAX_LOADED_MESSAGES = 500
 export const INITIAL_ITEM_INDEX = 1_000_000_000
 
+export type TimelineMessage = ChatMessage & { renderKey?: string }
+
 export function compareSequence(left: string, right: string): number {
   const a = BigInt(left)
   const b = BigInt(right)
@@ -15,8 +17,11 @@ function latestSequence(left: string, right: string): string {
 }
 
 function combineMessages(current: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
-  const byId = new Map(current.map((message) => [message.id, message]))
-  for (const message of incoming) byId.set(message.id, message)
+  const byId = new Map<string, TimelineMessage>(current.map((message) => [message.id, message]))
+  for (const message of incoming) {
+    const renderKey = byId.get(message.id)?.renderKey
+    byId.set(message.id, renderKey ? { ...message, renderKey } : message)
+  }
   return [...byId.values()].sort((a, b) => compareSequence(a.seq, b.seq))
 }
 
@@ -26,13 +31,15 @@ export function mergePage(
   direction: "before" | "after",
   firstItemIndex: number,
 ): { page: MessagePage; firstItemIndex: number } {
-  const combined = combineMessages(current.items, incoming.items)
+  const earlier = direction === "before" ? incoming.items : current.items
+  const later = direction === "before" ? current.items : incoming.items
+  const ascending = !earlier.length || !later.length || compareSequence(earlier.at(-1)!.seq, later[0].seq) < 0
+  const combined = ascending ? [...earlier, ...later] : combineMessages(current.items, incoming.items)
   const extra = Math.max(0, combined.length - MAX_LOADED_MESSAGES)
-  const items = direction === "before" ? combined.slice(0, MAX_LOADED_MESSAGES) : combined.slice(extra)
-  const oldFirst = current.items[0]?.seq
-  const addedBefore = oldFirst
-    ? combined.filter((message) => compareSequence(message.seq, oldFirst) < 0).length
-    : 0
+  const items = extra === 0 ? combined : direction === "before" ? combined.slice(0, MAX_LOADED_MESSAGES) : combined.slice(extra)
+  const addedBefore = !current.items.length ? 0 : ascending
+    ? direction === "before" ? incoming.items.length : 0
+    : combined.findIndex((message) => message.id === current.items[0].id)
   return {
     firstItemIndex: firstItemIndex - addedBefore + (direction === "after" ? extra : 0),
     page: {

@@ -826,6 +826,8 @@ pub struct UiPreferences {
     /// 聊天发送键：Enter 直接发送 / Ctrl+Enter 发送。
     #[serde(default = "default_send_key")]
     pub send_key: SendKey,
+    #[serde(default = "default_tray_flash_on_message")]
+    pub tray_flash_on_message: bool,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -838,6 +840,7 @@ pub enum SendKey { Enter, CtrlEnter }
 
 fn default_close_action() -> CloseAction { CloseAction::Hide }
 fn default_send_key() -> SendKey { SendKey::Enter }
+fn default_tray_flash_on_message() -> bool { true }
 
 /// 开机自启是系统级开关，不写入应用偏好：以操作系统中的自启项为准，默认关闭。
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
@@ -860,7 +863,13 @@ pub struct AutostartState {
 }
 
 impl Default for UiPreferences {
-    fn default() -> Self { Self { close_action: default_close_action(), send_key: default_send_key() } }
+    fn default() -> Self {
+        Self {
+            close_action: default_close_action(),
+            send_key: default_send_key(),
+            tray_flash_on_message: default_tray_flash_on_message(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, TS)]
@@ -984,6 +993,12 @@ pub struct AgentConfiguration {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub local_tools_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub script_execution_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub windows_inventory_enabled: Option<bool>,
     pub model: Option<AgentModelSnapshot>,
 }
 

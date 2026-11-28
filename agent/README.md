@@ -5,7 +5,7 @@
 | 文件 | 用途 | 消费方 |
 | --- | --- | --- |
 | `SKILL.md` | 社交成员的角色指令、聊天节奏和决策协议。 | `src-tauri/src/storage/configuration.rs`（`BASE_SKILL`） |
-| `TOOL_SKILL.md` | 工具助手的委托、答复和任务经历协议。只响应单独 @，不参与自主闲聊。 | `src-tauri/src/runtime/decision.rs`（`TOOL_SKILL`） |
+| `TOOL_SKILL.md` | 工具助手的委托、相关对话、答复和任务经历协议，不参与自主闲聊。 | `src-tauri/src/runtime/decision.rs`（`TOOL_SKILL`） |
 | `hints.json` | 决策格式修复、社交改写和工具委托澄清提示。 | `src-tauri/src/runtime/decision.rs`（`hints()`） |
 | `agents.json` | 两个内置默认智能体（小墨、云深不知处）的结构化人设：姓名、性别、语言风格（含完整人设描述）、八个人格维度。 | `src-tauri/src/storage/configuration.rs`（新建数据库时种子写入） |
 | `experience.template.md` | 经历文件的格式、评分规则与示例模板。 | 文档；运行时由经历模块按此格式生成 |
@@ -39,7 +39,7 @@ python -I agent/train_chat_style.py \
 
 **外部参考（仅研究思路，未复制源码）：** Imprint（人格校准层，把偏好转成纯文本注入系统提示词）、CPR / Conversational Pattern Restoration（用短句节奏、轻度幽默、简短确认等模式修复 RLHF 造成的平直腔）、[chinese-chatbot-corpus](https://github.com/codemayq/chinese-chatbot-corpus)。
 
-工具助手根据原委托选择工具，宿主校验开关、调用者、参数和步骤额度，再把调用结果交回模型。普通问答不依赖工具；联网检索沿用已启用的来源。没有内置的时钟、计算或 JSON 校验命令。
+工具助手可自行编写脚本。Windows 只读 SQL 使用应用内置的 SQLite，不依赖 Docker；确认「脚本执行权限」后，可查询本机设备名称、类别和固定磁盘容量。已有的容器权限不自动扩大。通用 Shell 或 Python 仍要求本机 Docker Engine（Windows 上用 Linux 容器模式）及 `python:3.12-alpine`，不联网也不挂载宿主目录。源码及 Windows 查询结果归档在该助手的工作区。
 
 ## 本机只读 MCP 工具
 
@@ -67,7 +67,7 @@ python -I agent/train_chat_style.py \
 
 ## 约束
 
-1. 后端按成员类型使用内置 SKILL。社交成员只偶尔获得一组可提及的同伴：向社交成员问观点，向工具助手交代任务。工具答复与原委托绑定；「本地工具」默认关闭，由本地用户确认开启后，直接委托可读取基本系统信息、列出 `data/agents/<id>/workspace/` 内的文本文件，或在该目录创建、覆盖受限文本，无需逐次确认。脚本可作为草稿保存，应用不会执行任意 Shell 或脚本。已启用的新闻检索才可联网。
+1. 后端按成员类型使用内置 SKILL。社交成员只偶尔获得一组可提及的同伴：向社交成员问观点，向工具助手交代任务。工具答复与原委托绑定；脚本执行默认关闭，由本地用户逐个助手授权。已启用的新闻检索才可联网，容器脚本始终不能联网。
 2. `agents.json` 只影响**新建数据库**。已有本地数据库不会重新种子化，避免覆盖用户数据。
 3. 人设一旦确定，后续应持续维护一致性；如需调整，改本文件而非散落在代码里的字符串。
 4. **提示词一律写在本目录**，不要硬编码进 Rust 源码。长文本用 `.md`，几条短提示用 `hints.json`。

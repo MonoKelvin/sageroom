@@ -1247,6 +1247,23 @@ fn inbox_preferences_do_not_disturb_news_configuration() {
 
 
 #[test]
+fn tray_flash_preference_defaults_on_and_persists_when_disabled() {
+    let (directory, mut database) = database();
+    assert!(database.get_ui_preferences(GENERATION).unwrap().tray_flash_on_message);
+    database.conn.execute(
+        "UPDATE global_configuration SET preferences_json = ?1 WHERE singleton = 1",
+        [json!({"ui": {"close_action": "exit", "send_key": "ctrl_enter"}}).to_string()],
+    ).unwrap();
+    let mut preferences = database.get_ui_preferences(GENERATION).unwrap();
+    assert!(preferences.tray_flash_on_message);
+    preferences.tray_flash_on_message = false;
+    database.save_ui_preferences(GENERATION, &preferences).unwrap();
+    drop(database);
+    let reopened = Database::open(directory.path(), GENERATION.into()).unwrap();
+    assert_eq!(reopened.get_ui_preferences(GENERATION).unwrap(), preferences);
+}
+
+#[test]
 fn window_state_round_trips_in_preferences() {
     let (_directory, mut database) = database();
     assert!(database.get_window_state(GENERATION).unwrap().is_none());

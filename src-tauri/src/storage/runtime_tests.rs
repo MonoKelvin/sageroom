@@ -160,6 +160,52 @@ fn tool_commit_requires_a_visible_direct_request_and_is_idempotent_per_target() 
     assert!(database.commit_runtime_message(make_candidate(&recalled, 1)).is_err());
 }
 
+#[test]
+fn tool_history_only_keeps_visible_exchange_with_the_requester() {
+    let (_directory, mut database, mut agent) = fixture();
+    agent.agent_type = AgentType::Tool;
+    let agent = save_agent(&mut database, agent);
+    let peer = database.list_agents(&database.generation_id).unwrap().into_iter()
+        .find(|config| config.agent_id != agent.agent_id).unwrap();
+    let generation = database.generation_id.clone();
+    let send = |database: &mut Database, text: &str, mention_ids, quote_message_id| database.send_message(ChatSendRequest {
+        data_generation_id: generation.clone(), client_request_id: Uuid::now_v7().to_string(),
+        parts: vec![MessagePart::Text { text: text.into() }], quote_message_id, mention_ids, mention_all: false,
+    }).unwrap().0;
+    let direct = send(&mut database, "最早的任务", vec![agent.agent_id.clone()], None);
+    let direct_seq = parse_counter(&direct.message_seq, "seq").unwrap();
+    let mut reply = candidate(&agent, direct_seq, &tool_decision_id(&agent.agent_id, &direct.message_seq), 0, &direct.message_id);
+    reply.quote_message_id = Some(direct.message_id.clone());
+    let (answer, _) = database.commit_runtime_message(reply).unwrap();
+    let aside = human(&mut database);
+    database.conn.execute("UPDATE messages SET sender_id=?1 WHERE id=?2", params![peer.agent_id, aside.message_id]).unwrap();
+    let stale = human(&mut database);
+    let continuation = database.runtime_input_for(&agent.agent_id, Some(stale.message_seq.clone())).unwrap();
+    assert_eq!(continuation.tool_turn().address, ToolAddress::FollowUp);
+    assert!(continuation.is_local_tool_request());
+    assert_eq!(continuation.messages.iter().map(|message| &message.id).collect::<Vec<_>>(),
+        vec![&direct.message_id, &answer.message_id]);
+    database.conn.execute("UPDATE messages SET created_at=(SELECT created_at FROM messages WHERE id=?1)+?2 WHERE id=?3",
+        params![answer.message_id, TOOL_FOLLOW_UP_MS + 1, stale.message_id]).unwrap();
+    let answer_seq = parse_counter(&answer.message_seq, "seq").unwrap();
+    let stale_seq = parse_counter(&stale.message_seq, "seq").unwrap();
+    assert!(database.next_tool_request(&agent.agent_id, answer_seq, stale_seq).unwrap().is_none());
+    let others = send(&mut database, "给另外一个成员", vec![peer.agent_id.clone()], Some(answer.message_id.clone()));
+    assert!(database.runtime_input_for(&agent.agent_id, Some(others.message_seq)).is_err());
+    let from_peer = send(&mut database, "另一个人的独立委托", vec![agent.agent_id.clone()], None);
+    database.conn.execute("UPDATE messages SET sender_id=?1 WHERE id=?2", params![peer.agent_id, from_peer.message_id]).unwrap();
+    let quoted = send(&mut database, "请进一步解释", vec![], Some(answer.message_id.clone()));
+    let input = database.runtime_input_for(&agent.agent_id, Some(quoted.message_seq.clone())).unwrap();
+    assert_eq!(input.tool_turn().address, ToolAddress::Quote);
+    assert_eq!(input.messages.iter().map(|message| &message.id).collect::<Vec<_>>(), vec![&direct.message_id, &answer.message_id]);
+    assert!(!input.local_user_delegated_tool());
+    database.recall_message(ChatRecallRequest {
+        data_generation_id: generation, client_request_id: Uuid::now_v7().to_string(), message_id: direct.message_id,
+    }).unwrap();
+    let input = database.runtime_input_for(&agent.agent_id, Some(quoted.message_seq)).unwrap();
+    assert!(input.messages.is_empty());
+}
+
 fn human(database: &mut Database) -> ChatSendResult {
     database
         .send_message(ChatSendRequest {

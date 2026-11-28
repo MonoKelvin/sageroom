@@ -101,7 +101,7 @@ export class ConfigurationStore {
 
   async createAgent(source?: AgentConfiguration) {
     await this.global.ensureLoaded()
-    const agent: AgentConfiguration = source ? { ...structuredClone(source), agent_id: crypto.randomUUID(), revision: "0", display_name: `${source.display_name} 副本`.slice(0, 80), local_tools_enabled: false } : { agent_id: crypto.randomUUID(), revision: "0", display_name: "新智能体", gender_description: null, language_style: "自然、清晰", skill: "", dimensions: { ...defaultDimensions }, avatar_id: null, agent_type: "social", model: null }
+    const agent: AgentConfiguration = source ? { ...structuredClone(source), agent_id: crypto.randomUUID(), revision: "0", display_name: `${source.display_name} 副本`.slice(0, 80), local_tools_enabled: false, script_execution_enabled: false, windows_inventory_enabled: false } : { agent_id: crypto.randomUUID(), revision: "0", display_name: "新智能体", gender_description: null, language_style: "自然、清晰", skill: "", dimensions: { ...defaultDimensions }, avatar_id: null, agent_type: "social", model: null }
     const resource = this.registerAgent(agent)
     const applied = resource.persistInitial()
     applied.catch(() => {})

@@ -1,5 +1,5 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { Virtuoso, type StateSnapshot, type VirtuosoHandle } from "react-virtuoso"
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { Virtuoso } from "react-virtuoso"
 import { IconArrowDown, IconAt, IconCopy, IconInfoCircle, IconQuote, IconTrash } from "@tabler/icons-react"
 import type { ChatMessage, MessagePage, Participant } from "@/contracts/generated"
 import { Button } from "@/components/ui/button"
@@ -9,15 +9,16 @@ import { errorMessage } from "@/app/ipc"
 import { Avatar } from "@/components/Avatar"
 import { cn } from "@/lib/utils"
 import { MessageAttachments } from "./MessageAttachments"
+import type { TimelineMessage } from "./timeline"
 import type { ScrollAnchor } from "./useChatSession"
 import { isPendingMessage } from "./useChatSession"
 import { formatMessageTime, shouldInsertTimeTag } from "./message-time"
 import { SystemMessageTag } from "./SystemMessageTag"
 
 const RECALL_WINDOW_MS = 180_000
+const BOTTOM_THRESHOLD = 24
 
 type ListContext = { loadingMore: boolean; hasMoreBefore: boolean }
-type SavedScroll = { state: StateSnapshot; anchor: ScrollAnchor | null }
 
 function ListHeader({ context }: { context: ListContext }) {
   return <div className="chat-list-notice">{context.loadingMore ? "正在读取历史…" : context.hasMoreBefore ? "向上浏览更早消息" : "已到最早的消息"}</div>
@@ -44,9 +45,9 @@ type MessageActions = {
   onInspectParticipant?: (participantId: string) => void
 }
 
-const MessageRow = memo(function MessageRow({ message, participant, participants, self, highlighted, entering, generation, quotes, onQuote, onRecall, onLocateQuote, onMentionParticipant, onInspectParticipant }: {
-  message: ChatMessage; participant: Participant; participants: ReadonlyMap<string, Participant>; self: boolean; highlighted: boolean; entering: boolean; generation?: string
-} & MessageActions) {
+const MessageRow = memo(function MessageRow({ message, participant, participants, self, highlighted, generation, resolvedQuote, onQuote, onRecall, onLocateQuote, onMentionParticipant, onInspectParticipant }: {
+  message: ChatMessage; participant: Participant; participants: ReadonlyMap<string, Participant>; self: boolean; highlighted: boolean; generation?: string; resolvedQuote?: ChatMessage
+} & Omit<MessageActions, "quotes">) {
   const toast = useToast()
   const [pending, setPending] = useState(false)
   const [feedback, setFeedback] = useState<{ text: string; error: boolean } | null>(null)
@@ -72,7 +73,6 @@ const MessageRow = memo(function MessageRow({ message, participant, participants
     document.addEventListener("visibilitychange", refresh)
     return () => { clearTimeout(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh) }
   }, [self, onRecall, message.state, recallDeadline])
-  const resolvedQuote = message.quote_message_id ? quotes?.get(message.quote_message_id) : null
   const original = resolvedQuote?.state === "visible" ? resolvedQuote : null
   const quoteName = original ? participants.get(original.sender_id)?.display_name : null
   const text = message.state === "visible" ? messageText(message) : ""
@@ -116,7 +116,7 @@ const MessageRow = memo(function MessageRow({ message, participant, participants
   const chatBoundary = useCallback(() => bubbleRef.current?.closest<HTMLElement>(".chat-card") ?? null, [])
 
   return (
-    <article data-message-id={message.id} data-message-seq={message.seq} data-pending={pendingMessage || undefined} className={cn("chat-message", highlighted && "chat-message-highlight", entering && "chat-message-enter")} aria-label={`${participant.display_name}的消息`}>
+    <article data-message-id={message.id} data-message-seq={message.seq} data-pending={pendingMessage || undefined} className={cn("chat-message", highlighted && "chat-message-highlight")} aria-label={`${participant.display_name}的消息`}>
       {message.state === "recalled" ? <SystemMessageTag kind="recall">{participant.display_name}撤回了一条消息</SystemMessageTag> : <div className="chat-message-row" data-self={self}>
         <ContextMenu
           label={`${participant.display_name} 的头像操作`}
@@ -160,7 +160,7 @@ type Props = MessageActions & {
   firstItemIndex: number
   targetMessageId: string | null
   restoreAnchor: ScrollAnchor | null
-  enteringIds?: ReadonlySet<string>
+  getRenderedAnchor?: () => ScrollAnchor | null
   followLatest: boolean
   hasNewMessages: boolean
   /** 停留期间新到达的条数，用于底部提示；为 0 时退化为通用文案。 */
@@ -176,166 +176,132 @@ type Props = MessageActions & {
   onGoToLatest: () => Promise<void>
 }
 
-type ViewportProps = Props & {
-  initialSaved: SavedScroll | null
-}
+type ViewportProps = Omit<Props, "active" | "hasNewMessages" | "newMessageCount" | "hideLatestNotice" | "onGoToLatest">
 
-function MessageViewport({
-  generation, page, participants, localUserId, firstItemIndex, targetMessageId, restoreAnchor, enteringIds, followLatest,
-  scrollToBottomSignal = 0, loadingMore, onLoadOlder, onLoadNewer, onAtBottomChange, onRenderedAnchorChange, initialSaved,
+const messageKey = (_: number, message: TimelineMessage) => message.renderKey ?? message.id
+
+const MessageViewport = memo(function MessageViewport({
+  generation, page, participants, localUserId, firstItemIndex, targetMessageId, restoreAnchor, getRenderedAnchor, followLatest,
+  scrollToBottomSignal = 0, loadingMore, onLoadOlder, onLoadNewer, onAtBottomChange, onRenderedAnchorChange,
   quotes, onQuote, onRecall, onLocateQuote, onMentionParticipant, onInspectParticipant,
 }: ViewportProps) {
-  // 滚动恢复状态由本组件独占；卸载后由 restoreAnchor/targetMessageId 重新定位。
-  const saved = useRef<SavedScroll | null>(initialSaved)
-  const consumedSignal = useRef(scrollToBottomSignal)
-  const list = useRef<VirtuosoHandle>(null)
-  const userScrolling = useRef(false)
-  const ready = useRef(false)
-  const captureFrame = useRef(0)
-  const captureStateOnFrame = useRef(false)
   const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null)
-  const [settled, setSettled] = useState(false)
-  const [initialState] = useState(initialSaved)
+  const consumedSignal = useRef(scrollToBottomSignal)
+  const pinned = useRef(followLatest && !targetMessageId && !restoreAnchor)
+  const hasMoreAfter = useRef(page.has_more_after)
+  const bottomFrame = useRef(0)
   const [initialLocation] = useState(() => {
-    const id = restoreAnchor?.id ?? targetMessageId
-    return id ? { index: Math.max(0, page.items.findIndex((message) => message.id === id)), align: "start" as const } : { index: "LAST" as const, align: "end" as const }
+    const anchor = restoreAnchor ?? (!followLatest && !targetMessageId ? getRenderedAnchor?.() : null)
+    const id = anchor?.id ?? targetMessageId
+    return id
+      ? { index: Math.max(0, page.items.findIndex((message) => message.id === id)), align: "start" as const, offset: -(anchor?.offset ?? 0) }
+      : { index: "LAST" as const, align: "end" as const }
   })
-
-  const capture = useCallback((saveState = false) => {
-    if (!ready.current || !scrollElement || scrollElement.clientHeight === 0) return
+  const context = useMemo(() => ({ loadingMore, hasMoreBefore: page.has_more_before }), [loadingMore, page.has_more_before])
+  const capture = useCallback(() => {
+    if (!scrollElement?.clientHeight) return
     const viewportTop = scrollElement.getBoundingClientRect().top
-    let anchor: ScrollAnchor | null = null
-    for (const article of scrollElement.querySelectorAll<HTMLElement>("[data-message-id]")) {
-      const rect = article.getBoundingClientRect()
+    for (const row of scrollElement.querySelectorAll<HTMLElement>("[data-item-index]")) {
+      const rect = row.getBoundingClientRect()
       if (rect.bottom <= viewportTop) continue
-      anchor = { id: article.dataset.messageId!, seq: article.dataset.messageSeq!, offset: rect.top - viewportTop }
+      const article = row.querySelector<HTMLElement>("[data-message-id]:not([data-pending])")
+      if (!article) continue
+      onRenderedAnchorChange({ id: article.dataset.messageId!, seq: article.dataset.messageSeq!, offset: rect.top - viewportTop })
       break
     }
-    if (anchor) onRenderedAnchorChange(anchor)
-    const scrollTop = scrollElement.scrollTop
-    if (saveState) {
-      list.current?.getState((state) => { saved.current = { state: { ...state, scrollTop }, anchor } })
-    } else if (saved.current) {
-      saved.current = { state: { ...saved.current.state, scrollTop }, anchor }
-    }
-  }, [onRenderedAnchorChange, saved, scrollElement])
+  }, [onRenderedAnchorChange, scrollElement])
 
-  const scheduleCapture = useCallback(() => {
-    if (!ready.current || captureFrame.current) return
-    captureFrame.current = requestAnimationFrame(() => {
-      captureFrame.current = 0
-      const saveState = captureStateOnFrame.current
-      captureStateOnFrame.current = false
-      capture(saveState)
+  const keepBottom = useCallback(() => {
+    if (!scrollElement || !pinned.current || hasMoreAfter.current || bottomFrame.current) return
+    bottomFrame.current = requestAnimationFrame(() => {
+      bottomFrame.current = 0
+      if (!pinned.current || hasMoreAfter.current) return
+      const bottom = scrollElement.scrollHeight - scrollElement.clientHeight
+      if (bottom > scrollElement.scrollTop) scrollElement.scrollTop = bottom
     })
-  }, [capture])
+  }, [scrollElement])
 
-  const scheduleStateCapture = useCallback(() => {
-    if (!ready.current) return
-    captureStateOnFrame.current = true
-    scheduleCapture()
-  }, [scheduleCapture])
+  useLayoutEffect(() => {
+    if (!scrollElement) return
+    let lastTop = scrollElement.scrollTop
+    const trackScroll = () => {
+      const top = scrollElement.scrollTop
+      const atEnd = scrollElement.scrollHeight - scrollElement.clientHeight - top <= BOTTOM_THRESHOLD
+      // 尺寸变化会扩大尾部间距，但不会像主动向上滚那样降低 scrollTop。
+      if ((atEnd || top < lastTop) && atEnd !== pinned.current) {
+        pinned.current = atEnd
+        onAtBottomChange(atEnd)
+      }
+      if (top > lastTop && atEnd && hasMoreAfter.current) void onLoadNewer()
+      lastTop = top
+    }
+    scrollElement.addEventListener("scroll", trackScroll, { passive: true })
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(keepBottom)
+    observer?.observe(scrollElement)
+    return () => {
+      scrollElement.removeEventListener("scroll", trackScroll)
+      observer?.disconnect()
+      cancelAnimationFrame(bottomFrame.current)
+      bottomFrame.current = 0
+      capture()
+    }
+  }, [capture, keepBottom, onAtBottomChange, onLoadNewer, scrollElement])
+
+  useLayoutEffect(() => {
+    if (!scrollElement) return
+    hasMoreAfter.current = page.has_more_after
+    if (consumedSignal.current !== scrollToBottomSignal) {
+      consumedSignal.current = scrollToBottomSignal
+      pinned.current = true
+    }
+    keepBottom()
+  }, [keepBottom, page.has_more_after, page.items, scrollElement, scrollToBottomSignal])
 
   const handleScrollerRef = useCallback((node: HTMLElement | null | Window) => {
     setScrollElement(node instanceof HTMLElement ? node : null)
   }, [])
+  const handleScrolling = useCallback((scrolling: boolean) => { if (!scrolling) capture() }, [capture])
+  const itemContent = useCallback((index: number, message: TimelineMessage) => {
+    const previous = page.items[index - firstItemIndex - 1]
+    return <>
+      {shouldInsertTimeTag(previous?.created_at, message.created_at) && <SystemMessageTag kind="time">{formatMessageTime(message.created_at)}</SystemMessageTag>}
+      <MessageRow message={message} participant={participants.get(message.sender_id)!} participants={participants} self={message.sender_id === localUserId} highlighted={message.id === targetMessageId} generation={generation} resolvedQuote={message.quote_message_id ? quotes?.get(message.quote_message_id) : undefined} onQuote={onQuote} onRecall={onRecall} onLocateQuote={onLocateQuote} onMentionParticipant={onMentionParticipant} onInspectParticipant={onInspectParticipant} />
+    </>
+  }, [firstItemIndex, generation, localUserId, onInspectParticipant, onLocateQuote, onMentionParticipant, onQuote, onRecall, page.items, participants, quotes, targetMessageId])
 
-  useLayoutEffect(() => {
-    if (!scrollElement) return
-    ready.current = false
-    scrollElement.addEventListener("scroll", scheduleCapture, { passive: true })
-    let secondFrame = 0
-    const firstFrame = requestAnimationFrame(() => {
-      secondFrame = requestAnimationFrame(() => {
-        const anchor = initialState?.anchor ?? restoreAnchor
-        if (anchor) {
-          const article = Array.from(scrollElement.querySelectorAll<HTMLElement>("[data-message-id]")).find((node) => node.dataset.messageId === anchor.id)
-          if (article) {
-            const adjustment = article.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top - anchor.offset
-            scrollElement.scrollTop += adjustment
-          }
-        }
-        ready.current = true
-        setSettled(true)
-        capture(true)
-      })
-    })
-    return () => {
-      capture(true)
-      ready.current = false
-      cancelAnimationFrame(firstFrame)
-      cancelAnimationFrame(secondFrame)
-      cancelAnimationFrame(captureFrame.current)
-      captureFrame.current = 0
-      captureStateOnFrame.current = false
-      scrollElement.removeEventListener("scroll", scheduleCapture)
-    }
-  }, [capture, initialState, restoreAnchor, scheduleCapture, scrollElement])
-
-  useEffect(() => {
-    if (!settled || !scrollElement || scrollToBottomSignal <= consumedSignal.current) return
-    const frame = requestAnimationFrame(() => {
-      consumedSignal.current = scrollToBottomSignal
-      userScrolling.current = false
-      list.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" })
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [consumedSignal, scrollElement, scrollToBottomSignal, settled])
-
-  return <Virtuoso<ChatMessage, ListContext>
-    ref={list}
+  return <Virtuoso<TimelineMessage, ListContext>
     scrollerRef={handleScrollerRef}
     className="chat-list-scroller"
-   
-    context={{ loadingMore, hasMoreBefore: page.has_more_before }}
-    style={{ height: "100%" }}
+    context={context}
     data={page.items}
     firstItemIndex={firstItemIndex}
-    restoreStateFrom={initialState?.state}
-    initialTopMostItemIndex={initialState ? undefined : initialLocation}
-    computeItemKey={(_, message) => message.id}
+    initialTopMostItemIndex={initialLocation}
+    computeItemKey={messageKey}
     defaultItemHeight={88}
     increaseViewportBy={{ top: 300, bottom: 300 }}
     overscan={{ main: 160, reverse: 80 }}
     minOverscanItemCount={{ top: 2, bottom: 2 }}
-    atBottomThreshold={24}
-    atBottomStateChange={(value) => { if (ready.current) onAtBottomChange(value) }}
-    isScrolling={(value) => { userScrolling.current = value; if (!value) capture(true) }}
-    rangeChanged={scheduleStateCapture}
-    totalListHeightChanged={scheduleStateCapture}
+    isScrolling={handleScrolling}
+    totalListHeightChanged={keepBottom}
     onWheel={(event) => {
-      if (!ready.current || !scrollElement) return
-      if (event.deltaY < 0 && scrollElement.scrollTop <= 24 && page.has_more_before) void onLoadOlder()
-      if (event.deltaY > 0 && scrollElement.scrollHeight - scrollElement.clientHeight - scrollElement.scrollTop <= 24 && page.has_more_after) void onLoadNewer()
+      if (!scrollElement) return
+      if (event.deltaY < 0 && scrollElement.scrollTop <= BOTTOM_THRESHOLD && page.has_more_before) void onLoadOlder()
+      if (event.deltaY > 0 && scrollElement.scrollHeight - scrollElement.clientHeight - scrollElement.scrollTop <= BOTTOM_THRESHOLD && page.has_more_after) void onLoadNewer()
     }}
-    followOutput={(atBottom) => {
-      if (!ready.current || targetMessageId || !followLatest || !atBottom || userScrolling.current) return false
-      return document.documentElement.dataset.reducedMotion === "true" || window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"
-    }}
-    startReached={() => { if (ready.current && page.has_more_before) void onLoadOlder() }}
-    endReached={() => { if (ready.current && page.has_more_after) void onLoadNewer() }}
+    startReached={() => { if (scrollElement && page.has_more_before && !pinned.current) void onLoadOlder() }}
     components={listComponents}
-    itemContent={(index, message) => {
-      const previous = page.items[index - firstItemIndex - 1]
-      return <>
-        {shouldInsertTimeTag(previous?.created_at, message.created_at) && <SystemMessageTag kind="time">{formatMessageTime(message.created_at)}</SystemMessageTag>}
-        <MessageRow message={message} participant={participants.get(message.sender_id)!} participants={participants} self={message.sender_id === localUserId} highlighted={message.id === targetMessageId} entering={enteringIds?.has(message.id) ?? false} generation={generation} quotes={quotes} onQuote={onQuote} onRecall={onRecall} onLocateQuote={onLocateQuote} onMentionParticipant={onMentionParticipant} onInspectParticipant={onInspectParticipant} />
-      </>
-    }}
+    itemContent={itemContent}
   />
-}
+})
 
-export function MessageList(props: Props) {
-  // 锚点只在挂载那一刻读一次：跳转时由 key 变化带来新值，
-  // 平时滚动不会因为父组件重渲染而重设滚动位置。
-  const [mountAnchor] = useState(props.restoreAnchor)
+export const MessageList = memo(function MessageList({ active = true, hasNewMessages, newMessageCount, hideLatestNotice, onGoToLatest, ...viewport }: Props) {
   return <section aria-label="聊天记录" className="relative flex min-h-0 flex-1 flex-col">
-    {props.page.items.length > 0 && (props.active ?? true) && <MessageViewport {...props} restoreAnchor={mountAnchor} initialSaved={null} />}
-    {!props.hideLatestNotice && (props.hasNewMessages || props.page.has_more_after) && <div className="chat-latest-position">
-      <Button size="sm" variant="secondary" className="chat-latest-button" onClick={() => void props.onGoToLatest()}>
+    {viewport.page.items.length > 0 && active && <MessageViewport {...viewport} />}
+    {!hideLatestNotice && (hasNewMessages || viewport.page.has_more_after) && <div className="chat-latest-position">
+      <Button size="sm" variant="secondary" className="chat-latest-button" onClick={() => void onGoToLatest()}>
         <IconArrowDown size={16} aria-hidden="true" />
-        {props.hasNewMessages ? (props.newMessageCount > 0 ? `${props.newMessageCount} 条新消息` : "有新消息") : "回到最新"}
+        {hasNewMessages ? (newMessageCount > 0 ? `${newMessageCount} 条新消息` : "有新消息") : "回到最新"}
       </Button>
     </div>}
   </section>
-}
+})

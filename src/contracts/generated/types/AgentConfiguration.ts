@@ -9,4 +9,4 @@ export type AgentConfiguration = { agent_id: string, revision: DecimalString,
  * 显示名上限按宽度计算：中文 2、英文 1，总量 16（即 8 个中文或 16 个英文）。
  * 响应契约保留旧数据的宽松上限，写入时由后端按宽度严格校验。
  */
-display_name: string, gender_description: string | null, language_style: string, skill: string, dimensions: PersonaDimensions, avatar_id: string | null, agent_type: AgentType, local_tools_enabled?: boolean, model: AgentModelSnapshot | null, };
+display_name: string, gender_description: string | null, language_style: string, skill: string, dimensions: PersonaDimensions, avatar_id: string | null, agent_type: AgentType, local_tools_enabled?: boolean, script_execution_enabled?: boolean, windows_inventory_enabled?: boolean, model: AgentModelSnapshot | null, };

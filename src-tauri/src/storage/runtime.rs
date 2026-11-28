@@ -19,6 +19,21 @@ const MINUTE_MS: i64 = 60_000;
 /// 同一话题链的限流窗口：只在最近 30 分钟内计数，避免长对话被永久锁死。
 const CHAIN_WINDOW_MS: i64 = 30 * MINUTE_MS;
 const MAX_TIMESTAMP: i64 = 9_007_199_254_740_991;
+const TOOL_FOLLOW_UP_MS: i64 = 5 * MINUTE_MS;
+const TOOL_HISTORY_LIMIT: u32 = 16;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ToolAddress {
+    Mention,
+    Quote,
+    FollowUp,
+}
+
+pub(crate) struct ToolTurn {
+    pub address: ToolAddress,
+    pub request: ChatMessage,
+}
 
 pub struct RuntimeInput {
     pub agent: AgentConfiguration,
@@ -26,8 +41,25 @@ pub struct RuntimeInput {
     pub snapshot: AppSnapshot,
     pub messages: Vec<ChatMessage>,
     pub quoted_messages: Vec<ChatMessage>,
+    pub(crate) tool_turn: Option<ToolTurn>,
     pub experiences: Vec<ExperienceEntry>,
     pub experience_revision: String,
+}
+
+impl RuntimeInput {
+    pub(crate) fn tool_turn(&self) -> &ToolTurn {
+        self.tool_turn.as_ref().expect("工具回合必须绑定当前请求")
+    }
+
+    pub(crate) fn is_local_tool_request(&self) -> bool {
+        self.tool_turn.as_ref().is_some_and(|turn| turn.request.sender_id == self.snapshot.local_user.id)
+    }
+
+    pub(crate) fn local_user_delegated_tool(&self) -> bool {
+        self.tool_turn.as_ref().is_some_and(|turn| {
+            turn.address == ToolAddress::Mention && turn.request.sender_id == self.snapshot.local_user.id
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -258,12 +290,68 @@ pub(crate) fn tool_decision_id(id: &str, seq: &DecimalString) -> String {
     format!("{}{seq}", tool_decision_prefix(id), seq = seq.0)
 }
 
-fn tool_origin(conn: &Connection, room: &str, id: &str, seq: i64) -> AppResult<Option<String>> {
+fn tool_request_between(
+    conn: &Connection, room: &str, id: &str, after: i64, through: i64, pending_only: bool,
+) -> AppResult<Option<(i64, String, ToolAddress)>> {
     Ok(conn.query_row(
-        "SELECT m.id FROM messages m JOIN mentions n ON n.message_id=m.id
-         WHERE m.room_id=?1 AND m.seq=?2 AND m.sender_id<>?3 AND m.state='visible' AND m.mention_all=0 AND n.target_participant_id=?3",
-        params![room, seq, id], |row| row.get(0),
+        "SELECT seq, id, address FROM (
+            SELECT m.seq, m.id, CASE
+                WHEN EXISTS (SELECT 1 FROM mentions n WHERE n.message_id=m.id AND n.target_participant_id=?2) THEN 1
+                WHEN EXISTS (SELECT 1 FROM mentions n WHERE n.message_id=m.id)
+                    OR NOT EXISTS (SELECT 1 FROM participants p WHERE p.id=m.sender_id AND p.kind='user') THEN NULL
+                WHEN EXISTS (SELECT 1 FROM messages q WHERE q.id=m.quote_message_id
+                    AND q.room_id=?1 AND q.sender_id=?2 AND q.state='visible') THEN 2
+                WHEN m.quote_message_id IS NULL AND EXISTS (
+                    SELECT 1 FROM messages reply
+                    JOIN messages original ON original.id=reply.quote_message_id AND original.room_id=?1
+                    JOIN runtime_messages r ON r.message_seq=reply.seq AND r.decision_id=(?5 || original.seq) AND r.ordinal=0
+                    WHERE original.seq=(SELECT MAX(previous.seq) FROM messages previous
+                        WHERE previous.room_id=?1 AND previous.sender_id=m.sender_id AND previous.seq<m.seq)
+                      AND reply.seq<m.seq AND reply.sender_id=?2 AND reply.state='visible' AND original.state='visible'
+                      AND m.created_at-reply.created_at BETWEEN 0 AND ?6
+                ) THEN 3
+            END AS address
+            FROM messages m
+            WHERE m.room_id=?1 AND m.seq>?3 AND m.seq<=?4 AND m.sender_id<>?2 AND m.state='visible' AND m.mention_all=0
+              AND (NOT ?7 OR NOT EXISTS (SELECT 1 FROM runtime_messages r WHERE r.decision_id=(?5 || m.seq) AND r.ordinal=0))
+         ) WHERE address IS NOT NULL ORDER BY seq LIMIT 1",
+        params![room, id, after, through, tool_decision_prefix(id), TOOL_FOLLOW_UP_MS, pending_only],
+        |row| {
+            let address = match row.get::<_, u8>(2)? {
+                1 => ToolAddress::Mention,
+                2 => ToolAddress::Quote,
+                _ => ToolAddress::FollowUp,
+            };
+            Ok((row.get(0)?, row.get(1)?, address))
+        },
     ).optional()?)
+}
+
+fn tool_origin(conn: &Connection, room: &str, id: &str, seq: i64) -> AppResult<Option<(String, ToolAddress)>> {
+    Ok(tool_request_between(conn, room, id, seq - 1, seq, false)?.map(|(_, id, address)| (id, address)))
+}
+
+fn tool_history(conn: &Connection, room: &str, agent: &str, request: &ChatMessage, before: i64) -> AppResult<Vec<ChatMessage>> {
+    let mut sequences = conn.prepare(
+        "SELECT m.seq FROM messages m WHERE m.room_id=?1 AND m.seq<?4 AND m.state='visible'
+         AND m.sender_id IN (?2, ?3) AND (
+            (m.sender_id=?3 AND m.mention_all=0 AND (
+                EXISTS (SELECT 1 FROM mentions n WHERE n.message_id=m.id AND n.target_participant_id=?2)
+                OR (NOT EXISTS (SELECT 1 FROM mentions n WHERE n.message_id=m.id) AND EXISTS (
+                    SELECT 1 FROM messages q WHERE q.id=m.quote_message_id AND q.room_id=?1 AND q.sender_id=?2 AND q.state='visible'
+                ))
+                OR EXISTS (SELECT 1 FROM runtime_messages r JOIN messages reply ON reply.seq=r.message_seq
+                    WHERE r.decision_id=(?5 || m.seq) AND r.ordinal=0 AND reply.seq<?4 AND reply.state='visible')
+            )) OR (m.sender_id=?2 AND EXISTS (
+                SELECT 1 FROM messages original JOIN runtime_messages r ON r.message_seq=m.seq
+                    AND r.decision_id=(?5 || original.seq) AND r.ordinal=0
+                WHERE original.id=m.quote_message_id AND original.room_id=?1 AND original.sender_id=?3 AND original.state='visible'
+            ))
+         ) ORDER BY m.seq DESC LIMIT ?6",
+    )?.query_map(params![room, agent, request.sender_id, before, tool_decision_prefix(agent), TOOL_HISTORY_LIMIT], |row| row.get(0))?
+      .collect::<rusqlite::Result<Vec<i64>>>()?;
+    sequences.reverse();
+    load_messages(conn, &sequences)
 }
 
 impl Database {
@@ -287,31 +375,35 @@ impl Database {
     pub(crate) fn runtime_input_for(&mut self, id: &str, task: Option<DecimalString>) -> AppResult<RuntimeInput> {
         let room = self.room_id.clone();
         let root = self.root.clone();
-        let (snapshot, (agent, credential_ref, messages, quoted_messages, experiences, experience_revision)) = self.snapshot_with(
+        let (snapshot, (agent, credential_ref, messages, quoted_messages, tool_turn, experiences, experience_revision)) = self.snapshot_with(
             AppSnapshotRequest { data_generation_id: None, last_event_seq: None },
             |conn| {
                 let agent = read_agent(conn, id)?;
                 let credential_ref = credential_reference(conn, &agent)?.ok_or_else(|| {
                     AppError::new(ErrorCode::InvalidInput, "智能体缺少有效模型或当前来源凭据，请重新配置。")
                 })?;
-                let mut sequences = if let Some(task) = &task {
+                let (messages, quote_ids, tool_turn) = if let Some(task) = &task {
                     let seq = parse_counter(task, "tool_request_seq")?;
-                    if agent.agent_type != AgentType::Tool || tool_origin(conn, &room, id, seq)?.is_none() {
+                    let Some((_, address)) = tool_origin(conn, &room, id, seq)?.filter(|_| agent.agent_type == AgentType::Tool) else {
                         return Err(AppError::new(ErrorCode::ConfigConflict, "原委托已不可用。"));
-                    }
-                    vec![seq]
+                    };
+                    let request = load_messages(conn, &[seq])?.remove(0);
+                    let history = tool_history(conn, &room, id, &request, seq)?;
+                    let quote_ids = request.quote_message_id.iter().cloned().collect::<Vec<_>>();
+                    (history, quote_ids, Some(ToolTurn { address, request }))
                 } else {
-                    conn.prepare(
+                    let mut sequences = conn.prepare(
                         "SELECT seq FROM messages WHERE room_id=?1 AND state='visible' ORDER BY seq DESC LIMIT 64",
-                    )?.query_map([&room], |row| row.get(0))?.collect::<rusqlite::Result<Vec<i64>>>()?
+                    )?.query_map([&room], |row| row.get(0))?.collect::<rusqlite::Result<Vec<i64>>>()?;
+                    sequences.reverse();
+                    let messages = load_messages(conn, &sequences)?;
+                    let quote_ids = messages.iter().rev().filter_map(|message| message.quote_message_id.clone()).take(32).collect();
+                    (messages, quote_ids, None)
                 };
-                sequences.reverse();
-                let messages = load_messages(conn, &sequences)?;
-                let quote_ids: Vec<_> = messages.iter().rev().filter_map(|message| message.quote_message_id.clone()).take(32).collect();
                 let quoted_messages = super::chat::resolve_quotes(conn, &room, &quote_ids)?;
                 let (entries, experience_revision) = super::experience::read_snapshot(&root, id)?;
                 let experiences = super::experience::context_entries(entries);
-                Ok((agent, credential_ref, messages, quoted_messages, experiences, experience_revision))
+                Ok((agent, credential_ref, messages, quoted_messages, tool_turn, experiences, experience_revision))
             },
         )?;
         Ok(RuntimeInput {
@@ -320,6 +412,7 @@ impl Database {
             snapshot,
             messages,
             quoted_messages,
+            tool_turn,
             experiences,
             experience_revision,
         })
@@ -437,14 +530,8 @@ impl Database {
     }
 
     pub(crate) fn next_tool_request(&self, id: &str, after: i64, through: i64) -> AppResult<Option<DecimalString>> {
-        Ok(self.conn.query_row(
-            "SELECT m.seq FROM messages m JOIN mentions n ON n.message_id=m.id
-             WHERE m.room_id=?1 AND m.seq>?2 AND m.seq<=?3 AND m.sender_id<>?4 AND m.state='visible' AND m.mention_all=0
-               AND n.target_participant_id=?4
-               AND NOT EXISTS(SELECT 1 FROM runtime_messages r WHERE r.decision_id=(?5 || m.seq) AND r.ordinal=0)
-             ORDER BY m.seq LIMIT 1",
-            params![self.room_id, after, through, id, tool_decision_prefix(id)], |row| row.get::<_, i64>(0),
-        ).optional()?.map(Into::into))
+        Ok(tool_request_between(&self.conn, &self.room_id, id, after, through, true)?
+            .map(|(seq, _, _)| seq.into()))
     }
 
     pub fn runtime_is_paused(&self, id: &str) -> AppResult<bool> {
@@ -800,8 +887,8 @@ impl Database {
             ));
         }
         if agent.agent_type == AgentType::Tool {
-            let origin = tool_origin(&transaction, &room_id, &message.agent_id, observed)?;
-            if origin.is_none() || origin != message.quote_message_id || message.ordinal != 0
+            let origin_id = tool_origin(&transaction, &room_id, &message.agent_id, observed)?.map(|(id, _)| id);
+            if origin_id.is_none() || origin_id != message.quote_message_id || message.ordinal != 0
                 || message.decision_id != tool_decision_id(&message.agent_id, &message.observed_through_seq)
                 || !message.mention_ids.is_empty() || message.mention_all
             {

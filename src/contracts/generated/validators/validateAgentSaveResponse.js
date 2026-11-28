@@ -22,7 +22,9 @@ var schema81 = {
 		"local_tools_enabled": { "type": ["boolean", "null"] },
 		"model": { "anyOf": [{ "$ref": "#/$defs/AgentModelSnapshot" }, { "type": "null" }] },
 		"revision": { "$ref": "#/$defs/DecimalString" },
-		"skill": { "type": "string" }
+		"script_execution_enabled": { "type": ["boolean", "null"] },
+		"skill": { "type": "string" },
+		"windows_inventory_enabled": { "type": ["boolean", "null"] }
 	},
 	"required": [
 		"agent_id",
@@ -1017,20 +1019,54 @@ function validate61(data, { instancePath = "", parentData, parentDataProperty, r
 															var valid0 = _errs42 === errors;
 														} else var valid0 = true;
 														if (valid0) {
-															if (data.skill !== void 0) {
+															if (data.script_execution_enabled !== void 0) {
+																let data18 = data.script_execution_enabled;
 																const _errs45 = errors;
-																if (typeof data.skill !== "string") {
+																if (typeof data18 !== "boolean" && data18 !== null) {
 																	validate61.errors = [{
-																		instancePath: instancePath + "/skill",
-																		schemaPath: "#/properties/skill/type",
+																		instancePath: instancePath + "/script_execution_enabled",
+																		schemaPath: "#/properties/script_execution_enabled/type",
 																		keyword: "type",
-																		params: { type: "string" },
-																		message: "must be string"
+																		params: { type: schema81.properties.script_execution_enabled.type },
+																		message: "must be boolean,null"
 																	}];
 																	return false;
 																}
 																var valid0 = _errs45 === errors;
 															} else var valid0 = true;
+															if (valid0) {
+																if (data.skill !== void 0) {
+																	const _errs47 = errors;
+																	if (typeof data.skill !== "string") {
+																		validate61.errors = [{
+																			instancePath: instancePath + "/skill",
+																			schemaPath: "#/properties/skill/type",
+																			keyword: "type",
+																			params: { type: "string" },
+																			message: "must be string"
+																		}];
+																		return false;
+																	}
+																	var valid0 = _errs47 === errors;
+																} else var valid0 = true;
+																if (valid0) {
+																	if (data.windows_inventory_enabled !== void 0) {
+																		let data20 = data.windows_inventory_enabled;
+																		const _errs49 = errors;
+																		if (typeof data20 !== "boolean" && data20 !== null) {
+																			validate61.errors = [{
+																				instancePath: instancePath + "/windows_inventory_enabled",
+																				schemaPath: "#/properties/windows_inventory_enabled/type",
+																				keyword: "type",
+																				params: { type: schema81.properties.windows_inventory_enabled.type },
+																				message: "must be boolean,null"
+																			}];
+																			return false;
+																		}
+																		var valid0 = _errs49 === errors;
+																	} else var valid0 = true;
+																}
+															}
 														}
 													}
 												}

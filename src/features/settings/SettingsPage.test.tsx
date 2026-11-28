@@ -27,6 +27,32 @@ describe("软件设置直接应用", () => {
     await waitFor(() => expect(toggle).toHaveAttribute("data-state", "checked"))
   })
 
+  it("操作中的托盘闪烁默认开启，关闭后保存偏好并在重新打开时保留", async () => {
+    const preferences = { close_action: "hide", send_key: "enter", tray_flash_on_message: true } as const
+    const getPreferences = vi.spyOn(ipc, "getUiPreferences").mockResolvedValue(preferences)
+    const savePreferences = vi.spyOn(ipc, "saveUiPreferences").mockImplementation(async (request) => {
+      getPreferences.mockResolvedValue(request.preferences)
+    })
+    const view = render(page())
+    await userEvent.click(screen.getByRole("button", { name: "操作" }))
+    const toggle = screen.getByRole("switch", { name: "消息来时托盘图标闪烁" })
+    expect(toggle).toBeChecked()
+    await userEvent.click(toggle)
+    expect(toggle).not.toBeChecked()
+    expect(savePreferences).toHaveBeenCalledWith({
+      data_generation_id: pageProps().session.snapshot!.data_generation_id,
+      preferences: { ...preferences, tray_flash_on_message: false },
+    })
+
+    view.unmount()
+    render(page())
+    await userEvent.click(screen.getByRole("button", { name: "操作" }))
+    const reopenedToggle = screen.getByRole("switch", { name: "消息来时托盘图标闪烁" })
+    expect(reopenedToggle).not.toBeChecked()
+    await userEvent.click(reopenedToggle)
+    expect(reopenedToggle).toBeChecked()
+  })
+
   it("首次激活展示，主题选择和动画开关直接写入并更新共享外观资源", async () => {
     const props = pageProps(false)
     const view = render(page(props))

@@ -2,7 +2,10 @@ mod decision;
 pub(crate) mod local_tools;
 mod mcp_tools;
 mod peers;
+mod script_sandbox;
 mod style;
+#[cfg(windows)]
+mod windows_sql;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -23,7 +26,7 @@ use crate::{
     },
     models::ModelGateway,
     secrets::store::SecretStore,
-    storage::{runtime::{RuntimeExperience, RuntimeMessage, tool_decision_id}, worker::DbWorker},
+    storage::{runtime::{RuntimeExperience, RuntimeMessage, ToolAddress, tool_decision_id}, worker::DbWorker},
 };
 use decision::Participation;
 
@@ -104,9 +107,9 @@ struct Actor {
 }
 
 impl Actor {
-    fn notify_tool(&self, through: &DecimalString, direct: bool) {
+    fn notify_tool(&self, through: &DecimalString, live_message: bool) {
         self.opportunities.send_modify(|signal| {
-            if direct && sequence(&signal.mention_seq) == 0 {
+            if live_message && sequence(&signal.mention_seq) == 0 {
                 signal.message_seq = sequence(&signal.message_seq).min(sequence(through) - 1).into();
             }
             signal.mention_seq = sequence(&signal.mention_seq).max(sequence(through)).into();
@@ -266,7 +269,9 @@ impl RuntimeSupervisor {
                             }
                             for (id, actor) in &actors {
                                 if actor.tool {
-                                    if id != &sender_id && !mentions.1 && mentions.0.contains(id) {
+                                    let addressed = mentions.0.contains(id)
+                                        || (mentions.0.is_empty() && (mentions.2.is_none() || quote_sender.as_ref() == Some(id)));
+                                    if id != &sender_id && !mentions.1 && addressed {
                                         actor.notify_tool(&message_seq, true);
                                     }
                                     continue;
@@ -1004,16 +1009,22 @@ async fn make_decision(
         if answer.is_none() || decision.experience.as_ref().is_some_and(|entry| entry.score < 60) {
             decision.experience = None;
         }
-        decision.participation = Participation::Speak;
+        let turn = input.tool_turn();
         decision.recalls.clear();
         decision.wake_plan = None;
-        decision.messages = vec![decision::PlannedMessage {
-            parts: vec![MessagePart::Text { text: answer.unwrap_or_else(|| decision::tool_clarification().into()) }],
-            quote_message_id: Some(input.messages[0].id.clone()),
-            mention_ids: vec![],
-            mention_all: false,
-            send_after_ms: 0,
-        }];
+        if answer.is_none() && turn.address == ToolAddress::FollowUp {
+            decision.participation = Participation::Observe;
+            decision.messages.clear();
+        } else {
+            decision.participation = Participation::Speak;
+            decision.messages = vec![decision::PlannedMessage {
+                parts: vec![MessagePart::Text { text: answer.unwrap_or_else(|| decision::tool_clarification().into()) }],
+                quote_message_id: Some(turn.request.id.clone()),
+                mention_ids: vec![],
+                mention_all: false,
+                send_after_ms: 0,
+            }];
+        }
     }
     if idle {
         if decision.participation != Participation::Speak {
@@ -1144,8 +1155,14 @@ async fn run_tool_turn(
 
     let (system, base) = decision::tool_context(input)?;
     let agent = &input.agent;
-    let catalog = if agent.local_tools_enabled == Some(true)
-        && input.messages[0].sender_id == input.snapshot.local_user.id
+    let address = input.tool_turn().address;
+    let script_enabled = agent.script_execution_enabled == Some(true);
+    let can_script = script_enabled && input.is_local_tool_request();
+    let languages = if can_script {
+        script_sandbox::available_languages(agent.windows_inventory_enabled == Some(true))
+    } else { Vec::new() };
+    let news_enabled = news_enabled && address == ToolAddress::Mention;
+    let catalog = if agent.local_tools_enabled == Some(true) && input.local_user_delegated_tool()
     {
         mcp_tools::load(std::path::Path::new(&input.snapshot.data_directory), &agent.agent_id).ok().flatten()
     } else { None };
@@ -1155,8 +1172,11 @@ async fn run_tool_turn(
     let mut repair = false;
     let mut receipt = None;
     for attempt in 0..5 {
-        let remaining = if attempt == 4 { 0 } else { 2_usize.saturating_sub(feedback.len() + usize::from(searched.is_some())) };
+        let remaining = if attempt == 4 || (address != ToolAddress::Mention && !can_script) { 0 } else { 2_usize.saturating_sub(feedback.len() + usize::from(searched.is_some())) };
         let mut context: Value = serde_json::from_str(&base)?;
+        context["script_execution"] = json!({"enabled":script_enabled,"available":remaining > 0 && !languages.is_empty(),
+            "languages":if remaining > 0 { languages.as_slice() } else { &[] },
+            "windows_inventory_authorized":agent.windows_inventory_enabled == Some(true)});
         context["tool_results"] = json!(feedback);
         context["remaining_tool_steps"] = json!(remaining);
         context["local_tools"] = decision::local_tool_context(input, local_used, remaining);
@@ -1190,10 +1210,24 @@ async fn run_tool_turn(
             repair = true;
             continue;
         };
-        if decision::tool_answer(&output).is_some() {
+        if decision::tool_answer(&output).is_some()
+            || (address == ToolAddress::FollowUp && output.participation == Participation::Observe && output.script.is_none() && receipt.is_none())
+        {
             return Ok(output);
         }
         if remaining > 0 {
+            if let Some(script) = output.script.take() {
+                let result = run_script(script, input, origin, worker, cancellation).await;
+                let (ok, data) = match result {
+                    Ok(result) => (result.exit_code == Some(0), json!(result)),
+                    Err(error) if matches!(error.code, ErrorCode::ShuttingDown | ErrorCode::ConfigConflict) => return Err(error),
+                    Err(error) => (false, json!({"error":error.message})),
+                };
+                receipt = Some(format!("脚本执行回执：{data}"));
+                feedback.push(json!({"operation":"script","ok":ok,"result":data}));
+                repair = false;
+                continue;
+            }
             let (operation, result) = if let Some(action) = output.local_action.take() {
                 let name = action.operation();
                 let result = if local_used {
@@ -1265,11 +1299,56 @@ async fn run_tool_turn(
         if repair { break; }
         repair = true;
     }
+    if address == ToolAddress::FollowUp && receipt.is_none() {
+        return decision::parse(r#"{"participation":"observe"}"#, input);
+    }
     let fallback = receipt.map_or_else(
         || decision::tool_clarification().into(),
-        |result| format!("{result}\n暂未得到对原委托的完整答复。"),
+        |result| format!("{}\n暂未得到对原委托的完整答复。", result.chars().take(3000).collect::<String>()),
     );
     decision::host_answer(input, fallback)
+}
+
+async fn run_script(
+    script: script_sandbox::Script,
+    input: &crate::storage::runtime::RuntimeInput,
+    origin: &DecimalString,
+    worker: &DbWorker,
+    cancellation: &CancellationToken,
+) -> AppResult<script_sandbox::Execution> {
+    if input.agent.script_execution_enabled != Some(true) {
+        return Err(AppError::new(ErrorCode::PermissionDenied, "尚未开启此助手的脚本执行权限。"));
+    }
+    if script.requires_windows_inventory() && input.agent.windows_inventory_enabled != Some(true) {
+        return Err(AppError::new(ErrorCode::PermissionDenied, "尚未授权此助手读取 Windows 设备与磁盘数据。"));
+    }
+    let id = input.agent.agent_id.clone();
+    let origin = origin.clone();
+    let revision = input.agent.revision.clone();
+    let epoch = input.snapshot.room.content_epoch.clone();
+    let token = cancellation.clone();
+    let (script, archive) = worker.call(move |database| {
+        let current = database.runtime_input_for(&id, Some(origin))?;
+        if token.is_cancelled() {
+            return Err(AppError::new(ErrorCode::ShuttingDown, "脚本执行已取消。"));
+        }
+        if current.agent.revision != revision || current.snapshot.room.content_epoch != epoch
+            || current.agent.script_execution_enabled != Some(true) || !current.is_local_tool_request()
+            || (script.requires_windows_inventory() && current.agent.windows_inventory_enabled != Some(true))
+            || database.runtime_is_paused(&id)?
+        {
+            return Err(AppError::new(ErrorCode::ConfigConflict, "委托或脚本权限已变化，未运行脚本。"));
+        }
+        let archive = script.archive(std::path::Path::new(&current.snapshot.data_directory), &id)
+            .map_err(|_| AppError::new(ErrorCode::IoError, "无法将脚本保存到本助手的工作区，未运行。"))?;
+        Ok((script, archive))
+    }).await?;
+    let label = script_sandbox::workspace_label(&archive);
+    let execution = script.execute(archive, cancellation).await;
+    if cancellation.is_cancelled() {
+        return Err(AppError::new(ErrorCode::ShuttingDown, "脚本执行已取消。"));
+    }
+    execution.map_err(|message| AppError::new(ErrorCode::IoError, format!("已保存至 {label}；{message}")))
 }
 
 async fn run_local_action(
@@ -1305,7 +1384,7 @@ fn authorized_local_root(
 ) -> AppResult<std::path::PathBuf> {
     let current = database.runtime_input_for(id, Some(origin))?;
     if &current.agent.revision != revision || &current.snapshot.room.content_epoch != epoch
-        || current.agent.local_tools_enabled != Some(true) || current.messages[0].sender_id != current.snapshot.local_user.id
+        || current.agent.local_tools_enabled != Some(true) || !current.local_user_delegated_tool()
         || database.runtime_is_paused(id)? || cancellation.is_cancelled()
     {
         return Err(AppError::new(ErrorCode::ConfigConflict, "原委托已变化，未执行本地操作。"));
@@ -1578,8 +1657,10 @@ mod tests {
             let id = agent.agent_id.clone();
             let seq = source.clone();
             let input = worker.call(move |database| database.runtime_input_for(&id, Some(seq))).await.unwrap();
-            let write = |text: &str| local_tools::LocalAction::WriteText { name: "draft.txt".into(), text: text.into() };
+            let script = serde_json::from_value(serde_json::json!({"language":"python","source":"print(42)"})).unwrap();
             let cancellation = CancellationToken::new();
+            assert_eq!(run_script(script, &input, &source, &worker, &cancellation).await.unwrap_err().code, ErrorCode::PermissionDenied);
+            let write = |text: &str| local_tools::LocalAction::WriteText { name: "draft.txt".into(), text: text.into() };
             assert!(run_local_action(write("第一版"), &input, &source, &worker, &cancellation).await.unwrap().contains("已创建"));
             let file = directory.path().join("agents").join(&agent.agent_id).join("workspace").join("draft.txt");
             agent.local_tools_enabled = Some(false);
@@ -1608,6 +1689,9 @@ mod tests {
                 json!({"participation":"speak","messages":[{"parts":[{"kind":"text","text":mcp_answer}]}]}),
                 json!({"participation":"observe","local_action":{"operation":"write_text","name":"draft.txt","text":"不应写入"}}),
                 json!({"participation":"speak","messages":[{"parts":[{"kind":"text","text":"未开启本地工具，草稿没有保存。"}]}]}),
+                json!({"participation":"speak","messages":[{"parts":[{"kind":"text","text":"检查清单：客户端超时、服务端日志、慢查询。"}]}]}),
+                json!({"participation":"observe"}),
+                json!({"participation":"speak","messages":[{"parts":[{"kind":"text","text":"先核对客户端超时。"}]}]}),
             ];
             let (mut agent, secrets, key, received, server) = model_fixture(&worker, replies).await;
             agent.agent_type = AgentType::Tool;
@@ -1615,12 +1699,12 @@ mod tests {
                 data_generation_id: "actor-tests".into(), client_request_id: Uuid::now_v7().to_string(),
                 expected_revision: Some(agent.revision.clone()), configuration: agent,
             })?.0)).await.unwrap();
-            let send = |text: &str, direct: bool, everyone: bool| worker.send_message(ChatSendRequest {
+            let send = |text: &str, direct: bool, everyone: bool, quote_message_id| worker.send_message(ChatSendRequest {
                 data_generation_id: "actor-tests".into(), client_request_id: Uuid::now_v7().to_string(),
-                parts: vec![MessagePart::Text { text: text.into() }], quote_message_id: None,
+                parts: vec![MessagePart::Text { text: text.into() }], quote_message_id,
                 mention_ids: if direct { vec![agent.agent_id.clone()] } else { vec![] }, mention_all: everyone,
             });
-            send("这是启动之前的旧委托。", true, false).await.unwrap();
+            send("这是启动之前的旧委托。", true, false, None).await.unwrap();
             while events.try_recv().is_ok() {}
             let supervisor = RuntimeSupervisor::new();
             supervisor.start(worker.clone(), Ok(Arc::new(ModelGateway::new().unwrap())), Ok(secrets.clone()));
@@ -1636,29 +1720,34 @@ mod tests {
                     tokio::time::sleep(Duration::from_millis(10)).await;
                 }
             }).await.unwrap();
-            send("这是不相关的群公告。", false, true).await.unwrap();
-            let a = send("怎么排查接口请求超时？", true, false).await.unwrap();
-            let b = send("电脑出问题了，帮我看看。", true, false).await.unwrap();
-            send("这是两条委托之后的普通闲聊。", false, false).await.unwrap();
-            let external = send("使用已配置的工具查询清单。", true, false).await.unwrap();
-            let draft = send("请在工作区保存以上草稿。", true, false).await.unwrap();
-            let page = tokio::time::timeout(Duration::from_secs(12), async {
-                loop {
-                    let page = worker.list_messages(ChatListRequest {
-                        data_generation_id: "actor-tests".into(), before_seq: None, after_seq: None,
-                        around_seq: None, limit: 20,
-                    }).await.unwrap();
-                    if page.items.iter().filter(|message| message.sender_id == agent.agent_id).count() == 4 {
-                        break page;
+            send("这是不相关的群公告。", false, true, None).await.unwrap();
+            let a = send("怎么排查接口请求超时？", true, false, None).await.unwrap();
+            let b = send("电脑出问题了，帮我看看。", true, false, None).await.unwrap();
+            send("这是两条委托之后的普通闲聊。", false, false, Some(b.message_id.clone())).await.unwrap();
+            let external = send("使用已配置的工具查询清单。", true, false, None).await.unwrap();
+            let draft = send("请在工作区保存以上草稿。", true, false, None).await.unwrap();
+            let wait_for_replies = async |count| {
+                tokio::time::timeout(Duration::from_secs(12), async {
+                    loop {
+                        let page = worker.list_messages(ChatListRequest {
+                            data_generation_id: "actor-tests".into(), before_seq: None, after_seq: None,
+                            around_seq: None, limit: 20,
+                        }).await.unwrap();
+                        let replies: Vec<_> = page.items.into_iter().filter(|message| message.sender_id == agent.agent_id).collect();
+                        if replies.len() >= count { break replies; }
+                        tokio::time::sleep(Duration::from_millis(10)).await;
                     }
-                    tokio::time::sleep(Duration::from_millis(10)).await;
-                }
-            }).await;
+                }).await.unwrap()
+            };
+            wait_for_replies(4).await;
+            let follow_up = send("那把最开始的排查方法整理成三项。", false, false, None).await.unwrap();
+            let prior_replies = wait_for_replies(5).await;
+            let ignored = send("窗外有人在放烟花。", false, false, None).await.unwrap();
+            let quoted = send("第一项要怎么查？", false, false, Some(prior_replies[4].id.clone())).await.unwrap();
+            let replies = wait_for_replies(6).await;
             supervisor.shutdown();
             relay.abort();
             secrets.delete(&key).unwrap();
-            let page = page.unwrap();
-            let replies: Vec<_> = page.items.iter().filter(|message| message.sender_id == agent.agent_id).collect();
             assert_eq!(replies[0].quote_message_id.as_ref(), Some(&a.message_id));
             assert_eq!(replies[1].quote_message_id.as_ref(), Some(&b.message_id));
             assert_eq!(style::body(&replies[0].parts), answer);
@@ -1667,10 +1756,13 @@ mod tests {
             assert_eq!(style::body(&replies[2].parts), mcp_answer);
             assert_eq!(replies[3].quote_message_id.as_ref(), Some(&draft.message_id));
             assert!(style::body(&replies[3].parts).contains("未开启本地工具"));
+            assert_eq!(replies[4].quote_message_id.as_ref(), Some(&follow_up.message_id));
+            assert_eq!(replies[5].quote_message_id.as_ref(), Some(&quoted.message_id));
+            assert!(replies.iter().all(|reply| reply.quote_message_id.as_ref() != Some(&ignored.message_id)));
             assert!(!directory.path().join("agents").join(&agent.agent_id).join("workspace").exists());
             server.join().unwrap();
             let requests: Vec<_> = received.try_iter().collect();
-            assert_eq!(requests.len(), 7);
+            assert_eq!(requests.len(), 10);
             assert!(requests[0].get("reasoning_effort").is_none());
             assert!(requests[0].get("temperature").is_none());
             let prompt = |request: &Value| request["messages"][1]["content"].as_str().unwrap().to_owned();
@@ -1696,6 +1788,20 @@ mod tests {
             assert_eq!(denied["tool_results"][0]["operation"], "write_text");
             assert_eq!(denied["tool_results"][0]["ok"], false);
             assert!(denied["tool_results"][0]["result"].as_str().unwrap().contains("未开启本地工具"));
+            let follow_context = context(7);
+            assert_eq!(follow_context["request_address"], "follow_up");
+            assert_eq!(follow_context["request"]["text"], "那把最开始的排查方法整理成三项。");
+            assert_eq!(follow_context["remaining_tool_steps"], 0);
+            let history = follow_context["history"].as_array().unwrap();
+            assert!(history.iter().any(|turn| turn["id"] == a.message_id && turn["role"] == "requester"));
+            assert!(history.iter().any(|turn| turn["text"] == answer && turn["role"] == "assistant"));
+            assert!(!history.iter().any(|turn| turn["text"].as_str().unwrap().contains("闲聊") || turn["text"].as_str().unwrap().contains("群公告")));
+            assert_eq!(context(8)["request_address"], "follow_up");
+            let quote_context = context(9);
+            assert_eq!(quote_context["request_address"], "quote");
+            let history = quote_context["history"].as_array().unwrap();
+            assert!(history.iter().any(|turn| turn["id"] == follow_up.message_id));
+            assert!(!history.iter().any(|turn| turn["id"] == ignored.message_id));
             let entries = worker.list_experience(ExperienceAgentRequest {
                 data_generation_id: "actor-tests".into(), agent_id: agent.agent_id.clone(),
             }).await.unwrap();
